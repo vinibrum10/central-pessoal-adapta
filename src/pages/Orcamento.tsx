@@ -244,7 +244,9 @@ export function OrcamentoPage() {
 
   const salvarDespesa = useCallback(() => {
     const valorDespesa = parseBRLMoney(formDespesaValorStr);
-    const formDespesaComValor = { ...formDespesa, valor: valorDespesa };
+    // Usar dia 1 do mês de referência como data interna da despesa
+    const dataDoMes = `${formDespesaMesFatura}-01`;
+    const formDespesaComValor = { ...formDespesa, valor: valorDespesa, data: dataDoMes };
     const isCartao = formDespesaComValor.formaPagamento === 'Cartão de crédito';
     const isParcelado = isCartao && formDespesaExtra.tipoCobrancaCartao === 'parcelado' && !editandoId;
 
@@ -252,7 +254,9 @@ export function OrcamentoPage() {
       const qtd = formDespesaExtra.quantidadeParcelas;
       const valorParcela = formDespesaComValor.valor / qtd;
       const grupoId = crypto.randomUUID();
-      const [ano, mes] = formDespesaExtra.mesInicioParcelas.split('-').map(Number);
+      // Usar o mês de referência escolhido como início das parcelas
+      const mesInicioEfetivo = formDespesaMesFatura;
+      const [ano, mes] = mesInicioEfetivo.split('-').map(Number);
       const cartaoId = cartaoSelecionadoId || undefined;
       const cartao = cartaoId ? data.cartoes.find(c => c.id === cartaoId) : undefined;
 
@@ -348,13 +352,12 @@ export function OrcamentoPage() {
         }
         // Nova despesa à vista com cartão
         const cartaoId = isCartao && cartaoSelecionadoId ? cartaoSelecionadoId : undefined;
-        const cartao = cartaoId ? d.cartoes.find(c => c.id === cartaoId) : undefined;
         let faturasAtual = [...(d.faturas ?? [])];
         let faturaId: string | undefined;
 
         if (cartaoId) {
-          const competencia = obterCompetenciaFatura(formDespesaComValor.data, cartao?.diaFechamento);
-          const { fatura, isNova } = obterOuCriarFatura(cartaoId, competencia, faturasAtual);
+          // Usar diretamente o mês de referência escolhido pelo usuário como competência da fatura
+          const { fatura, isNova } = obterOuCriarFatura(cartaoId, formDespesaMesFatura, faturasAtual);
           if (isNova) faturasAtual = [...faturasAtual, fatura];
           faturaId = fatura.id;
         }
@@ -643,7 +646,7 @@ export function OrcamentoPage() {
         <div className="space-y-4 animate-fade-in">
           <div className="flex justify-end">
             {canCreateExpense(perfil) && (
-              <Button icon={<Plus size={16} />} onClick={() => { setFormDespesa({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Alimentação', formaPagamento: 'PIX', recorrente: false, essencial: true }); setFormDespesaExtra({ tipoCobrancaCartao: 'avista', quantidadeParcelas: 2, mesInicioParcelas: hojeISO().slice(0, 7) }); abrirModal('despesa'); }}>
+              <Button icon={<Plus size={16} />} onClick={() => { setFormDespesa({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Alimentação', formaPagamento: 'PIX', recorrente: false, essencial: true }); setFormDespesaValorStr(''); setFormDespesaMesFatura(hojeISO().slice(0, 7)); setFormDespesaExtra({ tipoCobrancaCartao: 'avista', quantidadeParcelas: 2, mesInicioParcelas: hojeISO().slice(0, 7) }); abrirModal('despesa'); }}>
                 Nova Despesa
               </Button>
             )}
@@ -929,35 +932,31 @@ export function OrcamentoPage() {
           <Input id="desp-desc" label="Descrição" required value={formDespesa.descricao} onChange={e => setFormDespesa(f => ({ ...f, descricao: e.target.value }))} placeholder="Ex: Aluguel, supermercado..." />
           <div className="grid grid-cols-2 gap-3">
             <Input id="desp-valor" label="Valor (R$)" required type="text" inputMode="decimal" placeholder="0,00" value={formDespesaValorStr} onChange={e => setFormDespesaValorStr(e.target.value)} />
-            {editandoId && formDespesa.formaPagamento === 'Cartão de crédito' ? (
-              <div>
-                <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Mês da fatura</label>
-                <div className="flex gap-2">
-                  <select
-                    value={formDespesaMesFatura.split('-')[1] ?? ''}
-                    onChange={e => {
-                      const ano = formDespesaMesFatura.split('-')[0] ?? new Date().getFullYear().toString();
-                      setFormDespesaMesFatura(`${ano}-${e.target.value}`);
-                    }}
-                    className="flex-1 px-3 py-2.5 rounded-lg border text-sm bg-white dark:bg-surface-900 border-surface-300 dark:border-surface-600 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  >
-                    {MESES.map((m, i) => <option key={i} value={String(i + 1).padStart(2, '0')}>{m}</option>)}
-                  </select>
-                  <select
-                    value={formDespesaMesFatura.split('-')[0] ?? ''}
-                    onChange={e => {
-                      const mes = formDespesaMesFatura.split('-')[1] ?? '01';
-                      setFormDespesaMesFatura(`${e.target.value}-${mes}`);
-                    }}
-                    className="w-24 px-3 py-2.5 rounded-lg border text-sm bg-white dark:bg-surface-900 border-surface-300 dark:border-surface-600 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  >
-                    {[-1, 0, 1, 2].map(offset => { const y = new Date().getFullYear() + offset; return <option key={y} value={y}>{y}</option>; })}
-                  </select>
-                </div>
+            <div>
+              <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Mês de referência</label>
+              <div className="flex gap-2">
+                <select
+                  value={formDespesaMesFatura.split('-')[1] ?? ''}
+                  onChange={e => {
+                    const ano = formDespesaMesFatura.split('-')[0] ?? new Date().getFullYear().toString();
+                    setFormDespesaMesFatura(`${ano}-${e.target.value}`);
+                  }}
+                  className="flex-1 px-3 py-2.5 rounded-lg border text-sm bg-white dark:bg-surface-900 border-surface-300 dark:border-surface-600 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                  {MESES.map((m, i) => <option key={i} value={String(i + 1).padStart(2, '0')}>{m}</option>)}
+                </select>
+                <select
+                  value={formDespesaMesFatura.split('-')[0] ?? ''}
+                  onChange={e => {
+                    const mes = formDespesaMesFatura.split('-')[1] ?? '01';
+                    setFormDespesaMesFatura(`${e.target.value}-${mes}`);
+                  }}
+                  className="w-24 px-3 py-2.5 rounded-lg border text-sm bg-white dark:bg-surface-900 border-surface-300 dark:border-surface-600 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                  {[-1, 0, 1, 2].map(offset => { const y = new Date().getFullYear() + offset; return <option key={y} value={y}>{y}</option>; })}
+                </select>
               </div>
-            ) : (
-              <DateSelectBR label="Data" value={formDespesa.data} onChange={v => setFormDespesa(f => ({ ...f, data: v }))} />
-            )}
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Select id="desp-cat" label="Categoria" value={formDespesa.categoria} onChange={e => setFormDespesa(f => ({ ...f, categoria: e.target.value as CategoriaFinanceira }))}>
