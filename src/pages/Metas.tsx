@@ -5,6 +5,8 @@ import {
   AlertTriangle, ArrowRight, Calendar, Zap, RotateCcw, Clock,
 } from 'lucide-react';
 import { useApp } from '../hooks/useApp';
+import { useAuth } from '../contexts/AuthContext';
+import { canCreate, canEdit, canDelete } from '../utils/permissions';
 import type { Meta, Categoria, StatusMeta, FrequenciaRevisao, ClassificacaoPrazoMeta } from '../types';
 import { Card, CardBody } from '../components/Card';
 import { Badge } from '../components/Badge';
@@ -115,6 +117,7 @@ function EficienciaFoco({ qtd }: { qtd: number }) {
 // ============================================================
 export function MetasPage() {
   const { data, setData } = useApp();
+  const { perfil } = useAuth();
   const [aba, setAba] = useState<'ativas' | 'futuro'>('ativas');
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
@@ -450,18 +453,22 @@ export function MetasPage() {
               >
                 <RefreshCw size={14} />
               </button>
-              <button
-                onClick={() => abrirEditarAtiva(meta)}
-                className="p-1.5 rounded-lg text-surface-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
-              >
-                <Pencil size={14} />
-              </button>
-              <button
-                onClick={() => excluir(meta.id)}
-                className="p-1.5 rounded-lg text-surface-400 hover:text-danger-600 hover:bg-danger-50 dark:hover:bg-danger-900/20 transition-colors"
-              >
-                <Trash2 size={14} />
-              </button>
+              {canEdit('metas', perfil) && (
+                <button
+                  onClick={() => abrirEditarAtiva(meta)}
+                  className="p-1.5 rounded-lg text-surface-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
+                >
+                  <Pencil size={14} />
+                </button>
+              )}
+              {canDelete('metas', perfil) && (
+                <button
+                  onClick={() => excluir(meta.id)}
+                  className="p-1.5 rounded-lg text-surface-400 hover:text-danger-600 hover:bg-danger-50 dark:hover:bg-danger-900/20 transition-colors"
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
               <button
                 onClick={() => setExpandidaId(expandida ? null : meta.id)}
                 className="p-1.5 rounded-lg text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors"
@@ -561,18 +568,22 @@ export function MetasPage() {
           >
             <RotateCcw size={14} />
           </button>
-          <button
-            onClick={() => abrirEditarFutura(meta)}
-            className="p-1.5 rounded-lg text-surface-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
-          >
-            <Pencil size={14} />
-          </button>
-          <button
-            onClick={() => excluir(meta.id)}
-            className="p-1.5 rounded-lg text-surface-400 hover:text-danger-600 hover:bg-danger-50 dark:hover:bg-danger-900/20 transition-colors"
-          >
-            <Trash2 size={14} />
-          </button>
+          {canEdit('metas', perfil) && (
+            <button
+              onClick={() => abrirEditarFutura(meta)}
+              className="p-1.5 rounded-lg text-surface-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
+            >
+              <Pencil size={14} />
+            </button>
+          )}
+          {canDelete('metas', perfil) && (
+            <button
+              onClick={() => excluir(meta.id)}
+              className="p-1.5 rounded-lg text-surface-400 hover:text-danger-600 hover:bg-danger-50 dark:hover:bg-danger-900/20 transition-colors"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
       </div>
       <div className="mt-3 pt-3 border-t border-surface-100 dark:border-surface-700">
@@ -686,12 +697,14 @@ export function MetasPage() {
             {metasAtivas.length} ativas · {metasFuturo.length} no futuro
           </p>
         </div>
-        <Button
-          icon={<Plus size={16} />}
-          onClick={aba === 'ativas' ? abrirNovaAtiva : abrirNovaFutura}
-        >
-          {aba === 'ativas' ? 'Nova Meta' : 'Nova Ideia'}
-        </Button>
+        {canCreate('metas', perfil) && (
+          <Button
+            icon={<Plus size={16} />}
+            onClick={aba === 'ativas' ? abrirNovaAtiva : abrirNovaFutura}
+          >
+            {aba === 'ativas' ? 'Nova Meta' : 'Nova Ideia'}
+          </Button>
+        )}
       </div>
 
       {/* Eficiência de Foco */}

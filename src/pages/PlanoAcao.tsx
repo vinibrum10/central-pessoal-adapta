@@ -12,6 +12,8 @@ import {
 import { calcularDisponibilidadeDia } from '../utils/calendarAvailability';
 import { formatarMinutos as fmtMin, isoParaDataBR, calcularProximaOcorrencia, labelPeriodicidade } from '../utils';
 import { useApp } from '../hooks/useApp';
+import { useAuth } from '../contexts/AuthContext';
+import { canCreate, canEdit, canDelete } from '../utils/permissions';
 import type { Tarefa, Categoria, FaixaTarefa, StatusTarefa, NivelEnergia, TipoAcao, PeriodicidadeAcao } from '../types';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
@@ -57,7 +59,8 @@ const tarefaVazia = (): FormTarefa => ({
 
 // ---- Card da tarefa ----
 function TarefaCard({
-  tarefa, meta, onEdit, onDelete, onMover, onReabrir, isDragging = false
+  tarefa, meta, onEdit, onDelete, onMover, onReabrir, isDragging = false,
+  podeEditar = true, podeExcluir = true,
 }: {
   tarefa: Tarefa;
   meta?: { nome: string } | undefined;
@@ -66,6 +69,8 @@ function TarefaCard({
   onMover: (novoStatus: StatusTarefa) => void;
   onReabrir?: () => void;
   isDragging?: boolean;
+  podeEditar?: boolean;
+  podeExcluir?: boolean;
 }) {
   const [showMover, setShowMover] = useState(false);
   const atrasada = eAtrasada(tarefa.prazo);
@@ -104,12 +109,16 @@ function TarefaCard({
           </Badge>
         )}
         <div className="ml-auto flex gap-0.5">
-          <button onClick={onEdit} className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-400 hover:text-primary-600 transition-colors">
-            <Pencil size={11} />
-          </button>
-          <button onClick={onDelete} className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-400 hover:text-danger-600 transition-colors">
-            <Trash2 size={11} />
-          </button>
+          {podeEditar && (
+            <button onClick={onEdit} className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-400 hover:text-primary-600 transition-colors">
+              <Pencil size={11} />
+            </button>
+          )}
+          {podeExcluir && (
+            <button onClick={onDelete} className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-400 hover:text-danger-600 transition-colors">
+              <Trash2 size={11} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -198,7 +207,8 @@ function DraggableTarefa({ tarefa, ...props }: { tarefa: Tarefa } & Omit<Paramet
 
 // ---- Coluna Kanban (droppable) ----
 function KanbanColuna({
-  status, label, tarefas, concluidas, metas, count, onEdit, onDelete, onMover, onReabrir
+  status, label, tarefas, concluidas, metas, count, onEdit, onDelete, onMover, onReabrir,
+  podeEditar = true, podeExcluir = true,
 }: {
   status: StatusTarefa;
   label: string;
@@ -210,6 +220,8 @@ function KanbanColuna({
   onDelete: (id: string) => void;
   onMover: (id: string, status: StatusTarefa) => void;
   onReabrir: (id: string) => void;
+  podeEditar?: boolean;
+  podeExcluir?: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   const [mostrarConcluidas, setMostrarConcluidas] = useState(false);
@@ -267,6 +279,8 @@ function KanbanColuna({
                 onDelete={() => onDelete(t.id)}
                 onMover={ns => onMover(t.id, ns)}
                 onReabrir={() => onReabrir(t.id)}
+                podeEditar={podeEditar}
+                podeExcluir={podeExcluir}
               />
             ))}
           </>
@@ -298,6 +312,8 @@ function KanbanColuna({
                 onDelete={() => onDelete(t.id)}
                 onMover={ns => onMover(t.id, ns)}
                 onReabrir={() => onReabrir(t.id)}
+                podeEditar={podeEditar}
+                podeExcluir={podeExcluir}
               />
             ))}
           </>
@@ -319,6 +335,7 @@ function KanbanColuna({
 // ---- Página principal ----
 export function PlanoAcaoPage() {
   const { data, setData } = useApp();
+  const { perfil } = useAuth();
   const location = useLocation();
 
   const [filtro, setFiltro] = useState<FiltroAtivo>('todos');
@@ -555,7 +572,9 @@ export function PlanoAcaoPage() {
           <h2 className="text-xl font-bold text-surface-900 dark:text-white">Plano de Ação</h2>
           <p className="text-sm text-surface-500 dark:text-surface-400">{pendentes} tarefa{pendentes !== 1 ? 's' : ''} em aberto</p>
         </div>
-        <Button icon={<Plus size={16} />} onClick={abrirNova}>Nova Tarefa</Button>
+        {canCreate('plano_acao', perfil) && (
+          <Button icon={<Plus size={16} />} onClick={abrirNova}>Nova Tarefa</Button>
+        )}
       </div>
 
       {/* Painel de disponibilidade */}
@@ -723,6 +742,8 @@ export function PlanoAcaoPage() {
               onDelete={excluir}
               onMover={moverTarefa}
               onReabrir={reabrirTarefa}
+              podeEditar={canEdit('plano_acao', perfil)}
+              podeExcluir={canDelete('plano_acao', perfil)}
             />
           ))}
         </div>

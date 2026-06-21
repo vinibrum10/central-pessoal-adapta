@@ -1,10 +1,9 @@
 import { useState } from 'react';
-import { Mail, Lock, User, Eye, EyeOff, AlertCircle, ShieldCheck, KeyRound } from 'lucide-react';
+import { Mail, Lock, User, Eye, EyeOff, AlertCircle, KeyRound } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/Button';
 
 const googleAtivo = import.meta.env.VITE_GOOGLE_ENABLED === 'true';
-const microsoftAtivo = import.meta.env.VITE_MICROSOFT_ENABLED === 'true';
 
 function AppLogo() {
   return (
@@ -26,21 +25,10 @@ function GoogleIcon() {
   );
 }
 
-function MicrosoftIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-      <rect x="1" y="1" width="10" height="10" fill="#F25022"/>
-      <rect x="13" y="1" width="10" height="10" fill="#7FBA00"/>
-      <rect x="1" y="13" width="10" height="10" fill="#00A4EF"/>
-      <rect x="13" y="13" width="10" height="10" fill="#FFB900"/>
-    </svg>
-  );
-}
-
 type Modo = 'login' | 'cadastro' | 'recuperar';
 
 export function LoginPage() {
-  const { signIn, signUp, signInWithGoogle, signInWithMicrosoft, recuperarSenha } = useAuth();
+  const { signIn, signUp, signInWithGoogle, recuperarSenha } = useAuth();
   const [modo, setModo] = useState<Modo>('login');
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
@@ -48,7 +36,6 @@ export function LoginPage() {
   const [mostrarSenha, setMostrarSenha] = useState(false);
   const [carregando, setCarregando] = useState(false);
   const [carregandoGoogle, setCarregandoGoogle] = useState(false);
-  const [carregandoMicrosoft, setCarregandoMicrosoft] = useState(false);
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState('');
 
@@ -79,7 +66,7 @@ export function LoginPage() {
     } else {
       const { error } = await signUp(email, senha, nome);
       if (error) setErro(error);
-      else setSucesso('Conta criada! Aguarde a aprovação do administrador para acessar o sistema.');
+      else setSucesso('Conta criada! Você já pode fazer login com acesso básico de visualização.');
     }
     setCarregando(false);
   };
@@ -94,18 +81,6 @@ export function LoginPage() {
     const { error } = await signInWithGoogle();
     if (error) setErro(error);
     setCarregandoGoogle(false);
-  };
-
-  const handleMicrosoft = async () => {
-    setErro('');
-    if (!microsoftAtivo) {
-      setErro('Login com Microsoft não está disponível. Use e-mail e senha.');
-      return;
-    }
-    setCarregandoMicrosoft(true);
-    const { error } = await signInWithMicrosoft();
-    if (error) setErro(error);
-    setCarregandoMicrosoft(false);
   };
 
   const titulo = modo === 'login' ? 'Entrar na sua conta' : modo === 'cadastro' ? 'Criar conta' : 'Recuperar senha';
@@ -131,36 +106,20 @@ export function LoginPage() {
           {/* Botões sociais — apenas login e cadastro */}
           {modo !== 'recuperar' && (
             <>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={handleGoogle}
-                  disabled={carregandoGoogle}
-                  title={!googleAtivo ? 'Login com Google não configurado' : ''}
-                  className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors disabled:opacity-50 ${
-                    googleAtivo
-                      ? 'border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-900 text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700'
-                      : 'border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 text-surface-400 dark:text-surface-600 cursor-not-allowed'
-                  }`}
-                >
-                  <GoogleIcon />
-                  <span className="text-xs">{carregandoGoogle ? '...' : 'Google'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleMicrosoft}
-                  disabled={carregandoMicrosoft}
-                  title={!microsoftAtivo ? 'Login com Microsoft não configurado' : ''}
-                  className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors disabled:opacity-50 ${
-                    microsoftAtivo
-                      ? 'border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-900 text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700'
-                      : 'border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 text-surface-400 dark:text-surface-600 cursor-not-allowed'
-                  }`}
-                >
-                  <MicrosoftIcon />
-                  <span className="text-xs">{carregandoMicrosoft ? '...' : 'Microsoft'}</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={handleGoogle}
+                disabled={carregandoGoogle}
+                title={!googleAtivo ? 'Login com Google não configurado' : ''}
+                className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors disabled:opacity-50 ${
+                  googleAtivo
+                    ? 'border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-900 text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700'
+                    : 'border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 text-surface-400 dark:text-surface-600 cursor-not-allowed'
+                }`}
+              >
+                <GoogleIcon />
+                <span className="text-xs">{carregandoGoogle ? '...' : 'Entrar com Google'}</span>
+              </button>
               <div className="flex items-center gap-3">
                 <div className="flex-1 h-px bg-surface-200 dark:bg-surface-700" />
                 <span className="text-xs text-surface-400 dark:text-surface-500">ou continue com e-mail</span>
@@ -252,10 +211,9 @@ export function LoginPage() {
           </form>
 
           {/* Aviso de acesso */}
-          {modo !== 'recuperar' && (
+          {modo === 'cadastro' && (
             <div className="flex items-center gap-2 text-xs text-surface-400 dark:text-surface-500 bg-surface-50 dark:bg-surface-700/30 rounded-lg px-3 py-2">
-              <ShieldCheck size={13} className="flex-shrink-0 text-primary-500" />
-              <span>Acesso protegido. Novos usuários precisam de aprovação.</span>
+              <span>Novos usuários entram com acesso básico de visualização.</span>
             </div>
           )}
 

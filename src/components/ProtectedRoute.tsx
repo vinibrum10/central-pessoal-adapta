@@ -34,33 +34,6 @@ function NaoConfiguradoScreen() {
   );
 }
 
-// ── Tela: aguardando aprovação ──────────────────────────────────
-function PendingScreen() {
-  const { signOut } = useAuth();
-  return (
-    <div className="min-h-screen bg-surface-50 dark:bg-surface-900 flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white dark:bg-surface-800 rounded-2xl shadow-xl p-8 text-center space-y-4">
-        <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto">
-          <span className="text-3xl">⏳</span>
-        </div>
-        <h2 className="text-xl font-bold text-surface-900 dark:text-white">Acesso aguardando aprovação</h2>
-        <p className="text-sm text-surface-500 dark:text-surface-400">
-          Sua conta foi criada. Um administrador precisa aprovar seu acesso antes de você entrar no sistema.
-        </p>
-        <p className="text-xs text-surface-400 dark:text-surface-500">
-          Entre em contato com o administrador para agilizar a aprovação.
-        </p>
-        <button
-          onClick={() => signOut()}
-          className="text-sm text-primary-600 dark:text-primary-400 hover:underline"
-        >
-          Usar outra conta
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ── Tela: bloqueado ─────────────────────────────────────────────
 function BlockedScreen() {
   const { signOut } = useAuth();
@@ -72,7 +45,7 @@ function BlockedScreen() {
         </div>
         <h2 className="text-xl font-bold text-surface-900 dark:text-white">Acesso bloqueado</h2>
         <p className="text-sm text-surface-500 dark:text-surface-400">
-          Sua conta foi bloqueada pelo administrador.
+          Acesso bloqueado. Entre em contato com o administrador.
         </p>
         <button
           onClick={() => signOut()}
@@ -110,7 +83,6 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
   if (loading) return <LoadingSpinner />;
   if (!user) return <LoginPage />;
   if (statusConta === 'bloqueado') return <BlockedScreen />;
-  if (statusConta === 'pendente') return <PendingScreen />;
 
   return <>{children}</>;
 }

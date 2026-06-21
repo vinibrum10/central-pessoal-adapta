@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured, modoLocalAtivo } from '../lib/supabase';
-import type { RoleUsuario, StatusUsuario, PerfilUsuario } from '../types';
+import type { RoleUsuario, StatusUsuario, TipoAcesso, PerfilUsuario } from '../types';
 import type { UserPermission } from '../utils/permissions';
 
 interface AuthContextType {
@@ -12,6 +12,7 @@ interface AuthContextType {
   supabaseAtivo: boolean;
   role: RoleUsuario;
   statusConta: StatusUsuario;
+  tipoAcesso: TipoAcesso;
   permissoes: UserPermission[];
   ultimoAcesso: string | null;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
@@ -19,7 +20,6 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   recarregarPerfil: () => Promise<void>;
   signInWithGoogle: () => Promise<{ error: string | null }>;
-  signInWithMicrosoft: () => Promise<{ error: string | null }>;
   recuperarSenha: (email: string) => Promise<{ error: string | null }>;
 }
 
@@ -28,7 +28,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 async function carregarPerfil(userId: string): Promise<PerfilUsuario | null> {
   const { data } = await supabase
     .from('profiles')
-    .select('id, email, nome, role, status, created_at, updated_at')
+    .select('id, email, nome, role, status, tipo_acesso, ultimo_acesso, ultimo_login_provider, created_at, updated_at')
     .eq('id', userId)
     .single();
   if (!data) return null;
@@ -36,8 +36,11 @@ async function carregarPerfil(userId: string): Promise<PerfilUsuario | null> {
     id: data.id,
     email: data.email ?? '',
     nome: data.nome ?? '',
-    role: (data.role ?? 'visualizador') as RoleUsuario,
-    status: (data.status ?? 'pendente') as StatusUsuario,
+    role: (data.role ?? 'usuario') as RoleUsuario,
+    status: (data.status ?? 'ativo') as StatusUsuario,
+    tipoAcesso: (data.tipo_acesso ?? 'visualizacao') as TipoAcesso,
+    ultimoAcesso: data.ultimo_acesso ?? null,
+    ultimoLoginProvider: data.ultimo_login_provider ?? null,
     createdAt: data.created_at,
     updatedAt: data.updated_at,
   };
@@ -90,13 +93,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (u) {
         let p = await carregarPerfil(u.id);
         if (!p && u.email) {
-          // Profile não existe — criar como pendente (fallback para OAuth)
+          // Profile não existe — criar como usuario ativo (fallback para OAuth)
           await supabase.from('profiles').upsert({
             id: u.id,
             email: u.email,
             nome: u.user_metadata?.name ?? u.user_metadata?.nome ?? u.email.split('@')[0],
-            role: 'visualizador',
-            status: 'pendente',
+            role: 'usuario',
+            status: 'ativo',
+            tipo_acesso: 'visualizacao',
             updated_at: new Date().toISOString(),
           });
           p = await carregarPerfil(u.id);
@@ -114,13 +118,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (u) {
         let p = await carregarPerfil(u.id);
         if (!p && u.email) {
-          // Profile não existe — criar como pendente (fallback para OAuth)
+          // Profile não existe — criar como usuario ativo (fallback para OAuth)
           await supabase.from('profiles').upsert({
             id: u.id,
             email: u.email,
             nome: u.user_metadata?.name ?? u.user_metadata?.nome ?? u.email.split('@')[0],
-            role: 'visualizador',
-            status: 'pendente',
+            role: 'usuario',
+            status: 'ativo',
+            tipo_acesso: 'visualizacao',
             updated_at: new Date().toISOString(),
           });
           p = await carregarPerfil(u.id);
@@ -165,8 +170,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         id: data.user.id,
         nome,
         email,
-        role: isFirstUser ? 'admin' : 'visualizador',
-        status: isFirstUser ? 'aprovado' : 'pendente',
+        role: isFirstUser ? 'admin' : 'usuario',
+        status: 'ativo',
+        tipo_acesso: isFirstUser ? 'total' : 'visualizacao',
         updated_at: new Date().toISOString(),
       });
     }
@@ -188,15 +194,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error?.message ?? null };
   };
 
-  const signInWithMicrosoft = async (): Promise<{ error: string | null }> => {
-    if (!isSupabaseConfigured) return { error: 'Supabase não configurado.' };
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'azure',
-      options: { redirectTo: window.location.origin },
-    });
-    return { error: error?.message ?? null };
-  };
-
   const recuperarSenha = async (email: string): Promise<{ error: string | null }> => {
     if (!isSupabaseConfigured) return { error: 'Supabase não configurado.' };
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
@@ -205,9 +202,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error?.message ?? null };
   };
 
-  // Role e status derivados do perfil (fallback admin em modo local dev)
-  const role: RoleUsuario = (isSupabaseConfigured && user) ? (perfil?.role ?? 'visualizador') : (modoLocalAtivo ? 'admin' : 'visualizador');
-  const statusConta: StatusUsuario = (isSupabaseConfigured && user) ? (perfil?.status ?? 'pendente') : (modoLocalAtivo ? 'aprovado' : 'pendente');
+  // Role, status e tipoAcesso derivados do perfil (fallback admin em modo local dev)
+  const role: RoleUsuario = (isSupabaseConfigured && user) ? (perfil?.role ?? 'usuario') : (modoLocalAtivo ? 'admin' : 'usuario');
+  const statusConta: StatusUsuario = (isSupabaseConfigured && user) ? (perfil?.status ?? 'ativo') : (modoLocalAtivo ? 'ativo' : 'ativo');
+  const tipoAcesso: TipoAcesso = (isSupabaseConfigured && user) ? (perfil?.tipoAcesso ?? 'visualizacao') : (modoLocalAtivo ? 'total' : 'visualizacao');
 
   return (
     <AuthContext.Provider value={{
@@ -215,11 +213,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       supabaseAtivo: isSupabaseConfigured && !modoLocalAtivo,
       role,
       statusConta,
+      tipoAcesso,
       permissoes,
       ultimoAcesso,
       signIn, signUp, signOut,
       recarregarPerfil,
-      signInWithGoogle, signInWithMicrosoft, recuperarSenha,
+      signInWithGoogle, recuperarSenha,
     }}>
       {children}
     </AuthContext.Provider>

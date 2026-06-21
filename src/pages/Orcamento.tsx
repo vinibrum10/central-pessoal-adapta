@@ -4,6 +4,8 @@ import {
   CreditCard, AlertTriangle, PiggyBank, Package
 } from 'lucide-react';
 import { useApp } from '../hooks/useApp';
+import { useAuth } from '../contexts/AuthContext';
+import { canCreateExpense, canEditExpense, canDeleteExpense } from '../utils/permissions';
 import type {
   Receita, Despesa, Cartao, Divida, Reserva, Bem,
   CategoriaFinanceira, FormaPagamento, StatusCartao,
@@ -15,6 +17,14 @@ import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { Input, Select, Textarea, Checkbox } from '../components/FormFields';
 import { formatarDinheiro, formatarData, isoParaDataBR, gerarId, hojeISO } from '../utils';
+
+type TipoCobrancaCartao = 'avista' | 'parcelado';
+
+interface FormDespesaExtra {
+  tipoCobrancaCartao: TipoCobrancaCartao;
+  quantidadeParcelas: number;
+  mesInicioParcelas: string;
+}
 
 function calcularParcelasPagasAuto(divida: { dataInicio?: string; diaVencimento?: number; totalParcelas: number; parcelasPagas: number }): number {
   if (!divida.dataInicio) return divida.parcelasPagas;
@@ -44,6 +54,7 @@ const formasPagamento: FormaPagamento[] = ['Dinheiro', 'Cartão de crédito', 'D
 
 export function OrcamentoPage() {
   const { data, setData } = useApp();
+  const { perfil } = useAuth();
   const [aba, setAba] = useState<Aba>('resumo');
   const [modal, setModal] = useState<string | null>(null);
   const [editandoId, setEditandoId] = useState<string | null>(null);
@@ -51,6 +62,7 @@ export function OrcamentoPage() {
   // Forms
   const [formReceita, setFormReceita] = useState<Omit<Receita, 'id' | 'dataCriacao'>>({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Salário', recorrente: false });
   const [formDespesa, setFormDespesa] = useState<Omit<Despesa, 'id' | 'dataCriacao'>>({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Alimentação', formaPagamento: 'PIX', recorrente: false, essencial: true });
+  const [formDespesaExtra, setFormDespesaExtra] = useState<FormDespesaExtra>({ tipoCobrancaCartao: 'avista', quantidadeParcelas: 2, mesInicioParcelas: hojeISO().slice(0, 7) });
   const [formCartao, setFormCartao] = useState<Omit<Cartao, 'id' | 'dataCriacao'>>({ nome: '', limite: 0, faturaAtual: 0, vencimento: 10, status: 'ativo' });
   const [formDivida, setFormDivida] = useState<Omit<Divida, 'id' | 'dataCriacao'>>({ nome: '', valorTotal: 0, valorParcela: 0, totalParcelas: 1, parcelasPagas: 0, taxaJuros: 0, prioridadeQuitacao: 'média', dataInicio: hojeISO(), diaVencimento: 10, status: 'ativa' });
   const [formReserva, setFormReserva] = useState<Omit<Reserva, 'id' | 'dataCriacao'>>({ nome: '', metaReserva: 0, valorAtual: 0, prazoDesejado: '' });
@@ -84,16 +96,45 @@ export function OrcamentoPage() {
   }, [formReceita, editandoId, setData]);
 
   const salvarDespesa = useCallback(() => {
-    setData(d => ({
-      ...d,
-      despesas: editandoId
-        ? d.despesas.map(dep => dep.id === editandoId ? { ...dep, ...formDespesa } : dep)
-        : [...d.despesas, { id: gerarId(), ...formDespesa, dataCriacao: hojeISO() }],
-    }));
+    const isCartao = formDespesa.formaPagamento === 'Cartão de crédito';
+    const isParcelado = isCartao && formDespesaExtra.tipoCobrancaCartao === 'parcelado' && !editandoId;
+
+    if (isParcelado) {
+      const qtd = formDespesaExtra.quantidadeParcelas;
+      const valorParcela = formDespesa.valor / qtd;
+      const grupoId = crypto.randomUUID();
+      const [ano, mes] = formDespesaExtra.mesInicioParcelas.split('-').map(Number);
+      const novasDespesas: Despesa[] = Array.from({ length: qtd }, (_, i) => {
+        const d = new Date(ano, mes - 1 + i, 1);
+        return {
+          id: gerarId(),
+          descricao: `${formDespesa.descricao} — Parcela ${i + 1}/${qtd}`,
+          valor: valorParcela,
+          data: d.toISOString().slice(0, 10),
+          categoria: formDespesa.categoria,
+          formaPagamento: formDespesa.formaPagamento,
+          recorrente: false,
+          essencial: formDespesa.essencial,
+          dataCriacao: hojeISO(),
+          grupoParcelamentoId: grupoId,
+          parcelaAtual: i + 1,
+          quantidadeParcelas: qtd,
+        } as Despesa & { grupoParcelamentoId: string; parcelaAtual: number; quantidadeParcelas: number };
+      });
+      setData(d => ({ ...d, despesas: [...d.despesas, ...novasDespesas] }));
+    } else {
+      setData(d => ({
+        ...d,
+        despesas: editandoId
+          ? d.despesas.map(dep => dep.id === editandoId ? { ...dep, ...formDespesa } : dep)
+          : [...d.despesas, { id: gerarId(), ...formDespesa, dataCriacao: hojeISO() }],
+      }));
+    }
     setModal(null);
     setEditandoId(null);
     setFormDespesa({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Alimentação', formaPagamento: 'PIX', recorrente: false, essencial: true });
-  }, [formDespesa, editandoId, setData]);
+    setFormDespesaExtra({ tipoCobrancaCartao: 'avista', quantidadeParcelas: 2, mesInicioParcelas: hojeISO().slice(0, 7) });
+  }, [formDespesa, formDespesaExtra, editandoId, setData]);
 
   const salvarCartao = useCallback(() => {
     setData(d => ({
@@ -260,9 +301,11 @@ export function OrcamentoPage() {
       {aba === 'despesas' && (
         <div className="space-y-4 animate-fade-in">
           <div className="flex justify-end">
-            <Button icon={<Plus size={16} />} onClick={() => { setFormDespesa({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Alimentação', formaPagamento: 'PIX', recorrente: false, essencial: true }); abrirModal('despesa'); }}>
-              Nova Despesa
-            </Button>
+            {canCreateExpense(perfil) && (
+              <Button icon={<Plus size={16} />} onClick={() => { setFormDespesa({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Alimentação', formaPagamento: 'PIX', recorrente: false, essencial: true }); setFormDespesaExtra({ tipoCobrancaCartao: 'avista', quantidadeParcelas: 2, mesInicioParcelas: hojeISO().slice(0, 7) }); abrirModal('despesa'); }}>
+                Nova Despesa
+              </Button>
+            )}
           </div>
           <Card>
             <CardBody className="!px-4 !pb-4">
@@ -287,8 +330,12 @@ export function OrcamentoPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold text-danger-600 dark:text-danger-400">{formatarDinheiro(d.valor)}</span>
-                        <button onClick={() => { setFormDespesa({ descricao: d.descricao, valor: d.valor, data: d.data, categoria: d.categoria, formaPagamento: d.formaPagamento, recorrente: d.recorrente, essencial: d.essencial }); abrirModal('despesa', d); }} className="p-1.5 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
-                        <button onClick={() => setData(prev => ({ ...prev, despesas: prev.despesas.filter(x => x.id !== d.id) }))} className="p-1.5 rounded text-surface-400 hover:text-danger-600 transition-colors"><Trash2 size={13} /></button>
+                        {canEditExpense(perfil) && (
+                          <button onClick={() => { setFormDespesa({ descricao: d.descricao, valor: d.valor, data: d.data, categoria: d.categoria, formaPagamento: d.formaPagamento, recorrente: d.recorrente, essencial: d.essencial }); abrirModal('despesa', d); }} className="p-1.5 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
+                        )}
+                        {canDeleteExpense(perfil) && (
+                          <button onClick={() => setData(prev => ({ ...prev, despesas: prev.despesas.filter(x => x.id !== d.id) }))} className="p-1.5 rounded text-surface-400 hover:text-danger-600 transition-colors"><Trash2 size={13} /></button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -510,10 +557,61 @@ export function OrcamentoPage() {
               {formasPagamento.map(f => <option key={f} value={f}>{f}</option>)}
             </Select>
           </div>
+
+          {/* Parcelamento — apenas cartão de crédito */}
+          {formDespesa.formaPagamento === 'Cartão de crédito' && !editandoId && (
+            <div className="bg-surface-50 dark:bg-surface-700/30 rounded-xl p-3 space-y-3">
+              <Select
+                id="desp-tipo-cobranca"
+                label="Tipo de cobrança"
+                value={formDespesaExtra.tipoCobrancaCartao}
+                onChange={e => setFormDespesaExtra(f => ({ ...f, tipoCobrancaCartao: e.target.value as TipoCobrancaCartao }))}
+              >
+                <option value="avista">À vista</option>
+                <option value="parcelado">Parcelado</option>
+              </Select>
+
+              {formDespesaExtra.tipoCobrancaCartao === 'parcelado' && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input
+                      id="desp-parcelas"
+                      label="Nº de parcelas"
+                      type="number"
+                      min="2"
+                      max="72"
+                      value={formDespesaExtra.quantidadeParcelas}
+                      onChange={e => setFormDespesaExtra(f => ({ ...f, quantidadeParcelas: Math.max(2, Math.min(72, Number(e.target.value))) }))}
+                    />
+                    <Input
+                      id="desp-mes-inicio"
+                      label="Mês de início"
+                      type="month"
+                      value={formDespesaExtra.mesInicioParcelas}
+                      onChange={e => setFormDespesaExtra(f => ({ ...f, mesInicioParcelas: e.target.value }))}
+                    />
+                  </div>
+                  {formDespesa.valor > 0 && formDespesaExtra.quantidadeParcelas >= 2 && (
+                    <p className="text-xs text-surface-500 dark:text-surface-400">
+                      Valor por parcela: <strong>{formatarDinheiro(formDespesa.valor / formDespesaExtra.quantidadeParcelas)}</strong>
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex gap-4">
             <Checkbox id="desp-rec" label="Recorrente" checked={formDespesa.recorrente} onChange={e => setFormDespesa(f => ({ ...f, recorrente: e.target.checked }))} />
             <Checkbox id="desp-ess" label="Essencial" checked={formDespesa.essencial} onChange={e => setFormDespesa(f => ({ ...f, essencial: e.target.checked }))} />
           </div>
+
+          {formDespesa.recorrente && (
+            <div className="text-xs text-surface-400 dark:text-surface-500 bg-blue-50 dark:bg-blue-900/10 rounded-lg px-3 py-2">
+              <strong>Recorrente:</strong> repete-se automaticamente todo mês (ex: aluguel, internet). Diferente de parcelado, não tem data de fim obrigatória.
+            </div>
+          )}
+
           <div className="flex gap-3 pt-2">
             <Button variant="secondary" className="flex-1" onClick={() => setModal(null)}>Cancelar</Button>
             <Button className="flex-1" onClick={salvarDespesa}>Salvar</Button>

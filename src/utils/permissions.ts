@@ -1,4 +1,6 @@
-// Módulos disponíveis
+import type { PerfilUsuario } from '../types';
+
+// Re-export types used by other modules (Usuarios.tsx imports these)
 export type Modulo =
   | 'dashboard'
   | 'metas'
@@ -9,7 +11,6 @@ export type Modulo =
   | 'configuracoes'
   | 'usuarios';
 
-// Ações disponíveis
 export type Acao =
   | 'visualizar'
   | 'criar'
@@ -27,96 +28,50 @@ export interface UserPermission {
   permitido: boolean;
 }
 
-export type RoleUsuario = 'admin' | 'editor' | 'visualizador';
+// ─── Core permission functions ────────────────────────────────────────────────
 
-// Permissões padrão por role (quando não há permissão específica cadastrada)
-function permissaoPadraoDoRole(role: RoleUsuario, modulo: Modulo, acao: Acao): boolean {
-  if (role === 'admin') return true;
-  if (role === 'editor') {
-    if (modulo === 'usuarios') return acao === 'visualizar';
-    if (acao === 'gerenciar_permissoes' || acao === 'aprovar') return false;
-    return true;
-  }
-  // visualizador
-  if (modulo === 'usuarios') return false;
-  return acao === 'visualizar';
-}
-
-// Verifica permissão: permissões específicas sobrescrevem o role
-export function hasPermission(
-  role: RoleUsuario,
-  permissoes: UserPermission[],
-  modulo: Modulo,
-  acao: Acao
-): boolean {
-  if (role === 'admin') return true;
-  const especifica = permissoes.find(p => p.modulo === modulo && p.acao === acao);
-  if (especifica !== undefined) return especifica.permitido;
-  return permissaoPadraoDoRole(role, modulo, acao);
-}
-
-// Atalhos
-export function canView(role: RoleUsuario, permissoes: UserPermission[], modulo: Modulo) {
-  return hasPermission(role, permissoes, modulo, 'visualizar');
-}
-export function canCreate(role: RoleUsuario, permissoes: UserPermission[], modulo: Modulo) {
-  return hasPermission(role, permissoes, modulo, 'criar');
-}
-export function canEdit(role: RoleUsuario, permissoes: UserPermission[], modulo: Modulo) {
-  return hasPermission(role, permissoes, modulo, 'editar');
-}
-export function canDelete(role: RoleUsuario, permissoes: UserPermission[], modulo: Modulo) {
-  return hasPermission(role, permissoes, modulo, 'excluir');
-}
-export function canManageUsers(role: RoleUsuario, permissoes: UserPermission[]) {
-  return hasPermission(role, permissoes, 'usuarios', 'gerenciar_permissoes');
-}
-export function canCreateExpense(role: RoleUsuario, permissoes: UserPermission[]) {
-  return hasPermission(role, permissoes, 'orcamento', 'criar');
-}
-export function canEditExpense(
-  role: RoleUsuario,
-  permissoes: UserPermission[],
-  userId: string,
-  expenseCreatedBy?: string
-) {
-  if (role === 'admin') return true;
-  if (!hasPermission(role, permissoes, 'orcamento', 'editar')) return false;
-  // visualizador com permissão específica só edita o que criou
-  if (role === 'visualizador' && expenseCreatedBy && expenseCreatedBy !== userId) return false;
+export function canView(_modulo: string, perfil: PerfilUsuario | null): boolean {
+  if (!perfil || perfil.status === 'bloqueado') return false;
   return true;
 }
-export function canDeleteExpense(role: RoleUsuario, permissoes: UserPermission[]) {
-  return hasPermission(role, permissoes, 'orcamento', 'excluir');
+
+export function canCreate(modulo: string, perfil: PerfilUsuario | null): boolean {
+  if (!perfil || perfil.status === 'bloqueado') return false;
+  if (perfil.role === 'admin' || perfil.tipoAcesso === 'total') return true;
+  if (perfil.tipoAcesso === 'financas' && modulo === 'despesas') return true;
+  return false;
 }
 
-// Modelos de permissão prontos
-export const MODELO_SOMENTE_VISUALIZACAO: UserPermission[] = [
-  { modulo: 'dashboard', acao: 'visualizar', permitido: true },
-  { modulo: 'orcamento', acao: 'visualizar', permitido: true },
-  { modulo: 'metas', acao: 'visualizar', permitido: true },
-  { modulo: 'plano_acao', acao: 'visualizar', permitido: true },
-  { modulo: 'agenda_tempo', acao: 'visualizar', permitido: true },
-  { modulo: 'leitura_diaria', acao: 'visualizar', permitido: true },
-];
+export function canEdit(modulo: string, perfil: PerfilUsuario | null, itemCreatedBy?: string): boolean {
+  if (!perfil || perfil.status === 'bloqueado') return false;
+  if (perfil.role === 'admin' || perfil.tipoAcesso === 'total') return true;
+  if (perfil.tipoAcesso === 'financas' && modulo === 'despesas') {
+    return !itemCreatedBy || itemCreatedBy === perfil.id;
+  }
+  return false;
+}
 
-export const MODELO_LANCAR_DESPESAS: UserPermission[] = [
-  { modulo: 'dashboard', acao: 'visualizar', permitido: true },
-  { modulo: 'orcamento', acao: 'visualizar', permitido: true },
-  { modulo: 'orcamento', acao: 'criar', permitido: true },
-  { modulo: 'orcamento', acao: 'editar', permitido: true },
-  { modulo: 'orcamento', acao: 'excluir', permitido: false },
-  { modulo: 'metas', acao: 'visualizar', permitido: true },
-  { modulo: 'plano_acao', acao: 'visualizar', permitido: true },
-];
+export function canDelete(modulo: string, perfil: PerfilUsuario | null, itemCreatedBy?: string): boolean {
+  return canEdit(modulo, perfil, itemCreatedBy);
+}
 
-export const MODELO_EDITOR_COMPLETO: UserPermission[] = (
-  ['dashboard', 'metas', 'plano_acao', 'agenda_tempo', 'orcamento', 'leitura_diaria', 'configuracoes'] as Modulo[]
-).flatMap(m => (['visualizar', 'criar', 'editar', 'excluir', 'concluir', 'exportar'] as Acao[]).map(a => ({
-  modulo: m,
-  acao: a,
-  permitido: true,
-})));
+export function canManageUsers(perfil: PerfilUsuario | null): boolean {
+  return perfil?.role === 'admin';
+}
+
+export function canCreateExpense(perfil: PerfilUsuario | null): boolean {
+  return canCreate('despesas', perfil);
+}
+
+export function canEditExpense(perfil: PerfilUsuario | null, expenseCreatedBy?: string): boolean {
+  return canEdit('despesas', perfil, expenseCreatedBy);
+}
+
+export function canDeleteExpense(perfil: PerfilUsuario | null, expenseCreatedBy?: string): boolean {
+  return canDelete('despesas', perfil, expenseCreatedBy);
+}
+
+// ─── Legacy helpers kept for compatibility (Usuarios.tsx uses these) ──────────
 
 export const MODULOS_ROTULOS: Record<Modulo, string> = {
   dashboard: 'Dashboard',
@@ -151,3 +106,30 @@ export const ACOES_ROTULOS: Record<Acao, string> = {
   aprovar: 'Aprovar',
   gerenciar_permissoes: 'Gerenciar permissões',
 };
+
+export const MODELO_SOMENTE_VISUALIZACAO: UserPermission[] = [
+  { modulo: 'dashboard', acao: 'visualizar', permitido: true },
+  { modulo: 'orcamento', acao: 'visualizar', permitido: true },
+  { modulo: 'metas', acao: 'visualizar', permitido: true },
+  { modulo: 'plano_acao', acao: 'visualizar', permitido: true },
+  { modulo: 'agenda_tempo', acao: 'visualizar', permitido: true },
+  { modulo: 'leitura_diaria', acao: 'visualizar', permitido: true },
+];
+
+export const MODELO_LANCAR_DESPESAS: UserPermission[] = [
+  { modulo: 'dashboard', acao: 'visualizar', permitido: true },
+  { modulo: 'orcamento', acao: 'visualizar', permitido: true },
+  { modulo: 'orcamento', acao: 'criar', permitido: true },
+  { modulo: 'orcamento', acao: 'editar', permitido: true },
+  { modulo: 'orcamento', acao: 'excluir', permitido: false },
+  { modulo: 'metas', acao: 'visualizar', permitido: true },
+  { modulo: 'plano_acao', acao: 'visualizar', permitido: true },
+];
+
+export const MODELO_EDITOR_COMPLETO: UserPermission[] = (
+  ['dashboard', 'metas', 'plano_acao', 'agenda_tempo', 'orcamento', 'leitura_diaria', 'configuracoes'] as Modulo[]
+).flatMap(m => (['visualizar', 'criar', 'editar', 'excluir', 'concluir', 'exportar'] as Acao[]).map(a => ({
+  modulo: m,
+  acao: a,
+  permitido: true,
+})));

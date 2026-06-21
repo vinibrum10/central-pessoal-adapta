@@ -164,8 +164,9 @@ export interface Divida {
 }
 
 // ---- PERMISSÕES ----
-export type RoleUsuario = 'admin' | 'editor' | 'visualizador';
-export type StatusUsuario = 'pendente' | 'aprovado' | 'bloqueado';
+export type RoleUsuario = 'admin' | 'usuario';
+export type StatusUsuario = 'ativo' | 'bloqueado';
+export type TipoAcesso = 'visualizacao' | 'financas' | 'total';
 
 export interface PerfilUsuario {
   id: string;
@@ -173,6 +174,9 @@ export interface PerfilUsuario {
   nome: string;
   role: RoleUsuario;
   status: StatusUsuario;
+  tipoAcesso: TipoAcesso;
+  ultimoAcesso: string | null;
+  ultimoLoginProvider: string | null;
   createdAt: string;
   updatedAt: string;
 }

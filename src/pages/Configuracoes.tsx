@@ -346,7 +346,7 @@ export function ConfiguracoesPage() {
                     {role}
                   </span>
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${
-                    statusConta === 'aprovado'
+                    statusConta === 'ativo'
                       ? 'bg-success-100 dark:bg-success-900/30 text-success-700 dark:text-success-400'
                       : 'bg-warning-100 dark:bg-warning-900/30 text-warning-700 dark:text-warning-400'
                   }`}>
