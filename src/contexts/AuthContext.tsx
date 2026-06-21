@@ -15,6 +15,8 @@ interface AuthContextType {
   signUp: (email: string, password: string, nome: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   recarregarPerfil: () => Promise<void>;
+  signInWithGoogle: () => Promise<{ error: string | null }>;
+  signInWithMicrosoft: () => Promise<{ error: string | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -113,6 +115,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setPerfil(null);
   };
 
+  const signInWithGoogle = async (): Promise<{ error: string | null }> => {
+    if (!isSupabaseConfigured) return { error: 'Supabase não configurado.' };
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin },
+    });
+    return { error: error?.message ?? null };
+  };
+
+  const signInWithMicrosoft = async (): Promise<{ error: string | null }> => {
+    if (!isSupabaseConfigured) return { error: 'Supabase não configurado.' };
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'azure',
+      options: { redirectTo: window.location.origin },
+    });
+    return { error: error?.message ?? null };
+  };
+
   // Role e status derivados do perfil (fallback admin em modo local dev)
   const role: RoleUsuario = (isSupabaseConfigured && user) ? (perfil?.role ?? 'visualizador') : (modoLocalAtivo ? 'admin' : 'visualizador');
   const statusConta: StatusUsuario = (isSupabaseConfigured && user) ? (perfil?.status ?? 'pendente') : (modoLocalAtivo ? 'aprovado' : 'pendente');
@@ -125,6 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       statusConta,
       signIn, signUp, signOut,
       recarregarPerfil,
+      signInWithGoogle, signInWithMicrosoft,
     }}>
       {children}
     </AuthContext.Provider>

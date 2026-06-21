@@ -1,3 +1,4 @@
+import React from 'react';
 import type { ReactNode, ButtonHTMLAttributes } from 'react';
 import { Loader2 } from 'lucide-react';
 
@@ -10,7 +11,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantStyles = {
-  primary: 'bg-primary-600 hover:bg-primary-700 text-white shadow-sm shadow-primary-600/20',
+  primary: 'text-white shadow-sm',
   secondary: 'bg-surface-100 hover:bg-surface-200 text-surface-700 dark:bg-surface-700 dark:hover:bg-surface-600 dark:text-surface-200',
   danger: 'bg-danger-600 hover:bg-danger-700 text-white shadow-sm shadow-danger-600/20',
   ghost: 'bg-transparent hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300',
@@ -31,12 +32,34 @@ export function Button({
   children,
   className = '',
   disabled,
+  style,
+  onMouseEnter,
+  onMouseLeave,
   ...props
 }: ButtonProps) {
+  const isPrimary = variant === 'primary';
+
+  const handleMouseEnter = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (isPrimary) {
+      (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--color-primary-hover)';
+    }
+    onMouseEnter?.(e);
+  };
+
+  const handleMouseLeave = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (isPrimary) {
+      (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--color-primary)';
+    }
+    onMouseLeave?.(e);
+  };
+
   return (
     <button
       {...props}
       disabled={disabled || loading}
+      style={isPrimary ? { backgroundColor: 'var(--color-primary)', ...style } : style}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       className={`
         inline-flex items-center justify-center font-medium rounded-lg
         transition-all duration-150 focus-visible:outline-none focus-visible:ring-2

@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import {
   Settings, User, Moon, Sun, Download, Upload, RotateCcw, Trash2,
   CheckCircle, Database, Calendar, FolderOpen, Smartphone, LogOut, RefreshCw,
-  FileSpreadsheet,
+  FileSpreadsheet, Palette, ShieldCheck,
 } from 'lucide-react';
 import { useApp } from '../hooks/useApp';
 import { useAuth } from '../contexts/AuthContext';
@@ -14,10 +14,16 @@ import { isGoogleConfigured } from '../services/googleCalendar';
 import { isDriveConfigurado } from '../services/googleDrive';
 import { possuiDadosLocais, migracaoConcluida, migrarDadosParaSupabase } from '../services/dataMigration';
 import { exportarDadosExcel } from '../utils/exportExcel';
+import {
+  PALETA_PREDEFINIDA, aplicarCorTema, salvarCorTema, carregarCorTema,
+} from '../utils/themeColors';
+
+const googleLoginConfigurado = !!(import.meta.env.VITE_GOOGLE_CLIENT_ID as string);
+const microsoftLoginConfigurado = !!(import.meta.env.VITE_MICROSOFT_CLIENT_ID as string);
 
 export function ConfiguracoesPage() {
   const { data, setData, exportData, importData, resetToDemo, clearAll, tema, toggleTema } = useApp();
-  const { user, signOut, supabaseAtivo } = useAuth();
+  const { user, signOut, supabaseAtivo, role, statusConta } = useAuth();
   const [nome, setNome] = useState(data.configuracoes.nomeUsuario);
   const [visualizacao, setVisualizacao] = useState(data.configuracoes.visualizacaoPadrao);
   const [salvo, setSalvo] = useState(false);
@@ -27,6 +33,24 @@ export function ConfiguracoesPage() {
   const [migrando, setMigrando] = useState(false);
   const [logMigracao, setLogMigracao] = useState<string[]>([]);
   const importRef = useRef<HTMLInputElement>(null);
+
+  // Tema de cores
+  const [corSelecionada, setCorSelecionada] = useState(carregarCorTema());
+  const [corSalva, setCorSalva] = useState(false);
+
+  const handleSalvarCor = () => {
+    salvarCorTema(corSelecionada);
+    aplicarCorTema(corSelecionada);
+    setCorSalva(true);
+    setTimeout(() => setCorSalva(false), 2000);
+  };
+
+  const handleRestaurarCor = () => {
+    const padrao = '#4f46e5';
+    setCorSelecionada(padrao);
+    salvarCorTema(padrao);
+    aplicarCorTema(padrao);
+  };
 
   const salvarConfiguracoes = () => {
     setData(d => ({
@@ -236,6 +260,122 @@ export function ConfiguracoesPage() {
                 <span>O app abrirá em modo tela cheia, sem barra de navegador.</span>
               </div>
             </div>
+          </div>
+        </CardBody>
+      </Card>
+
+      {/* ── Personalização visual ── */}
+      <Card>
+        <CardHeader title="Personalização visual" subtitle="Cor primária do sistema" icon={<Palette size={18} />} />
+        <CardBody>
+          <div className="space-y-4">
+            {/* Paletas pré-definidas */}
+            <div>
+              <p className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-2">Paletas pré-definidas</p>
+              <div className="flex flex-wrap gap-2">
+                {PALETA_PREDEFINIDA.map(p => (
+                  <button
+                    key={p.nome}
+                    title={p.label}
+                    onClick={() => setCorSelecionada(p.hex)}
+                    className={`w-9 h-9 rounded-full border-2 transition-all ${
+                      corSelecionada === p.hex
+                        ? 'border-surface-900 dark:border-white scale-110 shadow-md'
+                        : 'border-transparent hover:scale-105'
+                    }`}
+                    style={{ backgroundColor: p.hex }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Cor personalizada */}
+            <div>
+              <p className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-2">Cor personalizada</p>
+              <div className="flex items-center gap-3">
+                <input
+                  type="color"
+                  value={corSelecionada}
+                  onChange={e => setCorSelecionada(e.target.value)}
+                  className="w-10 h-10 rounded-lg border border-surface-300 dark:border-surface-600 cursor-pointer p-0.5 bg-white dark:bg-surface-800"
+                />
+                <span className="text-sm font-mono text-surface-600 dark:text-surface-400">{corSelecionada}</span>
+              </div>
+            </div>
+
+            {/* Preview */}
+            <div>
+              <p className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-2">Preview</p>
+              <button
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white shadow-sm transition-all"
+                style={{ backgroundColor: corSelecionada }}
+              >
+                Botão primário
+              </button>
+            </div>
+
+            {/* Ações */}
+            <div className="flex gap-2 pt-1">
+              <Button
+                onClick={handleSalvarCor}
+                icon={corSalva ? <CheckCircle size={16} /> : undefined}
+                variant={corSalva ? 'success' : 'primary'}
+              >
+                {corSalva ? 'Salvo!' : 'Salvar aparência'}
+              </Button>
+              <Button variant="ghost" onClick={handleRestaurarCor}>
+                Restaurar padrão
+              </Button>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+
+      {/* ── Login e Provedores ── */}
+      <Card>
+        <CardHeader title="Login e Provedores" subtitle="Métodos de autenticação" icon={<ShieldCheck size={18} />} />
+        <CardBody>
+          <div className="space-y-3">
+            {/* Usuário atual */}
+            {user && (
+              <div className="p-3 bg-surface-50 dark:bg-surface-700/30 rounded-xl">
+                <p className="text-xs font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wide mb-1">Usuário atual</p>
+                <p className="text-sm font-medium text-surface-900 dark:text-white">{user.email}</p>
+                <div className="flex gap-2 mt-1">
+                  <span className="text-xs bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 px-2 py-0.5 rounded-full font-medium capitalize">
+                    {role}
+                  </span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${
+                    statusConta === 'aprovado'
+                      ? 'bg-success-100 dark:bg-success-900/30 text-success-700 dark:text-success-400'
+                      : 'bg-warning-100 dark:bg-warning-900/30 text-warning-700 dark:text-warning-400'
+                  }`}>
+                    {statusConta}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Provedores */}
+            {[
+              { nome: 'E-mail / Senha', status: 'Ativo', ativo: true },
+              { nome: 'Google', status: googleLoginConfigurado ? 'Configurado' : 'Não configurado', ativo: googleLoginConfigurado },
+              { nome: 'Microsoft', status: microsoftLoginConfigurado ? 'Configurado' : 'Não configurado', ativo: microsoftLoginConfigurado },
+            ].map(p => (
+              <div key={p.nome} className="flex items-center justify-between p-3 bg-surface-50 dark:bg-surface-700/30 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <div className={`w-2.5 h-2.5 rounded-full ${p.ativo ? 'bg-success-500' : 'bg-surface-300'}`} />
+                  <span className="text-sm text-surface-700 dark:text-surface-300">{p.nome}</span>
+                </div>
+                <span className={`text-xs font-medium ${p.ativo ? 'text-success-600 dark:text-success-400' : 'text-surface-400'}`}>
+                  {p.status}
+                </span>
+              </div>
+            ))}
+
+            <p className="text-xs text-surface-400 dark:text-surface-500">
+              Para configurar provedores OAuth, acesse <strong>app.supabase.com</strong> → Authentication → Providers.
+            </p>
           </div>
         </CardBody>
       </Card>
