@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react';
 import {
-  Target, Plus, Pencil, Trash2, CheckCircle, PauseCircle,
-  XCircle, ChevronDown, ChevronUp, RefreshCw, Lightbulb,
-  AlertTriangle, ArrowRight, Calendar, Zap
+  Target, Plus, Pencil, Trash2, CheckCircle, XCircle,
+  ChevronDown, ChevronUp, RefreshCw, Lightbulb,
+  AlertTriangle, ArrowRight, Calendar, Zap, RotateCcw
 } from 'lucide-react';
 import { useApp } from '../hooks/useApp';
 import type { Meta, Categoria, StatusMeta, FrequenciaRevisao } from '../types';
@@ -20,7 +20,7 @@ import {
 const categorias: Categoria[] = ['Profissão', 'Estudos', 'Finanças', 'Projetos', 'Desenvolvimento Pessoal'];
 const frequencias: FrequenciaRevisao[] = ['semanal', 'quinzenal', 'mensal', 'sob demanda'];
 
-// ---- Formulário de meta ativa ----
+// ---- Tipos de formulário ----
 type FormAtiva = {
   nome: string;
   grau: number | '';
@@ -30,6 +30,20 @@ type FormAtiva = {
   resultadoEsperado: string;
   frequenciaRevisao: FrequenciaRevisao;
   status: StatusMeta;
+};
+
+type FormFutura = {
+  nome: string;
+  categoria: Categoria;
+  motivo: string;
+  resultadoEsperado: string;
+  prazoFinal: string;
+};
+
+type FormReativar = {
+  grau: number | '';
+  frequenciaRevisao: FrequenciaRevisao;
+  prazoFinal: string;
 };
 
 const formAtivaVazio = (): FormAtiva => ({
@@ -43,22 +57,15 @@ const formAtivaVazio = (): FormAtiva => ({
   status: 'ativa',
 });
 
-// ---- Formulário de ideia futura ----
-type FormFutura = {
-  nome: string;
-  categoria: Categoria;
-  motivo: string;
-  resultadoEsperado: string;
-};
-
 const formFuturaVazia = (): FormFutura => ({
   nome: '',
   categoria: 'Projetos',
   motivo: '',
   resultadoEsperado: '',
+  prazoFinal: '',
 });
 
-// ---- Componente badge de grau ----
+// ---- Badge de grau ----
 function GrauBadge({ grau }: { grau: number }) {
   const cor =
     grau >= 9 ? 'bg-danger-600 text-white' :
@@ -72,7 +79,7 @@ function GrauBadge({ grau }: { grau: number }) {
   );
 }
 
-// ---- Indicador de eficiência ----
+// ---- Indicador de Eficiência de Foco ----
 function EficienciaFoco({ qtd }: { qtd: number }) {
   const ef = calcularEficienciaFoco(qtd);
   const msg = mensagemEficiencia(ef);
@@ -106,31 +113,59 @@ function EficienciaFoco({ qtd }: { qtd: number }) {
 export function MetasPage() {
   const { data, setData } = useApp();
   const [aba, setAba] = useState<'ativas' | 'futuro'>('ativas');
+  const [expandidaId, setExpandidaId] = useState<string | null>(null);
 
-  // Modal meta ativa
+  // Modal meta ativa (criar/editar)
   const [modalAtivo, setModalAtivo] = useState(false);
   const [metaEditando, setMetaEditando] = useState<Meta | null>(null);
   const [formAtiva, setFormAtiva] = useState<FormAtiva>(formAtivaVazio());
   const [errosAtiva, setErrosAtiva] = useState<Record<string, string>>({});
 
-  // Modal ideia futura
+  // Modal ideia futura (criar/editar)
   const [modalFuturo, setModalFuturo] = useState(false);
   const [futuraEditando, setFuturaEditando] = useState<Meta | null>(null);
-  const [formFutura, setFormFutura] = useState<FormFuturaVazia>(formFuturaVazia());
+  const [formFutura, setFormFutura] = useState<FormFutura>(formFuturaVazia());
 
-  // Modal transformar em ativa
-  const [modalTransformar, setModalTransformar] = useState(false);
-  const [transformandoMeta, setTransformandoMeta] = useState<Meta | null>(null);
-  const [formTransformar, setFormTransformar] = useState<FormAtiva>(formAtivaVazio());
-  const [errosTransformar, setErrosTransformar] = useState<Record<string, string>>({});
+  // Modal confirmação mover para futuro
+  const [modalMoverFuturo, setModalMoverFuturo] = useState(false);
+  const [metaMoverFuturo, setMetaMoverFuturo] = useState<Meta | null>(null);
 
-  // Expansão
-  const [expandidaId, setExpandidaId] = useState<string | null>(null);
+  // Modal reativar meta futura
+  const [modalReativar, setModalReativar] = useState(false);
+  const [metaReativando, setMetaReativando] = useState<Meta | null>(null);
+  const [formReativar, setFormReativar] = useState<FormReativar>({ grau: '', frequenciaRevisao: 'semanal', prazoFinal: '' });
+  const [errosReativar, setErrosReativar] = useState<Record<string, string>>({});
 
-  const metasAtivas = data.metas.filter(m => m.status === 'ativa').sort((a, b) => b.grau - a.grau);
-  const metasFuturo = data.metas.filter(m => m.status === 'planejar futuro');
+  // Dados filtrados
+  // "planejar futuro" inclui 'pausada' para compatibilidade com dados antigos não migrados
+  const metasAtivas = data.metas
+    .filter(m => m.status === 'ativa')
+    .sort((a, b) => b.grau - a.grau);
+  const metasFuturo = data.metas
+    .filter(m => m.status === 'planejar futuro' || m.status === 'pausada');
 
-  // ---- CRUD META ATIVA ----
+  // ---- Validação grau ----
+  const validarGrauUnico = (grau: number | '', ignorarId?: string): string => {
+    if (grau === '' || grau === 0) return 'Grau é obrigatório';
+    const duplicada = data.metas.find(
+      m => m.status === 'ativa' && m.grau === Number(grau) && m.id !== ignorarId
+    );
+    if (duplicada) return `Já existe uma meta ativa com Grau ${grau}: "${duplicada.nome}". Escolha outro grau.`;
+    return '';
+  };
+
+  const validarAtiva = (form: FormAtiva, ignorarId?: string) => {
+    const e: Record<string, string> = {};
+    if (!form.nome.trim()) e.nome = 'Título é obrigatório';
+    if (!form.prazoFinal) e.prazoFinal = 'Prazo é obrigatório';
+    if (form.status === 'ativa') {
+      const erroGrau = validarGrauUnico(form.grau, ignorarId);
+      if (erroGrau) e.grau = erroGrau;
+    }
+    return e;
+  };
+
+  // ---- Modal meta ativa ----
   const abrirNovaAtiva = () => {
     setFormAtiva(formAtivaVazio());
     setMetaEditando(null);
@@ -154,23 +189,6 @@ export function MetasPage() {
     setModalAtivo(true);
   };
 
-  const validarAtiva = (form: FormAtiva, ignorarId?: string) => {
-    const e: Record<string, string> = {};
-    if (!form.nome.trim()) e.nome = 'Título é obrigatório';
-    if (form.grau === '' || form.grau === 0) e.grau = 'Grau é obrigatório';
-    if (!form.prazoFinal) e.prazoFinal = 'Prazo é obrigatório';
-    // Verificar duplicidade de grau apenas entre metas ativas
-    if (form.grau !== '' && form.status === 'ativa') {
-      const duplicada = data.metas.find(
-        m => m.status === 'ativa' && m.grau === Number(form.grau) && m.id !== ignorarId
-      );
-      if (duplicada) {
-        e.grau = `Já existe uma meta ativa com Grau ${form.grau}: "${duplicada.nome}". Escolha outro grau.`;
-      }
-    }
-    return e;
-  };
-
   const salvarAtiva = useCallback(() => {
     const e = validarAtiva(formAtiva, metaEditando?.id);
     if (Object.keys(e).length > 0) { setErrosAtiva(e); return; }
@@ -180,7 +198,7 @@ export function MetasPage() {
           ...d,
           metas: d.metas.map(m =>
             m.id === metaEditando.id
-              ? { ...m, ...formAtiva, grau: Number(formAtiva.grau), dataUltimaAcao: hojeISO() }
+              ? { ...m, ...formAtiva, grau: Number(formAtiva.grau) || 0, dataUltimaAcao: hojeISO() }
               : m
           ),
         };
@@ -189,7 +207,7 @@ export function MetasPage() {
         id: gerarId(),
         nome: formAtiva.nome,
         categoria: formAtiva.categoria,
-        grau: Number(formAtiva.grau),
+        grau: Number(formAtiva.grau) || 0,
         status: formAtiva.status,
         motivo: formAtiva.motivo,
         resultadoEsperado: formAtiva.resultadoEsperado,
@@ -205,7 +223,27 @@ export function MetasPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formAtiva, metaEditando, setData, data.metas]);
 
-  // ---- CRUD IDEIA FUTURA ----
+  // ---- Mover meta ativa para futuro ----
+  const pedirConfirmacaoMover = (meta: Meta) => {
+    setMetaMoverFuturo(meta);
+    setModalMoverFuturo(true);
+  };
+
+  const confirmarMoverParaFuturo = useCallback(() => {
+    if (!metaMoverFuturo) return;
+    setData(d => ({
+      ...d,
+      metas: d.metas.map(m =>
+        m.id === metaMoverFuturo.id
+          ? { ...m, status: 'planejar futuro' as StatusMeta, grau: 0, dataUltimaAcao: hojeISO() }
+          : m
+      ),
+    }));
+    setModalMoverFuturo(false);
+    setAba('futuro');
+  }, [metaMoverFuturo, setData]);
+
+  // ---- CRUD Ideia Futura ----
   const abrirNovaFutura = () => {
     setFormFutura(formFuturaVazia());
     setFuturaEditando(null);
@@ -218,6 +256,7 @@ export function MetasPage() {
       categoria: meta.categoria,
       motivo: meta.motivo,
       resultadoEsperado: meta.resultadoEsperado,
+      prazoFinal: meta.prazoFinal,
     });
     setFuturaEditando(meta);
     setModalFuturo(true);
@@ -230,7 +269,9 @@ export function MetasPage() {
         return {
           ...d,
           metas: d.metas.map(m =>
-            m.id === futuraEditando.id ? { ...m, ...formFutura } : m
+            m.id === futuraEditando.id
+              ? { ...m, ...formFutura, status: 'planejar futuro' as StatusMeta }
+              : m
           ),
         };
       }
@@ -242,7 +283,7 @@ export function MetasPage() {
         status: 'planejar futuro',
         motivo: formFutura.motivo,
         resultadoEsperado: formFutura.resultadoEsperado,
-        prazoFinal: '',
+        prazoFinal: formFutura.prazoFinal,
         frequenciaRevisao: 'sob demanda',
         dataCriacao: hojeISO(),
         dataUltimaRevisao: null,
@@ -253,60 +294,66 @@ export function MetasPage() {
     setModalFuturo(false);
   }, [formFutura, futuraEditando, setData]);
 
-  // ---- TRANSFORMAR FUTURA EM ATIVA ----
-  const abrirTransformar = (meta: Meta) => {
-    setTransformandoMeta(meta);
-    setFormTransformar({
-      nome: meta.nome,
+  // ---- Reativar meta futura ----
+  const abrirReativar = (meta: Meta) => {
+    setMetaReativando(meta);
+    setFormReativar({
       grau: '',
-      categoria: meta.categoria,
-      prazoFinal: '',
-      motivo: meta.motivo,
-      resultadoEsperado: meta.resultadoEsperado,
-      frequenciaRevisao: 'semanal',
-      status: 'ativa',
+      frequenciaRevisao: meta.frequenciaRevisao === 'sob demanda' ? 'semanal' : meta.frequenciaRevisao,
+      prazoFinal: meta.prazoFinal || '',
     });
-    setErrosTransformar({});
-    setModalTransformar(true);
+    setErrosReativar({});
+    setModalReativar(true);
   };
 
-  const confirmarTransformar = useCallback(() => {
-    const e = validarAtiva(formTransformar);
-    if (Object.keys(e).length > 0) { setErrosTransformar(e); return; }
+  const confirmarReativar = useCallback(() => {
+    const e: Record<string, string> = {};
+    if (!formReativar.prazoFinal) e.prazoFinal = 'Prazo é obrigatório para reativar';
+    const erroGrau = validarGrauUnico(formReativar.grau);
+    if (erroGrau) e.grau = erroGrau;
+    if (Object.keys(e).length > 0) { setErrosReativar(e); return; }
+
     setData(d => ({
       ...d,
       metas: d.metas.map(m =>
-        m.id === transformandoMeta?.id
+        m.id === metaReativando?.id
           ? {
               ...m,
-              nome: formTransformar.nome,
-              categoria: formTransformar.categoria,
-              grau: Number(formTransformar.grau),
-              prazoFinal: formTransformar.prazoFinal,
-              motivo: formTransformar.motivo,
-              resultadoEsperado: formTransformar.resultadoEsperado,
-              frequenciaRevisao: formTransformar.frequenciaRevisao,
               status: 'ativa' as StatusMeta,
+              grau: Number(formReativar.grau),
+              frequenciaRevisao: formReativar.frequenciaRevisao,
+              prazoFinal: formReativar.prazoFinal,
+              dataUltimaRevisao: hojeISO(),
               dataUltimaAcao: hojeISO(),
             }
           : m
       ),
     }));
-    setModalTransformar(false);
+    setModalReativar(false);
+    setAba('ativas');
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formTransformar, transformandoMeta, setData, data.metas]);
+  }, [formReativar, metaReativando, setData, data.metas]);
 
-  // ---- AÇÕES ----
+  // ---- Ações gerais ----
   const excluir = (id: string) => {
     if (!confirm('Excluir esta meta? As tarefas vinculadas ficarão sem meta.')) return;
     setData(d => ({ ...d, metas: d.metas.filter(m => m.id !== id) }));
   };
 
-  const alterarStatus = (id: string, status: StatusMeta) => {
+  const concluirMeta = (id: string) => {
     setData(d => ({
       ...d,
       metas: d.metas.map(m =>
-        m.id === id ? { ...m, status, dataUltimaAcao: hojeISO() } : m
+        m.id === id ? { ...m, status: 'concluída' as StatusMeta, dataUltimaAcao: hojeISO() } : m
+      ),
+    }));
+  };
+
+  const cancelarMeta = (id: string) => {
+    setData(d => ({
+      ...d,
+      metas: d.metas.map(m =>
+        m.id === id ? { ...m, status: 'cancelada' as StatusMeta, dataUltimaAcao: hojeISO() } : m
       ),
     }));
   };
@@ -322,7 +369,7 @@ export function MetasPage() {
     }));
   };
 
-  // ---- RENDER CARD META ATIVA ----
+  // ---- Render card meta ativa ----
   const renderMetaAtiva = (meta: Meta) => {
     const atrasada = revisaoAtrasada(meta);
     const tarefasDaMeta = data.tarefas.filter(t => t.metaId === meta.id);
@@ -372,7 +419,7 @@ export function MetasPage() {
             <div className="flex items-center gap-1 flex-shrink-0">
               <button
                 onClick={() => revisarMeta(meta.id)}
-                title="Marcar revisão como feita hoje"
+                title="Registrar revisão hoje"
                 className="p-1.5 rounded-lg text-surface-400 hover:text-success-600 hover:bg-success-50 dark:hover:bg-success-900/20 transition-colors"
               >
                 <RefreshCw size={14} />
@@ -420,17 +467,22 @@ export function MetasPage() {
               >
                 Revisar hoje
               </Button>
-              {meta.status === 'ativa' && (
-                <Button variant="secondary" size="sm" icon={<PauseCircle size={13} />} onClick={() => alterarStatus(meta.id, 'pausada')}>
-                  Pausar
-                </Button>
-              )}
-              {meta.status !== 'concluída' && (
-                <Button variant="ghost" size="sm" icon={<CheckCircle size={13} />} onClick={() => alterarStatus(meta.id, 'concluída')}>
-                  Concluir
-                </Button>
-              )}
-              <Button variant="ghost" size="sm" icon={<XCircle size={13} />} onClick={() => alterarStatus(meta.id, 'cancelada')}>
+              <Button
+                variant="secondary" size="sm" icon={<Lightbulb size={13} />}
+                onClick={() => pedirConfirmacaoMover(meta)}
+              >
+                Mover para futuro
+              </Button>
+              <Button
+                variant="ghost" size="sm" icon={<CheckCircle size={13} />}
+                onClick={() => concluirMeta(meta.id)}
+              >
+                Concluir
+              </Button>
+              <Button
+                variant="ghost" size="sm" icon={<XCircle size={13} />}
+                onClick={() => cancelarMeta(meta.id)}
+              >
                 Cancelar
               </Button>
             </div>
@@ -440,11 +492,11 @@ export function MetasPage() {
     );
   };
 
-  // ---- RENDER CARD FUTURA ----
+  // ---- Render card futuro ----
   const renderMetaFutura = (meta: Meta) => (
     <div key={meta.id} className="bg-white dark:bg-surface-800 rounded-2xl border border-surface-200 dark:border-surface-700 p-4">
       <div className="flex items-start gap-3">
-        <div className="w-8 h-8 rounded-lg bg-surface-100 dark:bg-surface-700 flex items-center justify-center flex-shrink-0">
+        <div className="w-8 h-8 rounded-lg bg-surface-100 dark:bg-surface-700 flex items-center justify-center flex-shrink-0 mt-0.5">
           <Lightbulb size={15} className="text-amber-500" />
         </div>
         <div className="flex-1 min-w-0">
@@ -453,14 +505,23 @@ export function MetasPage() {
           {meta.motivo && (
             <p className="text-xs text-surface-400 dark:text-surface-500 mt-1 line-clamp-2">{meta.motivo}</p>
           )}
+          {meta.resultadoEsperado && (
+            <p className="text-xs text-surface-400 dark:text-surface-500 mt-0.5 line-clamp-1 italic">{meta.resultadoEsperado}</p>
+          )}
+          {meta.prazoFinal && (
+            <p className="text-xs text-surface-400 dark:text-surface-500 mt-1 flex items-center gap-1">
+              <Calendar size={10} />
+              Prazo planejado: {formatarData(meta.prazoFinal)}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
           <button
-            onClick={() => abrirTransformar(meta)}
-            title="Transformar em meta ativa"
+            onClick={() => abrirReativar(meta)}
+            title="Reativar como meta ativa"
             className="p-1.5 rounded-lg text-surface-400 hover:text-success-600 hover:bg-success-50 dark:hover:bg-success-900/20 transition-colors"
           >
-            <ArrowRight size={14} />
+            <RotateCcw size={14} />
           </button>
           <button
             onClick={() => abrirEditarFutura(meta)}
@@ -476,10 +537,19 @@ export function MetasPage() {
           </button>
         </div>
       </div>
+      <div className="mt-3 pt-3 border-t border-surface-100 dark:border-surface-700">
+        <Button
+          variant="secondary" size="sm" icon={<RotateCcw size={13} />}
+          onClick={() => abrirReativar(meta)}
+          className="w-full justify-center"
+        >
+          Reativar como meta ativa
+        </Button>
+      </div>
     </div>
   );
 
-  // ---- RENDER FORMULÁRIO META ATIVA (reutilizado em modal criar e transformar) ----
+  // ---- Render formulário meta ativa ----
   const renderFormAtiva = (
     form: FormAtiva,
     setForm: (f: FormAtiva) => void,
@@ -487,25 +557,17 @@ export function MetasPage() {
   ) => (
     <div className="space-y-4">
       <Input
-        id="meta-nome"
-        label="Título da meta"
-        required
-        value={form.nome}
-        onChange={e => setForm({ ...form, nome: e.target.value })}
-        error={erros.nome}
-        placeholder="Ex: Conseguir emprego nos EUA"
+        id="meta-nome" label="Título da meta" required
+        value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })}
+        error={erros.nome} placeholder="Ex: Conseguir emprego nos EUA"
       />
-
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <label className="text-sm font-medium text-surface-700 dark:text-surface-300">
             Grau <span className="text-danger-500">*</span>
           </label>
           <input
-            type="number"
-            min={1}
-            max={20}
-            value={form.grau}
+            type="number" min={1} max={20} value={form.grau}
             onChange={e => setForm({ ...form, grau: e.target.value === '' ? '' : Number(e.target.value) })}
             className="w-full px-3 py-2 text-sm rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
             placeholder="Ex: 10"
@@ -513,63 +575,44 @@ export function MetasPage() {
           {erros.grau ? (
             <p className="text-xs text-danger-600 dark:text-danger-400">{erros.grau}</p>
           ) : (
-            <p className="text-xs text-surface-400 dark:text-surface-500">Quanto maior, mais atenção esta meta recebe.</p>
+            <p className="text-xs text-surface-400 dark:text-surface-500">Quanto maior, mais foco esta meta recebe.</p>
           )}
         </div>
         <Select
-          id="meta-categoria"
-          label="Categoria"
-          value={form.categoria}
-          onChange={e => setForm({ ...form, categoria: e.target.value as Categoria })}
+          id="meta-categoria" label="Categoria"
+          value={form.categoria} onChange={e => setForm({ ...form, categoria: e.target.value as Categoria })}
         >
           {categorias.map(c => <option key={c} value={c}>{c}</option>)}
         </Select>
       </div>
-
       <div className="grid grid-cols-2 gap-3">
         <Input
-          id="meta-prazo"
-          label="Prazo final"
-          required
-          type="date"
-          value={form.prazoFinal}
-          onChange={e => setForm({ ...form, prazoFinal: e.target.value })}
+          id="meta-prazo" label="Prazo final" required type="date"
+          value={form.prazoFinal} onChange={e => setForm({ ...form, prazoFinal: e.target.value })}
           error={erros.prazoFinal}
         />
         <Select
-          id="meta-freq"
-          label="Frequência de revisão"
-          value={form.frequenciaRevisao}
-          onChange={e => setForm({ ...form, frequenciaRevisao: e.target.value as FrequenciaRevisao })}
+          id="meta-freq" label="Frequência de revisão"
+          value={form.frequenciaRevisao} onChange={e => setForm({ ...form, frequenciaRevisao: e.target.value as FrequenciaRevisao })}
         >
           {frequencias.map(f => <option key={f} value={f}>{labelFrequencia(f)}</option>)}
         </Select>
       </div>
-
       <Textarea
-        id="meta-motivo"
-        label="Por que esta meta é importante?"
-        value={form.motivo}
-        onChange={e => setForm({ ...form, motivo: e.target.value })}
+        id="meta-motivo" label="Por que esta meta é importante?"
+        value={form.motivo} onChange={e => setForm({ ...form, motivo: e.target.value })}
         placeholder="Qual o impacto desta meta na sua vida?"
       />
-
       <Textarea
-        id="meta-resultado"
-        label="Resultado esperado"
-        value={form.resultadoEsperado}
-        onChange={e => setForm({ ...form, resultadoEsperado: e.target.value })}
+        id="meta-resultado" label="Resultado esperado"
+        value={form.resultadoEsperado} onChange={e => setForm({ ...form, resultadoEsperado: e.target.value })}
         placeholder="Como você saberá que alcançou a meta?"
       />
-
       <Select
-        id="meta-status"
-        label="Status"
-        value={form.status}
-        onChange={e => setForm({ ...form, status: e.target.value as StatusMeta })}
+        id="meta-status" label="Status"
+        value={form.status} onChange={e => setForm({ ...form, status: e.target.value as StatusMeta })}
       >
         <option value="ativa">Ativa</option>
-        <option value="pausada">Pausada</option>
         <option value="concluída">Concluída</option>
         <option value="cancelada">Cancelada</option>
       </Select>
@@ -642,12 +685,12 @@ export function MetasPage() {
             </Card>
           ) : (
             <>
-              {/* Alerta revisões atrasadas */}
               {metasAtivas.some(m => revisaoAtrasada(m)) && (
                 <div className="flex items-center gap-3 bg-warning-50 dark:bg-warning-600/10 border border-warning-200 dark:border-warning-600/30 rounded-xl px-4 py-3">
                   <AlertTriangle size={16} className="text-warning-600 dark:text-warning-400 flex-shrink-0" />
                   <p className="text-sm text-warning-700 dark:text-warning-300 font-medium">
-                    {metasAtivas.filter(m => revisaoAtrasada(m)).length} meta(s) com revisão atrasada — clique em <RefreshCw size={12} className="inline" /> para registrar a revisão de hoje.
+                    {metasAtivas.filter(m => revisaoAtrasada(m)).length} meta(s) com revisão atrasada — clique em{' '}
+                    <RefreshCw size={12} className="inline" /> para registrar a revisão de hoje.
                   </p>
                 </div>
               )}
@@ -663,7 +706,8 @@ export function MetasPage() {
           <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-700/30 rounded-xl px-4 py-3">
             <p className="text-sm text-amber-800 dark:text-amber-300">
               <strong>Planejar para o Futuro</strong> — Ideias e objetivos que ainda não devem consumir sua atenção semanal.
-              Elas não entram no cálculo de Eficiência de Foco. Quando o momento chegar, transforme em meta ativa.
+              Não entram na Eficiência de Foco. Quando o momento chegar, clique em{' '}
+              <RotateCcw size={12} className="inline" /> <strong>Reativar como meta ativa</strong>.
             </p>
           </div>
 
@@ -685,15 +729,10 @@ export function MetasPage() {
         </div>
       )}
 
-      {/* ============ MODAIS ============ */}
+      {/* ======== MODAIS ======== */}
 
-      {/* Modal — criar/editar meta ativa */}
-      <Modal
-        isOpen={modalAtivo}
-        onClose={() => setModalAtivo(false)}
-        title={metaEditando ? 'Editar Meta' : 'Nova Meta Ativa'}
-        size="lg"
-      >
+      {/* Modal criar/editar meta ativa */}
+      <Modal isOpen={modalAtivo} onClose={() => setModalAtivo(false)} title={metaEditando ? 'Editar Meta' : 'Nova Meta Ativa'} size="lg">
         <div className="space-y-4">
           {renderFormAtiva(formAtiva, setFormAtiva, errosAtiva)}
           <div className="flex gap-3 pt-2">
@@ -705,42 +744,32 @@ export function MetasPage() {
         </div>
       </Modal>
 
-      {/* Modal — criar/editar ideia futura */}
-      <Modal
-        isOpen={modalFuturo}
-        onClose={() => setModalFuturo(false)}
-        title={futuraEditando ? 'Editar Ideia' : 'Nova Ideia Futura'}
-        size="md"
-      >
+      {/* Modal criar/editar ideia futura */}
+      <Modal isOpen={modalFuturo} onClose={() => setModalFuturo(false)} title={futuraEditando ? 'Editar Ideia' : 'Nova Ideia Futura'} size="md">
         <div className="space-y-4">
           <Input
-            id="futura-nome"
-            label="Título da ideia"
-            required
-            value={formFutura.nome}
-            onChange={e => setFormFutura({ ...formFutura, nome: e.target.value })}
+            id="futura-nome" label="Título da ideia" required
+            value={formFutura.nome} onChange={e => setFormFutura({ ...formFutura, nome: e.target.value })}
             placeholder="Ex: Aprender espanhol com intensidade"
           />
           <Select
-            id="futura-cat"
-            label="Categoria"
-            value={formFutura.categoria}
-            onChange={e => setFormFutura({ ...formFutura, categoria: e.target.value as Categoria })}
+            id="futura-cat" label="Categoria"
+            value={formFutura.categoria} onChange={e => setFormFutura({ ...formFutura, categoria: e.target.value as Categoria })}
           >
             {categorias.map(c => <option key={c} value={c}>{c}</option>)}
           </Select>
+          <Input
+            id="futura-prazo" label="Prazo planejado (opcional)" type="date"
+            value={formFutura.prazoFinal} onChange={e => setFormFutura({ ...formFutura, prazoFinal: e.target.value })}
+          />
           <Textarea
-            id="futura-motivo"
-            label="Por que isso importa?"
-            value={formFutura.motivo}
-            onChange={e => setFormFutura({ ...formFutura, motivo: e.target.value })}
+            id="futura-motivo" label="Por que isso importa?"
+            value={formFutura.motivo} onChange={e => setFormFutura({ ...formFutura, motivo: e.target.value })}
             placeholder="Por que você quer isso no futuro?"
           />
           <Textarea
-            id="futura-result"
-            label="Resultado esperado"
-            value={formFutura.resultadoEsperado}
-            onChange={e => setFormFutura({ ...formFutura, resultadoEsperado: e.target.value })}
+            id="futura-result" label="Resultado esperado"
+            value={formFutura.resultadoEsperado} onChange={e => setFormFutura({ ...formFutura, resultadoEsperado: e.target.value })}
             placeholder="Como você saberá que chegou lá?"
           />
           <div className="flex gap-3 pt-2">
@@ -752,29 +781,81 @@ export function MetasPage() {
         </div>
       </Modal>
 
-      {/* Modal — transformar futura em ativa */}
-      <Modal
-        isOpen={modalTransformar}
-        onClose={() => setModalTransformar(false)}
-        title="Transformar em Meta Ativa"
-        size="lg"
-      >
+      {/* Modal confirmação mover para futuro */}
+      <Modal isOpen={modalMoverFuturo} onClose={() => setModalMoverFuturo(false)} title="Mover para Planejar para o Futuro?" size="sm">
+        <div className="space-y-4">
+          <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/30 rounded-xl p-4">
+            <p className="text-sm text-amber-800 dark:text-amber-300">
+              A meta <strong>"{metaMoverFuturo?.nome}"</strong> deixará de contar na Eficiência de Foco e não
+              gerará alertas de revisão. Você poderá reativá-la quando o momento chegar.
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <Button variant="secondary" className="flex-1" onClick={() => setModalMoverFuturo(false)}>Cancelar</Button>
+            <Button variant="primary" className="flex-1" icon={<ArrowRight size={14} />} onClick={confirmarMoverParaFuturo}>
+              Mover para futuro
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal reativar meta futura */}
+      <Modal isOpen={modalReativar} onClose={() => setModalReativar(false)} title="Reativar como Meta Ativa" size="md">
         <div className="space-y-4">
           <div className="bg-primary-50 dark:bg-primary-900/20 border border-primary-100 dark:border-primary-800 rounded-xl px-3 py-2">
             <p className="text-xs text-primary-700 dark:text-primary-300">
-              Defina o Grau, prazo e frequência de revisão para ativar esta meta.
+              Defina um Grau único, prazo e frequência de revisão para ativar <strong>"{metaReativando?.nome}"</strong>.
             </p>
           </div>
-          {renderFormAtiva(formTransformar, setFormTransformar, errosTransformar)}
-          <div className="flex gap-3 pt-2">
-            <Button variant="secondary" className="flex-1" onClick={() => setModalTransformar(false)}>Cancelar</Button>
-            <Button className="flex-1" onClick={confirmarTransformar}>Ativar meta</Button>
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-surface-700 dark:text-surface-300">
+              Grau <span className="text-danger-500">*</span>
+            </label>
+            <input
+              type="number" min={1} max={20} value={formReativar.grau}
+              onChange={e => setFormReativar({ ...formReativar, grau: e.target.value === '' ? '' : Number(e.target.value) })}
+              className="w-full px-3 py-2 text-sm rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+              placeholder="Ex: 8"
+            />
+            {errosReativar.grau ? (
+              <p className="text-xs text-danger-600 dark:text-danger-400">{errosReativar.grau}</p>
+            ) : (
+              <p className="text-xs text-surface-400 dark:text-surface-500">Deve ser único entre metas ativas.</p>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              id="reativar-prazo" label="Prazo final" required type="date"
+              value={formReativar.prazoFinal}
+              onChange={e => setFormReativar({ ...formReativar, prazoFinal: e.target.value })}
+              error={errosReativar.prazoFinal}
+            />
+            <Select
+              id="reativar-freq" label="Frequência de revisão"
+              value={formReativar.frequenciaRevisao}
+              onChange={e => setFormReativar({ ...formReativar, frequenciaRevisao: e.target.value as FrequenciaRevisao })}
+            >
+              {frequencias.map(f => <option key={f} value={f}>{labelFrequencia(f)}</option>)}
+            </Select>
+          </div>
+          {metasAtivas.length > 0 && (
+            <div className="bg-surface-50 dark:bg-surface-700/50 rounded-lg px-3 py-2">
+              <p className="text-xs text-surface-500 dark:text-surface-400 mb-1">Graus já em uso:</p>
+              <div className="flex flex-wrap gap-1">
+                {metasAtivas.map(m => (
+                  <span key={m.id} className="text-xs bg-surface-200 dark:bg-surface-600 text-surface-700 dark:text-surface-300 rounded px-1.5 py-0.5">
+                    {m.grau} – {m.nome.split(' ').slice(0, 3).join(' ')}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="flex gap-3 pt-1">
+            <Button variant="secondary" className="flex-1" onClick={() => setModalReativar(false)}>Cancelar</Button>
+            <Button className="flex-1" icon={<RotateCcw size={13} />} onClick={confirmarReativar}>Ativar meta</Button>
           </div>
         </div>
       </Modal>
     </div>
   );
 }
-
-// Tipo auxiliar usado internamente
-type FormFuturaVazia = FormFutura;
