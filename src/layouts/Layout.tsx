@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Target, ListChecks, Clock,
-  Wallet, BookHeart, Settings, Menu, X, Moon, Sun, Zap
+  Wallet, Settings, Menu, X, Moon, Sun, Zap
 } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../hooks/useApp';
@@ -12,7 +12,6 @@ const navItems = [
   { to: '/plano', label: 'Plano de Ação', icon: ListChecks },
   { to: '/agenda', label: 'Agenda e Tempo', icon: Clock },
   { to: '/orcamento', label: 'Orçamento', icon: Wallet },
-  { to: '/diario', label: 'Diário', icon: BookHeart },
   { to: '/configuracoes', label: 'Configurações', icon: Settings },
 ];
 
@@ -101,7 +100,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <X size={18} className="text-surface-500" />
               </button>
             </div>
-            <nav className="flex-1 p-3 space-y-1">
+            <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
               {navItems.map(({ to, label, icon: Icon }) => (
                 <NavLink
                   key={to}
@@ -156,9 +155,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
           {children}
         </main>
 
-        {/* Bottom nav mobile */}
+        {/* Bottom nav mobile — todos os 6 itens */}
         <nav className="lg:hidden flex bg-white dark:bg-surface-800 border-t border-surface-200 dark:border-surface-700 flex-shrink-0">
-          {navItems.slice(0, 5).map(({ to, label, icon: Icon }) => (
+          {navItems.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
@@ -168,8 +167,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 ${isActive ? 'text-primary-600' : 'text-surface-400'}
               `}
             >
-              <Icon size={20} />
-              <span className="text-[10px] font-medium">{label.split(' ')[0]}</span>
+              <Icon size={18} />
+              <span className="text-[9px] font-medium leading-tight text-center">{label.split(' ')[0]}</span>
             </NavLink>
           ))}
         </nav>

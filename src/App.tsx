@@ -6,7 +6,6 @@ import { MetasPage } from './pages/Metas';
 import { PlanoAcaoPage } from './pages/PlanoAcao';
 import { AgendaTempoPage } from './pages/AgendaTempo';
 import { OrcamentoPage } from './pages/Orcamento';
-import { DiarioPage } from './pages/Diario';
 import { ConfiguracoesPage } from './pages/Configuracoes';
 
 function App() {
@@ -20,7 +19,6 @@ function App() {
             <Route path="/plano" element={<PlanoAcaoPage />} />
             <Route path="/agenda" element={<AgendaTempoPage />} />
             <Route path="/orcamento" element={<OrcamentoPage />} />
-            <Route path="/diario" element={<DiarioPage />} />
             <Route path="/configuracoes" element={<ConfiguracoesPage />} />
           </Routes>
         </Layout>

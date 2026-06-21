@@ -1,8 +1,146 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
-import type { AppData } from '../types';
+import type { AppData, Tarefa, FaixaTarefa, StatusTarefa, Meta, FrequenciaRevisao, StatusMeta } from '../types';
 import { dadosDemonstracaoInicial } from '../data/dadosDemonstracao';
 
 const STORAGE_KEY = 'adapta-central-pessoal-v1';
+
+// ---- Migração de metas antigas ----
+function migrarMetas(raw: Record<string, unknown>[]): Meta[] {
+  const validStatuses: StatusMeta[] = ['ativa', 'planejar futuro', 'pausada', 'concluída', 'cancelada'];
+
+  // Primeiro passo: converter campos
+  const metas: Meta[] = raw.map(m => {
+    const status = validStatuses.includes(m.status as StatusMeta)
+      ? (m.status as StatusMeta)
+      : 'ativa';
+
+    const freq: FrequenciaRevisao =
+      (['semanal', 'quinzenal', 'mensal', 'sob demanda'] as FrequenciaRevisao[]).includes(m.frequenciaRevisao as FrequenciaRevisao)
+        ? (m.frequenciaRevisao as FrequenciaRevisao)
+        : 'semanal';
+
+    return {
+      id: (m.id as string) || '',
+      nome: (m.nome as string) || '',
+      categoria: (m.categoria as Meta['categoria']) || 'Projetos',
+      grau: typeof m.grau === 'number' ? m.grau : 0,
+      status,
+      motivo: (m.motivo as string) || '',
+      resultadoEsperado: (m.resultadoEsperado as string) || '',
+      prazoFinal: (m.prazoFinal as string) || '',
+      frequenciaRevisao: freq,
+      dataCriacao: (m.dataCriacao as string) || '',
+      dataUltimaRevisao: (m.dataUltimaRevisao as string | null) ?? null,
+      dataUltimaAcao: (m.dataUltimaAcao as string | null) ?? null,
+      descricao: (m.descricao as string) || '',
+      progresso: typeof m.progresso === 'number' ? m.progresso : 0,
+      prioridade: (m.prioridade as Meta['prioridade']) ?? undefined,
+    };
+  });
+
+  // Segundo passo: atribuir graus a metas ativas sem grau
+  const prioridadeOrdem: Record<string, number> = { crítica: 4, alta: 3, média: 2, baixa: 1 };
+
+  const ativas = metas.filter(m => m.status === 'ativa');
+  const semGrau = ativas.filter(m => m.grau === 0);
+
+  if (semGrau.length > 0) {
+    // Ordenar por prioridade antiga + prazo
+    semGrau.sort((a, b) => {
+      const pa = prioridadeOrdem[a.prioridade ?? 'média'] ?? 2;
+      const pb = prioridadeOrdem[b.prioridade ?? 'média'] ?? 2;
+      if (pb !== pa) return pb - pa;
+      return (a.prazoFinal ?? '').localeCompare(b.prazoFinal ?? '');
+    });
+
+    // Descobrir graus já em uso por metas ativas com grau definido
+    const grausUsados = new Set(ativas.filter(m => m.grau > 0).map(m => m.grau));
+
+    let grauAtual = ativas.length + semGrau.length;
+    for (const meta of semGrau) {
+      while (grausUsados.has(grauAtual)) grauAtual--;
+      meta.grau = grauAtual;
+      grausUsados.add(grauAtual);
+      grauAtual--;
+    }
+  }
+
+  // Terceiro passo: garantir unicidade de graus em metas ativas
+  const ativasComGrau = metas.filter(m => m.status === 'ativa').sort((a, b) => b.grau - a.grau);
+  const grausVistos = new Set<number>();
+  let contador = ativasComGrau.length;
+  for (const m of ativasComGrau) {
+    if (grausVistos.has(m.grau)) {
+      while (grausVistos.has(contador)) contador--;
+      m.grau = contador;
+      contador--;
+    }
+    grausVistos.add(m.grau);
+  }
+
+  return metas;
+}
+
+// ---- Migração de tarefas antigas ----
+function migrarTarefas(raw: Record<string, unknown>[]): Tarefa[] {
+  return raw.map(t => {
+    let faixa: FaixaTarefa = 'médio impacto';
+    if (t.faixa && ['urgente', 'alto impacto', 'médio impacto', 'baixo impacto'].includes(t.faixa as string)) {
+      faixa = t.faixa as FaixaTarefa;
+    } else if (t.prioridade) {
+      const p = t.prioridade as string;
+      if (p === 'crítica') faixa = 'urgente';
+      else if (p === 'alta') faixa = 'alto impacto';
+      else if (p === 'média') faixa = 'médio impacto';
+      else faixa = 'baixo impacto';
+    }
+
+    let status: StatusTarefa = 'não iniciado';
+    const s = t.status as string;
+    if (s === 'não iniciado') status = 'não iniciado';
+    else if (s === 'em andamento') status = 'em andamento';
+    else if (s === 'concluído' || s === 'concluída') status = 'concluído';
+    else if (s === 'pendente' || s === 'reagendada') status = 'não iniciado';
+    else if (s === 'cancelada') status = 'não iniciado';
+
+    return {
+      id: (t.id as string) || '',
+      titulo: (t.titulo as string) || '',
+      metaId: (t.metaId as string | null) ?? null,
+      categoria: (t.categoria as Tarefa['categoria']) || 'Projetos',
+      prazo: (t.prazo as string) || '',
+      tempoEstimado: (t.tempoEstimado as number) || 30,
+      faixa,
+      status,
+      energiaNecessaria: (t.energiaNecessaria as Tarefa['energiaNecessaria']) || 'média',
+      observacoes: (t.observacoes as string) || '',
+      dataCriacao: (t.dataCriacao as string) || '',
+      dataConclusao: status === 'concluído' ? ((t.dataConclusao as string | null) ?? null) : null,
+    };
+  });
+}
+
+// ---- Migração geral do AppData ----
+function migrarDados(raw: Record<string, unknown>): AppData {
+  const base = dadosDemonstracaoInicial;
+
+  const metasRaw = Array.isArray(raw.metas) ? (raw.metas as Record<string, unknown>[]) : [];
+  const tarefasRaw = Array.isArray(raw.tarefas) ? (raw.tarefas as Record<string, unknown>[]) : [];
+
+  return {
+    metas: metasRaw.length > 0 ? migrarMetas(metasRaw) : base.metas,
+    tarefas: tarefasRaw.length > 0 ? migrarTarefas(tarefasRaw) : base.tarefas,
+    blocosTempo: Array.isArray(raw.blocosTempo) ? (raw.blocosTempo as AppData['blocosTempo']) : base.blocosTempo,
+    rotinasSemana: Array.isArray(raw.rotinasSemana) ? (raw.rotinasSemana as AppData['rotinasSemana']) : [],
+    receitas: Array.isArray(raw.receitas) ? (raw.receitas as AppData['receitas']) : base.receitas,
+    despesas: Array.isArray(raw.despesas) ? (raw.despesas as AppData['despesas']) : base.despesas,
+    cartoes: Array.isArray(raw.cartoes) ? (raw.cartoes as AppData['cartoes']) : base.cartoes,
+    dividas: Array.isArray(raw.dividas) ? (raw.dividas as AppData['dividas']) : base.dividas,
+    reservas: Array.isArray(raw.reservas) ? (raw.reservas as AppData['reservas']) : base.reservas,
+    bens: Array.isArray(raw.bens) ? (raw.bens as AppData['bens']) : base.bens,
+    configuracoes: (raw.configuracoes as AppData['configuracoes']) ?? base.configuracoes,
+  };
+}
 
 interface AppContextType {
   data: AppData;
@@ -21,7 +159,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [data, setDataState] = useState<AppData>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) return JSON.parse(stored) as AppData;
+      if (stored) {
+        const raw = JSON.parse(stored) as Record<string, unknown>;
+        return migrarDados(raw);
+      }
     } catch { /* ignore */ }
     return dadosDemonstracaoInicial;
   });
@@ -30,8 +171,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        const d = JSON.parse(stored) as AppData;
-        if (d.configuracoes?.tema === 'claro') return 'claro';
+        const d = JSON.parse(stored) as Record<string, unknown>;
+        const conf = d.configuracoes as { tema?: string } | undefined;
+        if (conf?.tema === 'claro') return 'claro';
       }
     } catch { /* ignore */ }
     return 'escuro';
@@ -80,8 +222,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       dividas: [],
       reservas: [],
       bens: [],
-      diarioEvolucao: [],
-      revisoesSemana: [],
     };
     setDataState(empty);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(empty));
@@ -100,9 +240,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const importData = useCallback((jsonString: string): boolean => {
     try {
-      const imported = JSON.parse(jsonString) as AppData;
-      setDataState(imported);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(imported));
+      const raw = JSON.parse(jsonString) as Record<string, unknown>;
+      const migrado = migrarDados(raw);
+      setDataState(migrado);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(migrado));
       return true;
     } catch {
       return false;

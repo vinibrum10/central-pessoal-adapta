@@ -1,45 +1,245 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
-  ListChecks, Plus, Pencil, Trash2, Check, Calendar,
-  AlertCircle, Clock, Search, Filter
+  DndContext, DragOverlay, PointerSensor, TouchSensor,
+  useSensor, useSensors, useDroppable, useDraggable,
+  type DragStartEvent, type DragEndEvent
+} from '@dnd-kit/core';
+import {
+  Plus, Pencil, Trash2, Calendar, Clock, Search,
+  AlertCircle, GripVertical, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { useApp } from '../hooks/useApp';
-import type { Tarefa, Categoria, Prioridade, StatusTarefa, TipoTarefa, NivelEnergia } from '../types';
-import { Card, CardBody } from '../components/Card';
+import type { Tarefa, Categoria, FaixaTarefa, StatusTarefa, NivelEnergia } from '../types';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { Input, Textarea, Select } from '../components/FormFields';
 import {
-  corPrioridade, corCategoria, corStatus, formatarData,
-  formatarMinutos, eAtrasada, eHoje, eSemanaAtual,
-  gerarId, hojeISO
+  corFaixa, siglaFaixa, labelFaixa, corCategoria,
+  formatarData, formatarMinutos, eAtrasada, eHoje,
+  eSemanaAtual, gerarId, hojeISO
 } from '../utils';
 import { addDays, format } from 'date-fns';
+import { useLocation } from 'react-router-dom';
 
 const categorias: Categoria[] = ['Profissão', 'Estudos', 'Finanças', 'Projetos', 'Desenvolvimento Pessoal'];
-const prioridades: Prioridade[] = ['baixa', 'média', 'alta', 'crítica'];
-const tiposList: TipoTarefa[] = ['diária', 'semanal', 'mensal', 'avulsa'];
+const faixaList: FaixaTarefa[] = ['urgente', 'alto impacto', 'médio impacto', 'baixo impacto'];
 const energiaList: NivelEnergia[] = ['baixa', 'média', 'alta'];
-const statusList: StatusTarefa[] = ['pendente', 'em andamento', 'concluída', 'reagendada', 'cancelada'];
+const statusList: StatusTarefa[] = ['não iniciado', 'em andamento', 'concluído'];
 
-type Visualizacao = 'hoje' | 'semana' | 'mes' | 'atrasadas' | 'por-meta' | 'por-prioridade';
+type FiltroAtivo = 'todos' | 'hoje' | 'semana' | 'atrasadas' | 'por-meta' | FaixaTarefa;
 
 const tarefaVazia = (): Omit<Tarefa, 'id' | 'dataCriacao' | 'dataConclusao'> => ({
-  titulo: '', metaId: null, categoria: 'Projetos', tipo: 'avulsa',
+  titulo: '',
+  metaId: null,
+  categoria: 'Projetos',
   prazo: format(addDays(new Date(), 1), 'yyyy-MM-dd'),
-  tempoEstimado: 30, prioridade: 'média', status: 'pendente',
-  energiaNecessaria: 'média', observacoes: '',
+  tempoEstimado: 30,
+  faixa: 'médio impacto',
+  status: 'não iniciado',
+  energiaNecessaria: 'média',
+  observacoes: '',
 });
 
+// ---- Card da tarefa (draggable) ----
+function TarefaCard({
+  tarefa, meta, onEdit, onDelete, onMover, isDragging = false
+}: {
+  tarefa: Tarefa;
+  meta?: { nome: string } | undefined;
+  onEdit: () => void;
+  onDelete: () => void;
+  onMover: (novoStatus: StatusTarefa) => void;
+  isDragging?: boolean;
+}) {
+  const [showMover, setShowMover] = useState(false);
+  const atrasada = eAtrasada(tarefa.prazo);
+
+  return (
+    <div
+      className={`
+        bg-white dark:bg-surface-800 rounded-xl border p-3 space-y-2 shadow-sm
+        ${isDragging ? 'opacity-50 shadow-lg rotate-1' : ''}
+        ${atrasada ? 'border-danger-300 dark:border-danger-600' : 'border-surface-200 dark:border-surface-700'}
+        transition-all
+      `}
+    >
+      {/* Faixa + drag handle */}
+      <div className="flex items-center gap-2">
+        <GripVertical size={14} className="text-surface-300 dark:text-surface-600 flex-shrink-0 cursor-grab active:cursor-grabbing" />
+        <Badge className={`text-[10px] px-1.5 py-0.5 ${corFaixa(tarefa.faixa)}`}>
+          {siglaFaixa(tarefa.faixa)}
+        </Badge>
+        {atrasada && (
+          <Badge className="text-[10px] px-1.5 py-0.5 bg-danger-100 text-danger-700 dark:bg-danger-600/20 dark:text-danger-400">
+            Atrasada
+          </Badge>
+        )}
+        <div className="ml-auto flex gap-0.5">
+          <button onClick={onEdit} className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-400 hover:text-primary-600 transition-colors">
+            <Pencil size={11} />
+          </button>
+          <button onClick={onDelete} className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-400 hover:text-danger-600 transition-colors">
+            <Trash2 size={11} />
+          </button>
+        </div>
+      </div>
+
+      {/* Título */}
+      <p className="text-sm font-medium text-surface-900 dark:text-white leading-tight">{tarefa.titulo}</p>
+
+      {/* Meta */}
+      {meta && (
+        <p className="text-[11px] text-primary-600 dark:text-primary-400 truncate">{meta.nome}</p>
+      )}
+
+      {/* Categoria */}
+      <Badge className={`text-[10px] px-1.5 py-0.5 ${corCategoria(tarefa.categoria)}`}>
+        {tarefa.categoria}
+      </Badge>
+
+      {/* Prazo + tempo */}
+      <div className="flex items-center gap-3 text-[11px] text-surface-400 dark:text-surface-500">
+        <span className="flex items-center gap-1">
+          <Calendar size={10} />
+          {formatarData(tarefa.prazo)}
+        </span>
+        <span className="flex items-center gap-1">
+          <Clock size={10} />
+          {formatarMinutos(tarefa.tempoEstimado)}
+        </span>
+        <span className="capitalize">{tarefa.energiaNecessaria} ⚡</span>
+      </div>
+
+      {/* Botões mover (mobile) */}
+      <div className="sm:hidden">
+        <button
+          onClick={() => setShowMover(v => !v)}
+          className="w-full flex items-center justify-center gap-1 text-[11px] text-surface-400 hover:text-primary-600 py-1"
+        >
+          Mover {showMover ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+        </button>
+        {showMover && (
+          <div className="flex gap-1 mt-1">
+            {statusList.filter(s => s !== tarefa.status).map(s => (
+              <button
+                key={s}
+                onClick={() => { onMover(s); setShowMover(false); }}
+                className="flex-1 text-[10px] py-1 rounded bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-300 hover:bg-primary-100 dark:hover:bg-primary-900/30 hover:text-primary-700 transition-colors"
+              >
+                {s === 'não iniciado' ? 'Não iniciado' : s === 'em andamento' ? 'Em andamento' : 'Concluído'}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---- Wrapper draggable ----
+function DraggableTarefa({ tarefa, ...props }: { tarefa: Tarefa } & Omit<Parameters<typeof TarefaCard>[0], 'tarefa' | 'isDragging'>) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: tarefa.id });
+  return (
+    <div ref={setNodeRef} {...attributes} {...listeners}>
+      <TarefaCard tarefa={tarefa} isDragging={isDragging} {...props} />
+    </div>
+  );
+}
+
+// ---- Coluna Kanban (droppable) ----
+function KanbanColuna({
+  status, label, tarefas, metas, count, onEdit, onDelete, onMover
+}: {
+  status: StatusTarefa;
+  label: string;
+  tarefas: Tarefa[];
+  metas: { id: string; nome: string }[];
+  count: number;
+  onEdit: (t: Tarefa) => void;
+  onDelete: (id: string) => void;
+  onMover: (id: string, status: StatusTarefa) => void;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: status });
+
+  const colorMap: Record<StatusTarefa, string> = {
+    'não iniciado': 'border-t-surface-400 bg-surface-50 dark:bg-surface-900/50',
+    'em andamento': 'border-t-primary-500 bg-primary-50/30 dark:bg-primary-900/10',
+    'concluído': 'border-t-success-500 bg-success-50/30 dark:bg-success-900/10',
+  };
+
+  const headerColor: Record<StatusTarefa, string> = {
+    'não iniciado': 'text-surface-600 dark:text-surface-400',
+    'em andamento': 'text-primary-600 dark:text-primary-400',
+    'concluído': 'text-success-600 dark:text-success-400',
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`
+        flex flex-col rounded-2xl border-t-4 border border-surface-200 dark:border-surface-700
+        ${colorMap[status]}
+        ${isOver ? 'ring-2 ring-primary-400 ring-offset-1' : ''}
+        transition-all min-h-[200px]
+      `}
+    >
+      {/* Header coluna */}
+      <div className="px-4 py-3 flex items-center justify-between border-b border-surface-200 dark:border-surface-700">
+        <h3 className={`text-sm font-bold uppercase tracking-wide ${headerColor[status]}`}>{label}</h3>
+        <span className="text-xs font-semibold bg-surface-200 dark:bg-surface-700 text-surface-600 dark:text-surface-300 rounded-full px-2 py-0.5">
+          {count}
+        </span>
+      </div>
+
+      {/* Cards */}
+      <div className="flex-1 p-3 space-y-2 overflow-y-auto">
+        {tarefas.length === 0 && (
+          <div className="text-center py-8 text-surface-300 dark:text-surface-600 text-xs">
+            Arraste tarefas aqui
+          </div>
+        )}
+        {tarefas.map(t => (
+          <DraggableTarefa
+            key={t.id}
+            tarefa={t}
+            meta={metas.find(m => m.id === t.metaId)}
+            onEdit={() => onEdit(t)}
+            onDelete={() => onDelete(t.id)}
+            onMover={ns => onMover(t.id, ns)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---- Página principal ----
 export function PlanoAcaoPage() {
   const { data, setData } = useApp();
-  const [visualizacao, setVisualizacao] = useState<Visualizacao>('hoje');
+  const location = useLocation();
+
+  const [filtro, setFiltro] = useState<FiltroAtivo>('todos');
+  const [busca, setBusca] = useState('');
   const [modalAberto, setModalAberto] = useState(false);
   const [tarefaEditando, setTarefaEditando] = useState<Tarefa | null>(null);
   const [form, setForm] = useState(tarefaVazia());
-  const [busca, setBusca] = useState('');
   const [erros, setErros] = useState<Record<string, string>>({});
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+
+  // Ler parâmetros da URL (de Início.tsx)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const f = params.get('filtro');
+    const faixa = params.get('faixa');
+    if (f === 'atrasadas') setFiltro('atrasadas');
+    else if (faixa && faixaList.includes(faixa as FaixaTarefa)) setFiltro(faixa as FaixaTarefa);
+  }, [location.search]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
+  );
 
   const abrirNova = () => {
     setForm(tarefaVazia());
@@ -50,10 +250,15 @@ export function PlanoAcaoPage() {
 
   const abrirEditar = (tarefa: Tarefa) => {
     setForm({
-      titulo: tarefa.titulo, metaId: tarefa.metaId, categoria: tarefa.categoria,
-      tipo: tarefa.tipo, prazo: tarefa.prazo, tempoEstimado: tarefa.tempoEstimado,
-      prioridade: tarefa.prioridade, status: tarefa.status,
-      energiaNecessaria: tarefa.energiaNecessaria, observacoes: tarefa.observacoes,
+      titulo: tarefa.titulo,
+      metaId: tarefa.metaId,
+      categoria: tarefa.categoria,
+      prazo: tarefa.prazo,
+      tempoEstimado: tarefa.tempoEstimado,
+      faixa: tarefa.faixa,
+      status: tarefa.status,
+      energiaNecessaria: tarefa.energiaNecessaria,
+      observacoes: tarefa.observacoes,
     });
     setTarefaEditando(tarefa);
     setErros({});
@@ -72,19 +277,32 @@ export function PlanoAcaoPage() {
     if (!validar()) return;
     setData(d => {
       if (tarefaEditando) {
+        const novoStatus = form.status;
+        const antiga = d.tarefas.find(t => t.id === tarefaEditando.id);
+        const dataConclusao =
+          novoStatus === 'concluído'
+            ? (antiga?.dataConclusao ?? hojeISO())
+            : null;
         return {
           ...d,
           tarefas: d.tarefas.map(t =>
-            t.id === tarefaEditando.id ? { ...t, ...form } : t
+            t.id === tarefaEditando.id ? { ...t, ...form, dataConclusao } : t
           ),
+          metas: novoStatus === 'concluído'
+            ? d.metas.map(m => form.metaId === m.id ? { ...m, dataUltimaAcao: hojeISO() } : m)
+            : d.metas,
         };
       }
       const nova: Tarefa = {
-        id: gerarId(), ...form, dataCriacao: hojeISO(), dataConclusao: null,
+        id: gerarId(),
+        ...form,
+        dataCriacao: hojeISO(),
+        dataConclusao: form.status === 'concluído' ? hojeISO() : null,
       };
       return { ...d, tarefas: [...d.tarefas, nova] };
     });
     setModalAberto(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form, tarefaEditando, setData]);
 
   const excluir = (id: string) => {
@@ -92,176 +310,103 @@ export function PlanoAcaoPage() {
     setData(d => ({ ...d, tarefas: d.tarefas.filter(t => t.id !== id) }));
   };
 
-  const concluir = (id: string) => {
+  const moverTarefa = useCallback((id: string, novoStatus: StatusTarefa) => {
     setData(d => ({
       ...d,
-      tarefas: d.tarefas.map(t =>
-        t.id === id ? { ...t, status: 'concluída', dataConclusao: hojeISO() } : t
-      ),
-      metas: d.metas.map(m => {
-        const tarefa = d.tarefas.find(t => t.id === id);
-        if (tarefa?.metaId === m.id) return { ...m, dataUltimaAcao: hojeISO() };
-        return m;
+      tarefas: d.tarefas.map(t => {
+        if (t.id !== id) return t;
+        const dataConclusao = novoStatus === 'concluído' ? hojeISO() : null;
+        return { ...t, status: novoStatus, dataConclusao };
       }),
+      metas: novoStatus === 'concluído'
+        ? d.metas.map(m => {
+          const t = d.tarefas.find(t => t.id === id);
+          return t?.metaId === m.id ? { ...m, dataUltimaAcao: hojeISO() } : m;
+        })
+        : d.metas,
     }));
+  }, [setData]);
+
+  const onDragStart = (e: DragStartEvent) => setActiveDragId(e.active.id as string);
+
+  const onDragEnd = (e: DragEndEvent) => {
+    setActiveDragId(null);
+    const { active, over } = e;
+    if (!over) return;
+    const novoStatus = over.id as StatusTarefa;
+    if (!statusList.includes(novoStatus)) return;
+    const tarefa = data.tarefas.find(t => t.id === active.id);
+    if (!tarefa || tarefa.status === novoStatus) return;
+    moverTarefa(tarefa.id, novoStatus);
   };
 
-  const reagendar = (id: string) => {
-    const dias = prompt('Reagendar em quantos dias?', '1');
-    if (!dias) return;
-    const n = parseInt(dias);
-    if (isNaN(n) || n < 1) return;
-    setData(d => ({
-      ...d,
-      tarefas: d.tarefas.map(t =>
-        t.id === id ? {
-          ...t,
-          status: 'reagendada',
-          prazo: format(addDays(new Date(), n), 'yyyy-MM-dd'),
-        } : t
-      ),
-    }));
-  };
-
-  const dividirEmDiarias = (tarefa: Tarefa) => {
-    const novaTarefas: Tarefa[] = Array.from({ length: 5 }, (_, i) => ({
-      id: gerarId(),
-      titulo: `${tarefa.titulo} — Dia ${i + 1}`,
-      metaId: tarefa.metaId,
-      categoria: tarefa.categoria,
-      tipo: 'diária' as TipoTarefa,
-      prazo: format(addDays(new Date(), i), 'yyyy-MM-dd'),
-      tempoEstimado: Math.ceil(tarefa.tempoEstimado / 5),
-      prioridade: tarefa.prioridade,
-      status: 'pendente' as StatusTarefa,
-      energiaNecessaria: tarefa.energiaNecessaria,
-      observacoes: `Dividida de: ${tarefa.titulo}`,
-      dataCriacao: hojeISO(),
-      dataConclusao: null,
-    }));
-    if (!confirm(`Dividir "${tarefa.titulo}" em 5 tarefas diárias?`)) return;
-    setData(d => ({
-      ...d,
-      tarefas: [...d.tarefas, ...novaTarefas],
-    }));
-  };
-
-  const getTarefasFiltradas = () => {
-    let tarefas = data.tarefas;
-    if (busca) tarefas = tarefas.filter(t => t.titulo.toLowerCase().includes(busca.toLowerCase()));
-
-    switch (visualizacao) {
-      case 'hoje': return tarefas.filter(t => eHoje(t.prazo) && t.status !== 'concluída' && t.status !== 'cancelada');
-      case 'semana': return tarefas.filter(t => eSemanaAtual(t.prazo) && t.status !== 'concluída' && t.status !== 'cancelada');
-      case 'mes': {
-        const m = new Date().getMonth(); const a = new Date().getFullYear();
-        return tarefas.filter(t => {
-          const d = new Date(t.prazo);
-          return d.getMonth() === m && d.getFullYear() === a && t.status !== 'concluída' && t.status !== 'cancelada';
-        });
-      }
-      case 'atrasadas': return tarefas.filter(t => eAtrasada(t.prazo) && t.status !== 'concluída' && t.status !== 'cancelada');
-      case 'por-prioridade': return [...tarefas]
-        .filter(t => t.status !== 'concluída' && t.status !== 'cancelada')
-        .sort((a, b) => ['crítica', 'alta', 'média', 'baixa'].indexOf(a.prioridade) - ['crítica', 'alta', 'média', 'baixa'].indexOf(b.prioridade));
-      case 'por-meta': return tarefas.filter(t => t.status !== 'concluída' && t.status !== 'cancelada');
-      default: return tarefas;
+  // Filtrar tarefas para o Kanban
+  const tarefasFiltradas = (() => {
+    let ts = data.tarefas;
+    if (busca) ts = ts.filter(t => t.titulo.toLowerCase().includes(busca.toLowerCase()));
+    switch (filtro) {
+      case 'hoje': return ts.filter(t => eHoje(t.prazo));
+      case 'semana': return ts.filter(t => eSemanaAtual(t.prazo));
+      case 'atrasadas': return ts.filter(t => eAtrasada(t.prazo) && t.status !== 'concluído');
+      case 'por-meta': return ts;
+      case 'urgente':
+      case 'alto impacto':
+      case 'médio impacto':
+      case 'baixo impacto':
+        return ts.filter(t => t.faixa === filtro);
+      default: return ts;
     }
-  };
+  })();
 
-  const tarefasFiltradas = getTarefasFiltradas();
+  const porStatus = (s: StatusTarefa) => tarefasFiltradas.filter(t => t.status === s);
 
-  const metasAgrupadas = visualizacao === 'por-meta'
-    ? [...new Set(tarefasFiltradas.map(t => t.metaId ?? 'sem-meta'))]
-    : null;
-
-  const renderTarefa = (tarefa: Tarefa) => {
-    const meta = data.metas.find(m => m.id === tarefa.metaId);
-    const atrasada = eAtrasada(tarefa.prazo);
-
-    return (
-      <div
-        key={tarefa.id}
-        className={`flex items-start gap-3 p-4 rounded-xl border transition-all
-          ${atrasada ? 'border-danger-200 dark:border-danger-700 bg-danger-50 dark:bg-danger-900/10' : 'border-surface-200 dark:border-surface-700 hover:border-primary-200 dark:hover:border-primary-700'}
-        `}
-      >
-        <button
-          onClick={() => concluir(tarefa.id)}
-          className="mt-0.5 w-5 h-5 rounded-full border-2 flex-shrink-0 transition-all
-            border-surface-300 dark:border-surface-600 hover:border-success-500 hover:bg-success-50 dark:hover:bg-success-900/20"
-          title="Concluir tarefa"
-        />
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-1.5 mb-1">
-            {!tarefa.metaId && (
-              <Badge className="bg-warning-100 text-warning-700 dark:bg-warning-600/20 dark:text-warning-400">
-                ⚠ Sem meta
-              </Badge>
-            )}
-            {atrasada && <Badge className="bg-danger-100 text-danger-700 dark:bg-danger-600/20 dark:text-danger-400">Atrasada</Badge>}
-            <Badge className={corCategoria(tarefa.categoria)}>{tarefa.categoria}</Badge>
-            <Badge className={corPrioridade(tarefa.prioridade)}>{tarefa.prioridade}</Badge>
-            <Badge className={corStatus(tarefa.status)}>{tarefa.status}</Badge>
-          </div>
-          <p className="font-medium text-surface-900 dark:text-white text-sm">{tarefa.titulo}</p>
-          <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-surface-400 dark:text-surface-500">
-            {meta && <span className="truncate">{meta.nome}</span>}
-            <span className="flex items-center gap-1"><Clock size={11} />{formatarMinutos(tarefa.tempoEstimado)}</span>
-            <span className="flex items-center gap-1"><Calendar size={11} />{formatarData(tarefa.prazo)}</span>
-          </div>
-          {tarefa.observacoes && <p className="text-xs text-surface-400 dark:text-surface-500 mt-1 italic">{tarefa.observacoes}</p>}
-        </div>
-        <div className="flex flex-col gap-1 flex-shrink-0">
-          <button onClick={() => abrirEditar(tarefa)} className="p-1.5 rounded text-surface-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"><Pencil size={13} /></button>
-          <button onClick={() => reagendar(tarefa.id)} className="p-1.5 rounded text-surface-400 hover:text-warning-600 hover:bg-warning-50 dark:hover:bg-warning-900/20 transition-colors"><Calendar size={13} /></button>
-          {tarefa.tipo === 'semanal' && (
-            <button onClick={() => dividirEmDiarias(tarefa)} title="Dividir em tarefas diárias" className="p-1.5 rounded text-surface-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors"><Filter size={13} /></button>
-          )}
-          <button onClick={() => excluir(tarefa.id)} className="p-1.5 rounded text-surface-400 hover:text-danger-600 hover:bg-danger-50 dark:hover:bg-danger-900/20 transition-colors"><Trash2 size={13} /></button>
-        </div>
-      </div>
-    );
-  };
-
-  const tabs: { id: Visualizacao; label: string }[] = [
-    { id: 'hoje', label: 'Hoje' },
+  const filtroBotoes: { id: FiltroAtivo; label: string; badge?: number }[] = [
+    { id: 'todos', label: 'Todas' },
+    { id: 'hoje', label: 'Hoje', badge: data.tarefas.filter(t => eHoje(t.prazo) && t.status !== 'concluído').length },
     { id: 'semana', label: 'Semana' },
-    { id: 'mes', label: 'Mês' },
-    { id: 'atrasadas', label: 'Atrasadas' },
-    { id: 'por-meta', label: 'Por Meta' },
-    { id: 'por-prioridade', label: 'Por Prioridade' },
+    { id: 'atrasadas', label: 'Atrasadas', badge: data.tarefas.filter(t => eAtrasada(t.prazo) && t.status !== 'concluído').length },
+    { id: 'urgente', label: 'UG' },
+    { id: 'alto impacto', label: 'AI' },
+    { id: 'médio impacto', label: 'MI' },
+    { id: 'baixo impacto', label: 'BI' },
   ];
 
+  const activeDragTarefa = activeDragId ? data.tarefas.find(t => t.id === activeDragId) : null;
+
+  const colunas: { status: StatusTarefa; label: string }[] = [
+    { status: 'não iniciado', label: 'Não Iniciado' },
+    { status: 'em andamento', label: 'Em Andamento' },
+    { status: 'concluído', label: 'Concluído' },
+  ];
+
+  const pendentes = data.tarefas.filter(t => t.status !== 'concluído').length;
+
   return (
-    <div className="max-w-4xl mx-auto space-y-5 animate-fade-in">
+    <div className="max-w-7xl mx-auto space-y-4 animate-fade-in">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
         <div>
           <h2 className="text-xl font-bold text-surface-900 dark:text-white">Plano de Ação</h2>
-          <p className="text-sm text-surface-500 dark:text-surface-400">
-            {data.tarefas.filter(t => t.status === 'pendente' || t.status === 'em andamento').length} tarefas pendentes
-          </p>
+          <p className="text-sm text-surface-500 dark:text-surface-400">{pendentes} tarefa{pendentes !== 1 ? 's' : ''} em aberto</p>
         </div>
         <Button icon={<Plus size={16} />} onClick={abrirNova}>Nova Tarefa</Button>
       </div>
 
-      {/* Tabs de visualização */}
-      <div className="flex overflow-x-auto gap-1 pb-1">
-        {tabs.map(tab => (
+      {/* Filtros */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {filtroBotoes.map(fb => (
           <button
-            key={tab.id}
-            onClick={() => setVisualizacao(tab.id)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all
-              ${visualizacao === tab.id
+            key={fb.id}
+            onClick={() => setFiltro(fb.id)}
+            className={`relative px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all
+              ${filtro === fb.id
                 ? 'bg-primary-600 text-white'
                 : 'text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700'
               }`}
           >
-            {tab.label}
-            {tab.id === 'atrasadas' && data.tarefas.filter(t => eAtrasada(t.prazo) && t.status !== 'concluída' && t.status !== 'cancelada').length > 0 && (
-              <span className="ml-1 bg-danger-600 text-white text-xs rounded-full px-1.5 py-0.5">
-                {data.tarefas.filter(t => eAtrasada(t.prazo) && t.status !== 'concluída' && t.status !== 'cancelada').length}
-              </span>
+            {fb.label}
+            {fb.badge !== undefined && fb.badge > 0 && (
+              <span className="ml-1 bg-danger-600 text-white text-[10px] rounded-full px-1.5 py-0.5">{fb.badge}</span>
             )}
           </button>
         ))}
@@ -279,43 +424,37 @@ export function PlanoAcaoPage() {
         />
       </div>
 
-      {/* Lista de tarefas */}
-      <Card>
-        <CardBody className="!px-4 !pb-4">
-          {tarefasFiltradas.length === 0 ? (
-            <div className="text-center py-10">
-              <ListChecks size={40} className="mx-auto text-surface-300 dark:text-surface-600 mb-3" />
-              <p className="text-surface-500 dark:text-surface-400 text-sm">Nenhuma tarefa encontrada</p>
-              <Button className="mt-4" size="sm" icon={<Plus size={14} />} onClick={abrirNova}>Criar tarefa</Button>
-            </div>
-          ) : visualizacao === 'por-meta' && metasAgrupadas ? (
-            <div className="space-y-6">
-              {metasAgrupadas.map(metaId => {
-                const meta = data.metas.find(m => m.id === metaId);
-                const tarefasDaVis = tarefasFiltradas.filter(t => (t.metaId ?? 'sem-meta') === metaId);
-                return (
-                  <div key={metaId}>
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="w-2 h-2 rounded-full bg-primary-600" />
-                      <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300">
-                        {meta?.nome ?? '⚠ Sem meta vinculada'}
-                      </h3>
-                      <span className="text-xs text-surface-400">({tarefasDaVis.length})</span>
-                    </div>
-                    <div className="space-y-2 pl-4">
-                      {tarefasDaVis.map(renderTarefa)}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {tarefasFiltradas.map(renderTarefa)}
-            </div>
+      {/* Kanban */}
+      <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {colunas.map(col => (
+            <KanbanColuna
+              key={col.status}
+              status={col.status}
+              label={col.label}
+              tarefas={porStatus(col.status)}
+              metas={data.metas}
+              count={porStatus(col.status).length}
+              onEdit={abrirEditar}
+              onDelete={excluir}
+              onMover={moverTarefa}
+            />
+          ))}
+        </div>
+
+        <DragOverlay>
+          {activeDragTarefa && (
+            <TarefaCard
+              tarefa={activeDragTarefa}
+              meta={data.metas.find(m => m.id === activeDragTarefa.metaId)}
+              onEdit={() => {}}
+              onDelete={() => {}}
+              onMover={() => {}}
+              isDragging
+            />
           )}
-        </CardBody>
-      </Card>
+        </DragOverlay>
+      </DndContext>
 
       {/* Modal nova/editar tarefa */}
       <Modal isOpen={modalAberto} onClose={() => setModalAberto(false)} title={tarefaEditando ? 'Editar Tarefa' : 'Nova Tarefa'} size="lg">
@@ -326,38 +465,111 @@ export function PlanoAcaoPage() {
               <p className="text-xs text-warning-700 dark:text-warning-300">Esta tarefa não está conectada a nenhuma meta.</p>
             </div>
           )}
-          <Input id="tarefa-titulo" label="Título da tarefa" required value={form.titulo} onChange={e => setForm(f => ({ ...f, titulo: e.target.value }))} error={erros.titulo} placeholder="Ex: Estudar inglês por 30 min" />
-          <Select id="tarefa-meta" label="Meta vinculada" value={form.metaId ?? ''} onChange={e => setForm(f => ({ ...f, metaId: e.target.value || null }))}>
+
+          <Input
+            id="tarefa-titulo"
+            label="Título da tarefa"
+            required
+            value={form.titulo}
+            onChange={e => setForm(f => ({ ...f, titulo: e.target.value }))}
+            error={erros.titulo}
+            placeholder="Ex: Estudar inglês por 30 min"
+          />
+
+          <Select
+            id="tarefa-meta"
+            label="Meta vinculada"
+            value={form.metaId ?? ''}
+            onChange={e => setForm(f => ({ ...f, metaId: e.target.value || null }))}
+          >
             <option value="">— Sem meta —</option>
-            {data.metas.filter(m => m.status === 'ativa').map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
+            {data.metas.filter(m => m.status === 'ativa').map(m => (
+              <option key={m.id} value={m.id}>{m.nome}</option>
+            ))}
           </Select>
+
           <div className="grid grid-cols-2 gap-3">
-            <Select id="tarefa-categoria" label="Categoria" value={form.categoria} onChange={e => setForm(f => ({ ...f, categoria: e.target.value as Categoria }))}>
+            <Select
+              id="tarefa-categoria"
+              label="Categoria"
+              value={form.categoria}
+              onChange={e => setForm(f => ({ ...f, categoria: e.target.value as Categoria }))}
+            >
               {categorias.map(c => <option key={c} value={c}>{c}</option>)}
             </Select>
-            <Select id="tarefa-tipo" label="Tipo" value={form.tipo} onChange={e => setForm(f => ({ ...f, tipo: e.target.value as TipoTarefa }))}>
-              {tiposList.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+
+            <Select
+              id="tarefa-faixa"
+              label="Faixa de impacto"
+              value={form.faixa}
+              onChange={e => setForm(f => ({ ...f, faixa: e.target.value as FaixaTarefa }))}
+            >
+              {faixaList.map(f => (
+                <option key={f} value={f}>{labelFaixa(f)}</option>
+              ))}
             </Select>
           </div>
+
           <div className="grid grid-cols-2 gap-3">
-            <Input id="tarefa-prazo" label="Prazo" required type="date" value={form.prazo} onChange={e => setForm(f => ({ ...f, prazo: e.target.value }))} error={erros.prazo} />
+            <Input
+              id="tarefa-prazo"
+              label="Prazo"
+              required
+              type="date"
+              value={form.prazo}
+              onChange={e => setForm(f => ({ ...f, prazo: e.target.value }))}
+              error={erros.prazo}
+            />
             <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium text-surface-700 dark:text-surface-300">Tempo estimado: {formatarMinutos(form.tempoEstimado)}</label>
-              <input type="range" min={5} max={240} step={5} value={form.tempoEstimado} onChange={e => setForm(f => ({ ...f, tempoEstimado: Number(e.target.value) }))} className="w-full accent-primary-600" />
+              <label className="text-sm font-medium text-surface-700 dark:text-surface-300">
+                Tempo estimado: {formatarMinutos(form.tempoEstimado)}
+              </label>
+              <input
+                type="range"
+                min={5}
+                max={240}
+                step={5}
+                value={form.tempoEstimado}
+                onChange={e => setForm(f => ({ ...f, tempoEstimado: Number(e.target.value) }))}
+                className="w-full accent-primary-600"
+              />
             </div>
           </div>
+
           <div className="grid grid-cols-2 gap-3">
-            <Select id="tarefa-prioridade" label="Prioridade" value={form.prioridade} onChange={e => setForm(f => ({ ...f, prioridade: e.target.value as Prioridade }))}>
-              {prioridades.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
+            <Select
+              id="tarefa-status"
+              label="Status"
+              value={form.status}
+              onChange={e => setForm(f => ({ ...f, status: e.target.value as StatusTarefa }))}
+            >
+              {statusList.map(s => (
+                <option key={s} value={s}>
+                  {s === 'não iniciado' ? 'Não Iniciado' : s === 'em andamento' ? 'Em Andamento' : 'Concluído'}
+                </option>
+              ))}
             </Select>
-            <Select id="tarefa-energia" label="Energia necessária" value={form.energiaNecessaria} onChange={e => setForm(f => ({ ...f, energiaNecessaria: e.target.value as NivelEnergia }))}>
-              {energiaList.map(e => <option key={e} value={e}>{e.charAt(0).toUpperCase() + e.slice(1)}</option>)}
+
+            <Select
+              id="tarefa-energia"
+              label="Energia necessária"
+              value={form.energiaNecessaria}
+              onChange={e => setForm(f => ({ ...f, energiaNecessaria: e.target.value as NivelEnergia }))}
+            >
+              {energiaList.map(e => (
+                <option key={e} value={e}>{e.charAt(0).toUpperCase() + e.slice(1)}</option>
+              ))}
             </Select>
           </div>
-          <Select id="tarefa-status" label="Status" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as StatusTarefa }))}>
-            {statusList.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
-          </Select>
-          <Textarea id="tarefa-obs" label="Observações" value={form.observacoes} onChange={e => setForm(f => ({ ...f, observacoes: e.target.value }))} placeholder="Detalhes, links, referências..." />
+
+          <Textarea
+            id="tarefa-obs"
+            label="Observações"
+            value={form.observacoes}
+            onChange={e => setForm(f => ({ ...f, observacoes: e.target.value }))}
+            placeholder="Detalhes, links, referências..."
+          />
+
           <div className="flex gap-3 pt-2">
             <Button variant="secondary" className="flex-1" onClick={() => setModalAberto(false)}>Cancelar</Button>
             <Button className="flex-1" onClick={salvar}>{tarefaEditando ? 'Salvar' : 'Criar tarefa'}</Button>
