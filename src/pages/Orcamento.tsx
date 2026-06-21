@@ -150,8 +150,12 @@ export function OrcamentoPage() {
   });
   const receitasMes = receitasFiltradas.reduce((a, r) => a + r.valor, 0);
 
-  // Despesas que NÃO são cartão de crédito (evita duplicação com faturas)
-  const despesasSemCartao = despesasFiltradas.filter(d => d.formaPagamento !== 'Cartão de crédito');
+  // Despesas que contam diretamente (não via fatura):
+  // - tudo que não é cartão de crédito
+  // - cartão de crédito SEM faturaId (à vista, sem vínculo com fatura — não duplica)
+  const despesasSemCartao = despesasFiltradas.filter(d =>
+    d.formaPagamento !== 'Cartão de crédito' || !d.faturaId
+  );
   // Faturas com competência no mês filtrado
   const competenciaMesFiltro = `${mesFiltro.ano}-${String(mesFiltro.mes + 1).padStart(2, '0')}`;
   const faturasMes = (data.faturas ?? []).filter(f => f.competencia === competenciaMesFiltro);
