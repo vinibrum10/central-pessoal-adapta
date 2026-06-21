@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Mail, Lock, User, Eye, EyeOff, AlertCircle, ShieldCheck } from 'lucide-react';
+import { Mail, Lock, User, Eye, EyeOff, AlertCircle, ShieldCheck, KeyRound } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/Button';
 
@@ -34,12 +34,11 @@ function MicrosoftIcon() {
   );
 }
 
-const googleConfigurado = !!(import.meta.env.VITE_GOOGLE_CLIENT_ID as string);
-const microsoftConfigurado = !!(import.meta.env.VITE_MICROSOFT_CLIENT_ID as string);
+type Modo = 'login' | 'cadastro' | 'recuperar';
 
 export function LoginPage() {
-  const { signIn, signUp, signInWithGoogle, signInWithMicrosoft } = useAuth();
-  const [modo, setModo] = useState<'login' | 'cadastro'>('login');
+  const { signIn, signUp, signInWithGoogle, signInWithMicrosoft, recuperarSenha } = useAuth();
+  const [modo, setModo] = useState<Modo>('login');
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [nome, setNome] = useState('');
@@ -50,10 +49,23 @@ export function LoginPage() {
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState('');
 
+  const trocarModo = (m: Modo) => { setModo(m); setErro(''); setSucesso(''); };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErro('');
     setSucesso('');
+
+    if (modo === 'recuperar') {
+      if (!email) { setErro('Informe seu e-mail.'); return; }
+      setCarregando(true);
+      const { error } = await recuperarSenha(email);
+      if (error) setErro(error);
+      else setSucesso('E-mail enviado! Verifique sua caixa de entrada e clique no link para redefinir sua senha.');
+      setCarregando(false);
+      return;
+    }
+
     if (!email || !senha) { setErro('Preencha e-mail e senha.'); return; }
     if (modo === 'cadastro' && !nome) { setErro('Informe seu nome.'); return; }
 
@@ -64,17 +76,13 @@ export function LoginPage() {
     } else {
       const { error } = await signUp(email, senha, nome);
       if (error) setErro(error);
-      else setSucesso('Conta criada! Verifique seu e-mail para confirmar o cadastro.');
+      else setSucesso('Conta criada! Aguarde a aprovação do administrador para acessar o sistema.');
     }
     setCarregando(false);
   };
 
   const handleGoogle = async () => {
     setErro('');
-    if (!googleConfigurado) {
-      setErro('Configure o provedor Google no Supabase Auth para usar este login.');
-      return;
-    }
     setCarregandoGoogle(true);
     const { error } = await signInWithGoogle();
     if (error) setErro(error);
@@ -83,15 +91,13 @@ export function LoginPage() {
 
   const handleMicrosoft = async () => {
     setErro('');
-    if (!microsoftConfigurado) {
-      setErro('Configure o provedor Microsoft (Azure) no Supabase Auth para usar este login.');
-      return;
-    }
     setCarregandoMicrosoft(true);
     const { error } = await signInWithMicrosoft();
     if (error) setErro(error);
     setCarregandoMicrosoft(false);
   };
+
+  const titulo = modo === 'login' ? 'Entrar na sua conta' : modo === 'cadastro' ? 'Criar conta' : 'Recuperar senha';
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-surface-50 dark:bg-surface-900 p-4">
@@ -109,40 +115,41 @@ export function LoginPage() {
 
         {/* Card */}
         <div className="bg-white dark:bg-surface-800 rounded-2xl shadow-xl border border-surface-200 dark:border-surface-700 p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-surface-900 dark:text-white text-center">
-            {modo === 'login' ? 'Entrar na sua conta' : 'Criar conta'}
-          </h2>
+          <h2 className="text-lg font-semibold text-surface-900 dark:text-white text-center">{titulo}</h2>
 
-          {/* Botões sociais — sempre visíveis */}
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={handleGoogle}
-              disabled={carregandoGoogle}
-              className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-900 text-sm font-medium text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors disabled:opacity-50"
-            >
-              <GoogleIcon />
-              <span className="text-xs">{carregandoGoogle ? '...' : 'Google'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleMicrosoft}
-              disabled={carregandoMicrosoft}
-              className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-900 text-sm font-medium text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors disabled:opacity-50"
-            >
-              <MicrosoftIcon />
-              <span className="text-xs">{carregandoMicrosoft ? '...' : 'Microsoft'}</span>
-            </button>
-          </div>
-
-          {/* Separador */}
-          <div className="flex items-center gap-3">
-            <div className="flex-1 h-px bg-surface-200 dark:bg-surface-700" />
-            <span className="text-xs text-surface-400 dark:text-surface-500">ou continue com e-mail</span>
-            <div className="flex-1 h-px bg-surface-200 dark:bg-surface-700" />
-          </div>
+          {/* Botões sociais — apenas login e cadastro */}
+          {modo !== 'recuperar' && (
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={handleGoogle}
+                  disabled={carregandoGoogle}
+                  className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-900 text-sm font-medium text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors disabled:opacity-50"
+                >
+                  <GoogleIcon />
+                  <span className="text-xs">{carregandoGoogle ? '...' : 'Google'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleMicrosoft}
+                  disabled={carregandoMicrosoft}
+                  className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-900 text-sm font-medium text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors disabled:opacity-50"
+                >
+                  <MicrosoftIcon />
+                  <span className="text-xs">{carregandoMicrosoft ? '...' : 'Microsoft'}</span>
+                </button>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px bg-surface-200 dark:bg-surface-700" />
+                <span className="text-xs text-surface-400 dark:text-surface-500">ou continue com e-mail</span>
+                <div className="flex-1 h-px bg-surface-200 dark:bg-surface-700" />
+              </div>
+            </>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-3">
+            {/* Campo nome — só cadastro */}
             {modo === 'cadastro' && (
               <div className="relative">
                 <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400" />
@@ -156,6 +163,7 @@ export function LoginPage() {
               </div>
             )}
 
+            {/* Campo e-mail */}
             <div className="relative">
               <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400" />
               <input
@@ -168,32 +176,49 @@ export function LoginPage() {
               />
             </div>
 
-            <div className="relative">
-              <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400" />
-              <input
-                type={mostrarSenha ? 'text' : 'password'}
-                placeholder="Senha"
-                value={senha}
-                onChange={e => setSenha(e.target.value)}
-                autoComplete={modo === 'login' ? 'current-password' : 'new-password'}
-                className="w-full pl-9 pr-10 py-2.5 rounded-lg border text-sm bg-white dark:bg-surface-900 border-surface-300 dark:border-surface-600 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-              />
-              <button
-                type="button"
-                onClick={() => setMostrarSenha(v => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
-              >
-                {mostrarSenha ? <EyeOff size={15} /> : <Eye size={15} />}
-              </button>
-            </div>
+            {/* Campo senha — login e cadastro */}
+            {modo !== 'recuperar' && (
+              <div className="relative">
+                <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400" />
+                <input
+                  type={mostrarSenha ? 'text' : 'password'}
+                  placeholder="Senha"
+                  value={senha}
+                  onChange={e => setSenha(e.target.value)}
+                  autoComplete={modo === 'login' ? 'current-password' : 'new-password'}
+                  className="w-full pl-9 pr-10 py-2.5 rounded-lg border text-sm bg-white dark:bg-surface-900 border-surface-300 dark:border-surface-600 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setMostrarSenha(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
+                >
+                  {mostrarSenha ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+            )}
 
+            {/* Link esqueceu senha — só no login */}
+            {modo === 'login' && (
+              <div className="text-right">
+                <button
+                  type="button"
+                  onClick={() => trocarModo('recuperar')}
+                  className="text-xs text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-1 ml-auto"
+                >
+                  <KeyRound size={11} />
+                  Esqueceu sua senha?
+                </button>
+              </div>
+            )}
+
+            {/* Feedback */}
             {erro && (
               <div className="flex items-start gap-2 text-xs text-danger-600 dark:text-danger-400 bg-danger-50 dark:bg-danger-900/20 border border-danger-200 dark:border-danger-800 rounded-lg px-3 py-2">
                 <AlertCircle size={13} className="flex-shrink-0 mt-0.5" />
                 {erro}
               </div>
             )}
-
             {sucesso && (
               <div className="text-xs text-success-600 dark:text-success-400 bg-success-50 dark:bg-success-900/20 border border-success-200 dark:border-success-800 rounded-lg px-3 py-2">
                 {sucesso}
@@ -201,24 +226,42 @@ export function LoginPage() {
             )}
 
             <Button type="submit" loading={carregando} className="w-full">
-              {modo === 'login' ? 'Entrar' : 'Criar conta'}
+              {modo === 'login' ? 'Entrar' : modo === 'cadastro' ? 'Criar conta' : 'Enviar link de recuperação'}
             </Button>
           </form>
 
           {/* Aviso de acesso */}
-          <div className="flex items-center gap-2 text-xs text-surface-400 dark:text-surface-500 bg-surface-50 dark:bg-surface-700/30 rounded-lg px-3 py-2">
-            <ShieldCheck size={13} className="flex-shrink-0 text-primary-500" />
-            <span>Acesso protegido. Novos usuários precisam de aprovação.</span>
-          </div>
+          {modo !== 'recuperar' && (
+            <div className="flex items-center gap-2 text-xs text-surface-400 dark:text-surface-500 bg-surface-50 dark:bg-surface-700/30 rounded-lg px-3 py-2">
+              <ShieldCheck size={13} className="flex-shrink-0 text-primary-500" />
+              <span>Acesso protegido. Novos usuários precisam de aprovação.</span>
+            </div>
+          )}
 
+          {/* Troca de modo */}
           <p className="text-center text-xs text-surface-500 dark:text-surface-400">
-            {modo === 'login' ? 'Ainda não tem conta?' : 'Já tem conta?'}{' '}
-            <button
-              onClick={() => { setModo(modo === 'login' ? 'cadastro' : 'login'); setErro(''); setSucesso(''); }}
-              className="text-primary-600 dark:text-primary-400 font-medium hover:underline"
-            >
-              {modo === 'login' ? 'Criar agora' : 'Fazer login'}
-            </button>
+            {modo === 'recuperar' ? (
+              <>
+                Lembrou a senha?{' '}
+                <button onClick={() => trocarModo('login')} className="text-primary-600 dark:text-primary-400 font-medium hover:underline">
+                  Fazer login
+                </button>
+              </>
+            ) : modo === 'login' ? (
+              <>
+                Ainda não tem conta?{' '}
+                <button onClick={() => trocarModo('cadastro')} className="text-primary-600 dark:text-primary-400 font-medium hover:underline">
+                  Criar agora
+                </button>
+              </>
+            ) : (
+              <>
+                Já tem conta?{' '}
+                <button onClick={() => trocarModo('login')} className="text-primary-600 dark:text-primary-400 font-medium hover:underline">
+                  Fazer login
+                </button>
+              </>
+            )}
           </p>
         </div>
 

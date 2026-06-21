@@ -20,6 +20,7 @@ interface AuthContextType {
   recarregarPerfil: () => Promise<void>;
   signInWithGoogle: () => Promise<{ error: string | null }>;
   signInWithMicrosoft: () => Promise<{ error: string | null }>;
+  recuperarSenha: (email: string) => Promise<{ error: string | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -196,6 +197,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error?.message ?? null };
   };
 
+  const recuperarSenha = async (email: string): Promise<{ error: string | null }> => {
+    if (!isSupabaseConfigured) return { error: 'Supabase não configurado.' };
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/redefinir-senha`,
+    });
+    return { error: error?.message ?? null };
+  };
+
   // Role e status derivados do perfil (fallback admin em modo local dev)
   const role: RoleUsuario = (isSupabaseConfigured && user) ? (perfil?.role ?? 'visualizador') : (modoLocalAtivo ? 'admin' : 'visualizador');
   const statusConta: StatusUsuario = (isSupabaseConfigured && user) ? (perfil?.status ?? 'pendente') : (modoLocalAtivo ? 'aprovado' : 'pendente');
@@ -210,7 +219,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ultimoAcesso,
       signIn, signUp, signOut,
       recarregarPerfil,
-      signInWithGoogle, signInWithMicrosoft,
+      signInWithGoogle, signInWithMicrosoft, recuperarSenha,
     }}>
       {children}
     </AuthContext.Provider>

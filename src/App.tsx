@@ -11,26 +11,35 @@ import { OrcamentoPage } from './pages/Orcamento';
 import { LeituraDiariaPage } from './pages/LeituraDiaria';
 import { ConfiguracoesPage } from './pages/Configuracoes';
 import { UsuariosPage } from './pages/Usuarios';
+import { RedefinirSenhaPage } from './pages/RedefinirSenha';
 
 function App() {
   return (
     <AuthProvider>
       <AppProvider>
         <BrowserRouter>
-          <ProtectedRoute>
-            <Layout>
-              <Routes>
-                <Route path="/" element={<InicioPage />} />
-                <Route path="/metas" element={<MetasPage />} />
-                <Route path="/plano" element={<PlanoAcaoPage />} />
-                <Route path="/agenda" element={<AgendaTempoPage />} />
-                <Route path="/orcamento" element={<OrcamentoPage />} />
-                <Route path="/leitura" element={<LeituraDiariaPage />} />
-                <Route path="/configuracoes" element={<ConfiguracoesPage />} />
-                <Route path="/usuarios" element={<UsuariosPage />} />
-              </Routes>
-            </Layout>
-          </ProtectedRoute>
+          <Routes>
+            {/* Rota pública — redefinição de senha via link do e-mail */}
+            <Route path="/redefinir-senha" element={<RedefinirSenhaPage />} />
+
+            {/* Rotas protegidas */}
+            <Route path="/*" element={
+              <ProtectedRoute>
+                <Layout>
+                  <Routes>
+                    <Route path="/" element={<InicioPage />} />
+                    <Route path="/metas" element={<MetasPage />} />
+                    <Route path="/plano" element={<PlanoAcaoPage />} />
+                    <Route path="/agenda" element={<AgendaTempoPage />} />
+                    <Route path="/orcamento" element={<OrcamentoPage />} />
+                    <Route path="/leitura" element={<LeituraDiariaPage />} />
+                    <Route path="/configuracoes" element={<ConfiguracoesPage />} />
+                    <Route path="/usuarios" element={<UsuariosPage />} />
+                  </Routes>
+                </Layout>
+              </ProtectedRoute>
+            } />
+          </Routes>
         </BrowserRouter>
       </AppProvider>
     </AuthProvider>
