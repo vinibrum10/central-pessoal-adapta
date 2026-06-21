@@ -430,4 +430,7 @@ export const dadosDemonstracaoInicial: AppData = {
       dataCriacao: fmt(subDays(hoje, 15)),
     },
   ],
+
+  eventosAgenda: [],
+  configuracoesAgenda: [],
 };

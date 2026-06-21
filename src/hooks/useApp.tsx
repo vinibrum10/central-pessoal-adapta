@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
-import type { AppData, Tarefa, FaixaTarefa, StatusTarefa, Meta, FrequenciaRevisao, StatusMeta } from '../types';
+import type { AppData, Tarefa, FaixaTarefa, StatusTarefa, Meta, FrequenciaRevisao, StatusMeta, EventoAgenda, ConfiguracaoAgenda } from '../types';
 import { dadosDemonstracaoInicial } from '../data/dadosDemonstracao';
 
 const STORAGE_KEY = 'adapta-central-pessoal-v1';
@@ -122,6 +122,24 @@ function migrarTarefas(raw: Record<string, unknown>[]): Tarefa[] {
   });
 }
 
+// ---- Migração de eventos de agenda ----
+function migrarEventosAgenda(raw: Record<string, unknown>[]): EventoAgenda[] {
+  return raw.map(e => ({
+    id: (e.id as string) || '',
+    fonte: (e.fonte as EventoAgenda['fonte']) || 'manual',
+    titulo: (e.titulo as string) || '',
+    descricao: (e.descricao as string | undefined),
+    inicio: (e.inicio as string) || '',
+    fim: (e.fim as string) || '',
+    diaInteiro: Boolean(e.diaInteiro),
+    local: (e.local as string | undefined),
+    bloqueiaTempo: e.bloqueiaTempo !== false,
+    importadoEm: (e.importadoEm as string) || new Date().toISOString(),
+    tarefaGeradaId: (e.tarefaGeradaId as string | null | undefined) ?? null,
+    ignorado: Boolean(e.ignorado),
+  }));
+}
+
 // ---- Migração geral do AppData ----
 function migrarDados(raw: Record<string, unknown>): AppData {
   const base = dadosDemonstracaoInicial;
@@ -141,6 +159,13 @@ function migrarDados(raw: Record<string, unknown>): AppData {
     reservas: Array.isArray(raw.reservas) ? (raw.reservas as AppData['reservas']) : base.reservas,
     bens: Array.isArray(raw.bens) ? (raw.bens as AppData['bens']) : base.bens,
     configuracoes: (raw.configuracoes as AppData['configuracoes']) ?? base.configuracoes,
+    // Novos campos — migração segura com fallback para array vazio
+    eventosAgenda: Array.isArray(raw.eventosAgenda)
+      ? migrarEventosAgenda(raw.eventosAgenda as Record<string, unknown>[])
+      : [],
+    configuracoesAgenda: Array.isArray(raw.configuracoesAgenda)
+      ? (raw.configuracoesAgenda as ConfiguracaoAgenda[])
+      : [],
   };
 }
 
@@ -224,6 +249,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       dividas: [],
       reservas: [],
       bens: [],
+      eventosAgenda: [],
+      configuracoesAgenda: [],
     };
     setDataState(empty);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(empty));

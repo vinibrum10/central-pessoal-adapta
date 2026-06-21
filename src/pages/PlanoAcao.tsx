@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   DndContext, DragOverlay, PointerSensor, TouchSensor,
   useSensor, useSensors, useDroppable, useDraggable,
@@ -6,8 +6,11 @@ import {
 } from '@dnd-kit/core';
 import {
   Plus, Pencil, Trash2, Calendar, Clock, Search,
-  AlertCircle, GripVertical, ChevronDown, ChevronUp
+  AlertCircle, GripVertical, ChevronDown, ChevronUp,
+  Zap, AlertTriangle,
 } from 'lucide-react';
+import { calcularDisponibilidadeDia } from '../utils/calendarAvailability';
+import { formatarMinutos as fmtMin } from '../utils';
 import { useApp } from '../hooks/useApp';
 import type { Tarefa, Categoria, FaixaTarefa, StatusTarefa, NivelEnergia } from '../types';
 import { Badge } from '../components/Badge';
@@ -381,6 +384,21 @@ export function PlanoAcaoPage() {
 
   const pendentes = data.tarefas.filter(t => t.status !== 'concluído').length;
 
+  // ── Painel de disponibilidade do dia ──
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const dispHoje = useMemo(
+    () => calcularDisponibilidadeDia(hojeISO(), data.eventosAgenda),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data.eventosAgenda]
+  );
+
+  const tarefasHoje = data.tarefas.filter(
+    t => t.status !== 'concluído' && t.prazo === hojeISO()
+  );
+  const minutosPlanejadasHoje = tarefasHoje.reduce((acc, t) => acc + t.tempoEstimado, 0);
+  const saldo = dispHoje.minutosDisponiveis - minutosPlanejadasHoje;
+  const temAgenda = data.eventosAgenda.length > 0;
+
   return (
     <div className="max-w-7xl mx-auto space-y-4 animate-fade-in">
       {/* Header */}
@@ -390,6 +408,81 @@ export function PlanoAcaoPage() {
           <p className="text-sm text-surface-500 dark:text-surface-400">{pendentes} tarefa{pendentes !== 1 ? 's' : ''} em aberto</p>
         </div>
         <Button icon={<Plus size={16} />} onClick={abrirNova}>Nova Tarefa</Button>
+      </div>
+
+      {/* ── PAINEL DE DISPONIBILIDADE DO DIA ── */}
+      <div className={`rounded-2xl border p-4 flex flex-wrap items-center gap-4 ${
+        !temAgenda
+          ? 'bg-surface-50 dark:bg-surface-800 border-surface-200 dark:border-surface-700'
+          : saldo < 0
+          ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-700/50'
+          : 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-700/50'
+      }`}>
+        {/* Tempo disponível */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${temAgenda ? 'bg-emerald-100 dark:bg-emerald-900/30' : 'bg-surface-100 dark:bg-surface-700'}`}>
+            <Clock size={18} className={temAgenda ? 'text-emerald-600 dark:text-emerald-400' : 'text-surface-400'} />
+          </div>
+          <div>
+            <p className="text-xs text-surface-400 dark:text-surface-500">Disponível hoje</p>
+            <p className="text-lg font-extrabold text-surface-900 dark:text-white">{fmtMin(dispHoje.minutosDisponiveis)}</p>
+          </div>
+        </div>
+
+        {/* Divisor */}
+        <div className="hidden sm:block w-px h-10 bg-surface-200 dark:bg-surface-700" />
+
+        {/* Ocupado */}
+        <div className="flex-shrink-0">
+          <p className="text-xs text-surface-400 dark:text-surface-500">Ocupado</p>
+          <p className="text-sm font-bold text-red-600 dark:text-red-400">{fmtMin(dispHoje.minutosOcupados)}</p>
+        </div>
+
+        {/* Janela */}
+        <div className="flex-shrink-0">
+          <p className="text-xs text-surface-400 dark:text-surface-500">Janela útil</p>
+          <p className="text-sm font-bold text-surface-700 dark:text-surface-200">{dispHoje.inicioJanela} – {dispHoje.fimJanela}</p>
+        </div>
+
+        {/* Eventos */}
+        <div className="flex-shrink-0">
+          <p className="text-xs text-surface-400 dark:text-surface-500">Eventos</p>
+          <p className="text-sm font-bold text-surface-700 dark:text-surface-200">{dispHoje.eventos.length}</p>
+        </div>
+
+        {/* Tarefas planejadas */}
+        <div className="flex-shrink-0">
+          <p className="text-xs text-surface-400 dark:text-surface-500">Tarefas para hoje</p>
+          <p className="text-sm font-bold text-surface-700 dark:text-surface-200">{fmtMin(minutosPlanejadasHoje)}</p>
+        </div>
+
+        {/* Saldo */}
+        <div className="flex-shrink-0">
+          <p className="text-xs text-surface-400 dark:text-surface-500">Saldo</p>
+          <p className={`text-sm font-extrabold ${saldo >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+            {saldo >= 0 ? '+' : ''}{fmtMin(Math.abs(saldo))}
+          </p>
+        </div>
+
+        {/* Alerta */}
+        <div className="flex-1 min-w-[200px]">
+          {!temAgenda ? (
+            <div className="flex items-center gap-1.5 text-xs text-surface-400 dark:text-surface-500">
+              <Zap size={12} />
+              <span>Conecte sua agenda em <strong>Agenda e Tempo</strong> para calcular disponibilidade real.</span>
+            </div>
+          ) : saldo < 0 ? (
+            <div className="flex items-center gap-1.5 text-xs text-red-700 dark:text-red-300">
+              <AlertTriangle size={12} className="flex-shrink-0" />
+              <span>Você planejou mais tarefas do que cabe no seu dia. Revise as prioridades.</span>
+            </div>
+          ) : dispHoje.minutosDisponiveis > 0 ? (
+            <div className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-300">
+              <Zap size={12} className="flex-shrink-0" />
+              <span>Há {fmtMin(saldo)} disponíveis para novas ações hoje.</span>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {/* Filtros */}

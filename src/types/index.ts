@@ -200,6 +200,43 @@ export interface BlocoRotina {
   ativo: boolean;
 }
 
+// ---- AGENDA EXTERNA ----
+
+export type FonteAgenda = 'google' | 'microsoft' | 'manual' | 'ics' | 'outro';
+
+export interface EventoAgenda {
+  id: string;
+  fonte: FonteAgenda;
+  titulo: string;
+  descricao?: string;
+  inicio: string;
+  fim: string;
+  diaInteiro: boolean;
+  local?: string;
+  bloqueiaTempo: boolean;
+  importadoEm: string;
+  tarefaGeradaId?: string | null;
+  ignorado?: boolean;
+}
+
+export interface ConfiguracaoAgenda {
+  id: string;
+  fonte: FonteAgenda;
+  nome: string;
+  ativa: boolean;
+  sincronizadaEm?: string | null;
+}
+
+export interface DisponibilidadeDia {
+  data: string;
+  inicioJanela: string;
+  fimJanela: string;
+  minutosJanela: number;
+  minutosOcupados: number;
+  minutosDisponiveis: number;
+  eventos: EventoAgenda[];
+}
+
 // ---- STORE GLOBAL (LocalStorage) ----
 export interface AppData {
   metas: Meta[];
@@ -213,4 +250,6 @@ export interface AppData {
   reservas: Reserva[];
   bens: Bem[];
   configuracoes: Configuracoes;
+  eventosAgenda: EventoAgenda[];
+  configuracoesAgenda: ConfiguracaoAgenda[];
 }
