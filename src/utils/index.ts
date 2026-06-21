@@ -1,6 +1,6 @@
-import { format, isToday, isBefore, differenceInDays, startOfWeek, endOfWeek, isWithinInterval, parseISO } from 'date-fns';
+import { format, isToday, isBefore, differenceInDays, startOfWeek, endOfWeek, isWithinInterval, parseISO, addDays, addMonths, isValid } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import type { Meta, Tarefa, BlocoTempo, NivelEnergia, FaixaTarefa, FrequenciaRevisao, ClassificacaoPrazoMeta } from '../types';
+import type { Meta, Tarefa, BlocoTempo, NivelEnergia, FaixaTarefa, FrequenciaRevisao, ClassificacaoPrazoMeta, PeriodicidadeAcao } from '../types';
 
 // ---- Formatação ----
 export const formatarData = (dateStr: string) =>
@@ -8,6 +8,34 @@ export const formatarData = (dateStr: string) =>
 
 export const formatarDataCompleta = (dateStr: string) =>
   format(parseISO(dateStr), "dd/MM/yyyy", { locale: ptBR });
+
+export const formatarDataLongaBR = (dateStr: string) =>
+  format(parseISO(dateStr), "d 'de' MMMM 'de' yyyy", { locale: ptBR });
+
+/** ISO yyyy-MM-dd → dd/MM/yyyy */
+export const isoParaDataBR = (iso: string): string => {
+  if (!iso) return '';
+  try {
+    return format(parseISO(iso), 'dd/MM/yyyy');
+  } catch { return iso; }
+};
+
+/** dd/MM/yyyy → ISO yyyy-MM-dd (retorna '' se inválido) */
+export const dataBRParaISO = (br: string): string => {
+  if (!br) return '';
+  const parts = br.replace(/\D/g, '');
+  if (parts.length < 8) return '';
+  const iso = `${parts.slice(4, 8)}-${parts.slice(2, 4)}-${parts.slice(0, 2)}`;
+  return isValid(parseISO(iso)) ? iso : '';
+};
+
+/** Percentual bonito: 8.333 → "8,3%" | 43 → "43%" */
+export const formatarPercentual = (valor: number, casas = 1): string => {
+  const clamped = Math.min(100, Math.max(0, Number.isFinite(valor) ? valor : 0));
+  const rounded = parseFloat(clamped.toFixed(casas));
+  if (rounded % 1 === 0) return `${Math.round(rounded)}%`;
+  return `${rounded.toFixed(casas).replace('.', ',')}%`;
+};
 
 export const formatarDinheiro = (valor: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
@@ -330,4 +358,50 @@ export const calcularFaixaAutomaticaTarefa = (
   if (meta.status === 'ativa') return 'médio impacto';
 
   return 'baixo impacto';
+};
+
+// ---- Rotinas: próxima ocorrência ----
+export const calcularProximaOcorrencia = (desde: string, periodicidade: PeriodicidadeAcao, intervaloDias = 1): string => {
+  const base = parseISO(desde);
+  switch (periodicidade) {
+    case 'diária': return format(addDays(base, intervaloDias > 0 ? intervaloDias : 1), 'yyyy-MM-dd');
+    case 'semanal': return format(addDays(base, 7), 'yyyy-MM-dd');
+    case 'quinzenal': return format(addDays(base, 15), 'yyyy-MM-dd');
+    case 'mensal': return format(addMonths(base, 1), 'yyyy-MM-dd');
+    case 'personalizada': return format(addDays(base, intervaloDias > 0 ? intervaloDias : 1), 'yyyy-MM-dd');
+    default: return format(addDays(base, 1), 'yyyy-MM-dd');
+  }
+};
+
+export const labelPeriodicidade = (p: PeriodicidadeAcao): string => {
+  const m: Record<PeriodicidadeAcao, string> = {
+    'diária': 'Diária', 'semanal': 'Semanal', 'quinzenal': 'Quinzenal',
+    'mensal': 'Mensal', 'personalizada': 'Personalizada',
+  };
+  return m[p] ?? p;
+};
+
+// ---- Processar rotinas: reabertura automática ----
+export const processarRotinas = (tarefas: Tarefa[]): Tarefa[] => {
+  const hoje = hojeISO();
+  return tarefas.map(t => {
+    if (t.tipoAcao !== 'rotineira') return t;
+    if (t.status !== 'concluído') return t;
+    if (!t.dataProximaOcorrencia) return t;
+    if (t.dataProximaOcorrencia > hoje) return t;
+    // Evitar reabrir duas vezes no mesmo dia
+    if (t.ultimaReabertura === hoje) return t;
+    const nextDate = calcularProximaOcorrencia(
+      hoje,
+      t.periodicidade ?? 'diária',
+      t.intervaloDias ?? 1
+    );
+    return {
+      ...t,
+      status: 'não iniciado' as const,
+      dataConclusao: null,
+      ultimaReabertura: hoje,
+      dataProximaOcorrencia: nextDate,
+    };
+  });
 };

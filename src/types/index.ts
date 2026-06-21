@@ -42,6 +42,8 @@ export interface Meta {
 export type FaixaTarefa = 'urgente' | 'alto impacto' | 'médio impacto' | 'baixo impacto';
 export type StatusTarefa = 'não iniciado' | 'em andamento' | 'concluído';
 export type NivelEnergia = 'baixa' | 'média' | 'alta';
+export type TipoAcao = 'eventual' | 'rotineira';
+export type PeriodicidadeAcao = 'diária' | 'semanal' | 'quinzenal' | 'mensal' | 'personalizada';
 
 export interface Tarefa {
   id: string;
@@ -57,6 +59,13 @@ export interface Tarefa {
   observacoes: string;
   dataCriacao: string;
   dataConclusao: string | null;
+  // Tipo da ação
+  tipoAcao?: TipoAcao;
+  periodicidade?: PeriodicidadeAcao;
+  intervaloDias?: number;
+  tempoMinimoMinutos?: number;
+  dataProximaOcorrencia?: string | null;
+  ultimaReabertura?: string | null;
 }
 
 // ---- TEMPO DISPONÍVEL ----

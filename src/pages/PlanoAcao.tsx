@@ -7,16 +7,17 @@ import {
 import {
   Plus, Pencil, Trash2, Calendar, Clock, Search,
   AlertCircle, GripVertical, ChevronDown, ChevronUp,
-  Zap, AlertTriangle,
+  Zap, AlertTriangle, RotateCcw, RefreshCw, Eye, EyeOff,
 } from 'lucide-react';
 import { calcularDisponibilidadeDia } from '../utils/calendarAvailability';
-import { formatarMinutos as fmtMin } from '../utils';
+import { formatarMinutos as fmtMin, isoParaDataBR, calcularProximaOcorrencia, labelPeriodicidade } from '../utils';
 import { useApp } from '../hooks/useApp';
-import type { Tarefa, Categoria, FaixaTarefa, StatusTarefa, NivelEnergia } from '../types';
+import type { Tarefa, Categoria, FaixaTarefa, StatusTarefa, NivelEnergia, TipoAcao, PeriodicidadeAcao } from '../types';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { Input, Textarea, Select } from '../components/FormFields';
+import { DateInputBR } from '../components/DateInputBR';
 import {
   corFaixa, siglaFaixa, labelFaixa, corCategoria,
   formatarData, formatarMinutos, eAtrasada, eHoje,
@@ -29,10 +30,13 @@ const categorias: Categoria[] = ['Profissão', 'Estudos', 'Finanças', 'Projetos
 const faixaList: FaixaTarefa[] = ['urgente', 'alto impacto', 'médio impacto', 'baixo impacto'];
 const energiaList: NivelEnergia[] = ['baixa', 'média', 'alta'];
 const statusList: StatusTarefa[] = ['não iniciado', 'em andamento', 'concluído'];
+const periodicidadeList: PeriodicidadeAcao[] = ['diária', 'semanal', 'quinzenal', 'mensal', 'personalizada'];
 
 type FiltroAtivo = 'todos' | 'hoje' | 'semana' | 'atrasadas' | 'por-meta' | FaixaTarefa;
 
-const tarefaVazia = (): Omit<Tarefa, 'id' | 'dataCriacao' | 'dataConclusao'> => ({
+type FormTarefa = Omit<Tarefa, 'id' | 'dataCriacao' | 'dataConclusao'>;
+
+const tarefaVazia = (): FormTarefa => ({
   titulo: '',
   metaId: null,
   categoria: 'Projetos',
@@ -43,39 +47,58 @@ const tarefaVazia = (): Omit<Tarefa, 'id' | 'dataCriacao' | 'dataConclusao'> => 
   status: 'não iniciado',
   energiaNecessaria: 'média',
   observacoes: '',
+  tipoAcao: 'eventual',
+  periodicidade: undefined,
+  intervaloDias: undefined,
+  tempoMinimoMinutos: undefined,
+  dataProximaOcorrencia: null,
+  ultimaReabertura: null,
 });
 
-// ---- Card da tarefa (draggable) ----
+// ---- Card da tarefa ----
 function TarefaCard({
-  tarefa, meta, onEdit, onDelete, onMover, isDragging = false
+  tarefa, meta, onEdit, onDelete, onMover, onReabrir, isDragging = false
 }: {
   tarefa: Tarefa;
   meta?: { nome: string } | undefined;
   onEdit: () => void;
   onDelete: () => void;
   onMover: (novoStatus: StatusTarefa) => void;
+  onReabrir?: () => void;
   isDragging?: boolean;
 }) {
   const [showMover, setShowMover] = useState(false);
   const atrasada = eAtrasada(tarefa.prazo);
+  const isConcluida = tarefa.status === 'concluído';
 
   return (
     <div
       className={`
         bg-white dark:bg-surface-800 rounded-xl border p-3 space-y-2 shadow-sm
         ${isDragging ? 'opacity-50 shadow-lg rotate-1' : ''}
-        ${atrasada ? 'border-danger-300 dark:border-danger-600' : 'border-surface-200 dark:border-surface-700'}
+        ${isConcluida ? 'opacity-70' : atrasada ? 'border-danger-300 dark:border-danger-600' : 'border-surface-200 dark:border-surface-700'}
         transition-all
       `}
     >
       {/* Faixa + drag handle */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <GripVertical size={14} className="text-surface-300 dark:text-surface-600 flex-shrink-0 cursor-grab active:cursor-grabbing" />
         <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full ${corFaixa(tarefa.faixa)}`}>
           <span className="font-bold">{siglaFaixa(tarefa.faixa)}</span>
           <span className="opacity-60 font-normal text-[9px]">· {tarefa.faixaManual ? 'manual' : 'auto'}</span>
         </span>
-        {atrasada && (
+        {/* Tipo da ação */}
+        {tarefa.tipoAcao === 'rotineira' ? (
+          <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+            <RefreshCw size={8} />
+            Rotineira
+          </span>
+        ) : (
+          <span className="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded-full bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-400">
+            Eventual
+          </span>
+        )}
+        {atrasada && !isConcluida && (
           <Badge className="text-[10px] px-1.5 py-0.5 bg-danger-100 text-danger-700 dark:bg-danger-600/20 dark:text-danger-400">
             Atrasada
           </Badge>
@@ -116,28 +139,49 @@ function TarefaCard({
         <span className="capitalize">{tarefa.energiaNecessaria} ⚡</span>
       </div>
 
-      {/* Botões mover (mobile) */}
-      <div className="sm:hidden">
+      {/* Próxima ocorrência (rotineiras concluídas) */}
+      {tarefa.tipoAcao === 'rotineira' && tarefa.dataProximaOcorrencia && (
+        <p className="text-[10px] text-violet-600 dark:text-violet-400 flex items-center gap-1">
+          <RefreshCw size={9} />
+          Reabre em {isoParaDataBR(tarefa.dataProximaOcorrencia)}
+        </p>
+      )}
+
+      {/* Botão reabrir (para concluídas) */}
+      {isConcluida && onReabrir && (
         <button
-          onClick={() => setShowMover(v => !v)}
-          className="w-full flex items-center justify-center gap-1 text-[11px] text-surface-400 hover:text-primary-600 py-1"
+          onClick={onReabrir}
+          className="w-full flex items-center justify-center gap-1 text-[11px] text-success-600 dark:text-success-400 hover:text-success-700 border border-success-200 dark:border-success-800 rounded-lg py-1 hover:bg-success-50 dark:hover:bg-success-900/20 transition-colors"
         >
-          Mover {showMover ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+          <RotateCcw size={10} />
+          Reabrir
         </button>
-        {showMover && (
-          <div className="flex gap-1 mt-1">
-            {statusList.filter(s => s !== tarefa.status).map(s => (
-              <button
-                key={s}
-                onClick={() => { onMover(s); setShowMover(false); }}
-                className="flex-1 text-[10px] py-1 rounded bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-300 hover:bg-primary-100 dark:hover:bg-primary-900/30 hover:text-primary-700 transition-colors"
-              >
-                {s === 'não iniciado' ? 'Não iniciado' : s === 'em andamento' ? 'Em andamento' : 'Concluído'}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      )}
+
+      {/* Botões mover (mobile) */}
+      {!isConcluida && (
+        <div className="sm:hidden">
+          <button
+            onClick={() => setShowMover(v => !v)}
+            className="w-full flex items-center justify-center gap-1 text-[11px] text-surface-400 hover:text-primary-600 py-1"
+          >
+            Mover {showMover ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+          </button>
+          {showMover && (
+            <div className="flex gap-1 mt-1">
+              {statusList.filter(s => s !== tarefa.status).map(s => (
+                <button
+                  key={s}
+                  onClick={() => { onMover(s); setShowMover(false); }}
+                  className="flex-1 text-[10px] py-1 rounded bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-300 hover:bg-primary-100 dark:hover:bg-primary-900/30 hover:text-primary-700 transition-colors"
+                >
+                  {s === 'não iniciado' ? 'Não iniciado' : s === 'em andamento' ? 'Em andamento' : 'Concluído'}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -154,18 +198,21 @@ function DraggableTarefa({ tarefa, ...props }: { tarefa: Tarefa } & Omit<Paramet
 
 // ---- Coluna Kanban (droppable) ----
 function KanbanColuna({
-  status, label, tarefas, metas, count, onEdit, onDelete, onMover
+  status, label, tarefas, concluidas, metas, count, onEdit, onDelete, onMover, onReabrir
 }: {
   status: StatusTarefa;
   label: string;
-  tarefas: Tarefa[];
+  tarefas: Tarefa[];       // ativas (não concluídas) nesta coluna
+  concluidas: Tarefa[];    // concluídas (só usadas na coluna 'concluído')
   metas: { id: string; nome: string }[];
   count: number;
   onEdit: (t: Tarefa) => void;
   onDelete: (id: string) => void;
   onMover: (id: string, status: StatusTarefa) => void;
+  onReabrir: (id: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
+  const [mostrarConcluidas, setMostrarConcluidas] = useState(false);
 
   const colorMap: Record<StatusTarefa, string> = {
     'não iniciado': 'border-t-surface-400 bg-surface-50 dark:bg-surface-900/50',
@@ -178,6 +225,10 @@ function KanbanColuna({
     'em andamento': 'text-primary-600 dark:text-primary-400',
     'concluído': 'text-success-600 dark:text-success-400',
   };
+
+  const listaAtual = status === 'concluído' ? [] : tarefas;
+  const listaConcluidas = status === 'concluído' ? concluidas : [];
+  const totalVisivel = listaAtual.length + (mostrarConcluidas ? listaConcluidas.length : 0);
 
   return (
     <div
@@ -199,22 +250,68 @@ function KanbanColuna({
 
       {/* Cards */}
       <div className="flex-1 p-3 space-y-2 overflow-y-auto">
-        {tarefas.length === 0 && (
-          <div className="text-center py-8 text-surface-300 dark:text-surface-600 text-xs">
-            Arraste tarefas aqui
-          </div>
+        {/* Coluna "não iniciado" e "em andamento": mostra normais */}
+        {status !== 'concluído' && (
+          <>
+            {tarefas.length === 0 && (
+              <div className="text-center py-8 text-surface-300 dark:text-surface-600 text-xs">
+                Arraste tarefas aqui
+              </div>
+            )}
+            {tarefas.map(t => (
+              <DraggableTarefa
+                key={t.id}
+                tarefa={t}
+                meta={metas.find(m => m.id === t.metaId)}
+                onEdit={() => onEdit(t)}
+                onDelete={() => onDelete(t.id)}
+                onMover={ns => onMover(t.id, ns)}
+                onReabrir={() => onReabrir(t.id)}
+              />
+            ))}
+          </>
         )}
-        {tarefas.map(t => (
-          <DraggableTarefa
-            key={t.id}
-            tarefa={t}
-            meta={metas.find(m => m.id === t.metaId)}
-            onEdit={() => onEdit(t)}
-            onDelete={() => onDelete(t.id)}
-            onMover={ns => onMover(t.id, ns)}
-          />
-        ))}
+
+        {/* Coluna "concluído": mostra toggle + lista */}
+        {status === 'concluído' && (
+          <>
+            {listaConcluidas.length === 0 && (
+              <div className="text-center py-8 text-surface-300 dark:text-surface-600 text-xs">
+                Nenhuma tarefa concluída
+              </div>
+            )}
+            {listaConcluidas.length > 0 && (
+              <button
+                onClick={() => setMostrarConcluidas(v => !v)}
+                className="w-full flex items-center justify-center gap-2 text-xs text-surface-500 dark:text-surface-400 hover:text-success-600 dark:hover:text-success-400 py-2 rounded-lg hover:bg-success-50 dark:hover:bg-success-900/20 transition-colors"
+              >
+                {mostrarConcluidas ? <EyeOff size={12} /> : <Eye size={12} />}
+                {mostrarConcluidas ? 'Ocultar' : `Ver concluídas (${listaConcluidas.length})`}
+              </button>
+            )}
+            {mostrarConcluidas && listaConcluidas.map(t => (
+              <DraggableTarefa
+                key={t.id}
+                tarefa={t}
+                meta={metas.find(m => m.id === t.metaId)}
+                onEdit={() => onEdit(t)}
+                onDelete={() => onDelete(t.id)}
+                onMover={ns => onMover(t.id, ns)}
+                onReabrir={() => onReabrir(t.id)}
+              />
+            ))}
+          </>
+        )}
       </div>
+
+      {/* Drop zone visual para concluído */}
+      {status !== 'concluído' && totalVisivel === 0 && (
+        <div className="px-3 pb-3">
+          <div className="border-2 border-dashed border-surface-200 dark:border-surface-700 rounded-xl h-16 flex items-center justify-center">
+            <span className="text-[11px] text-surface-300 dark:text-surface-600">Solte aqui</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -228,11 +325,11 @@ export function PlanoAcaoPage() {
   const [busca, setBusca] = useState('');
   const [modalAberto, setModalAberto] = useState(false);
   const [tarefaEditando, setTarefaEditando] = useState<Tarefa | null>(null);
-  const [form, setForm] = useState(tarefaVazia());
+  const [form, setForm] = useState<FormTarefa>(tarefaVazia());
   const [erros, setErros] = useState<Record<string, string>>({});
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
 
-  // Ler parâmetros da URL (de Início.tsx)
+  // Ler parâmetros da URL
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const f = params.get('filtro');
@@ -261,9 +358,16 @@ export function PlanoAcaoPage() {
       prazo: tarefa.prazo,
       tempoEstimado: tarefa.tempoEstimado,
       faixa: tarefa.faixa,
+      faixaManual: tarefa.faixaManual ?? false,
       status: tarefa.status,
       energiaNecessaria: tarefa.energiaNecessaria,
       observacoes: tarefa.observacoes,
+      tipoAcao: tarefa.tipoAcao ?? 'eventual',
+      periodicidade: tarefa.periodicidade,
+      intervaloDias: tarefa.intervaloDias,
+      tempoMinimoMinutos: tarefa.tempoMinimoMinutos,
+      dataProximaOcorrencia: tarefa.dataProximaOcorrencia ?? null,
+      ultimaReabertura: tarefa.ultimaReabertura ?? null,
     });
     setTarefaEditando(tarefa);
     setErros({});
@@ -274,6 +378,7 @@ export function PlanoAcaoPage() {
     const e: Record<string, string> = {};
     if (!form.titulo.trim()) e.titulo = 'Título é obrigatório';
     if (!form.prazo) e.prazo = 'Prazo é obrigatório';
+    if (form.tipoAcao === 'rotineira' && !form.periodicidade) e.periodicidade = 'Periodicidade é obrigatória';
     setErros(e);
     return Object.keys(e).length === 0;
   };
@@ -286,17 +391,22 @@ export function PlanoAcaoPage() {
         ? form.faixa
         : calcularFaixaAutomaticaTarefa(form as Tarefa, metaVinc);
 
+      // Calcular próxima ocorrência se rotineira + prazo informado
+      const proxOcorrencia = form.tipoAcao === 'rotineira' && form.periodicidade && form.prazo
+        ? (form.dataProximaOcorrencia ?? calcularProximaOcorrencia(form.prazo, form.periodicidade, form.intervaloDias ?? 1))
+        : null;
+
       if (tarefaEditando) {
         const novoStatus = form.status;
         const antiga = d.tarefas.find(t => t.id === tarefaEditando.id);
-        const dataConclusao =
-          novoStatus === 'concluído'
-            ? (antiga?.dataConclusao ?? hojeISO())
-            : null;
+        const dataConclusao = novoStatus === 'concluído' ? (antiga?.dataConclusao ?? hojeISO()) : null;
         return {
           ...d,
           tarefas: d.tarefas.map(t =>
-            t.id === tarefaEditando.id ? { ...t, ...form, faixa: faixaFinal, dataConclusao } : t
+            t.id === tarefaEditando.id ? {
+              ...t, ...form, faixa: faixaFinal, dataConclusao,
+              dataProximaOcorrencia: proxOcorrencia,
+            } : t
           ),
           metas: novoStatus === 'concluído'
             ? d.metas.map(m => form.metaId === m.id ? { ...m, dataUltimaAcao: hojeISO() } : m)
@@ -309,6 +419,7 @@ export function PlanoAcaoPage() {
         faixa: faixaFinal,
         dataCriacao: hojeISO(),
         dataConclusao: form.status === 'concluído' ? hojeISO() : null,
+        dataProximaOcorrencia: proxOcorrencia,
       };
       return { ...d, tarefas: [...d.tarefas, nova] };
     });
@@ -322,19 +433,46 @@ export function PlanoAcaoPage() {
   };
 
   const moverTarefa = useCallback((id: string, novoStatus: StatusTarefa) => {
+    setData(d => {
+      const tarefa = d.tarefas.find(t => t.id === id);
+      if (!tarefa) return d;
+      // Se rotineira sendo concluída, calcular próxima ocorrência
+      const proxOcorrencia = novoStatus === 'concluído' && tarefa.tipoAcao === 'rotineira' && tarefa.periodicidade
+        ? calcularProximaOcorrencia(hojeISO(), tarefa.periodicidade, tarefa.intervaloDias ?? 1)
+        : tarefa.dataProximaOcorrencia ?? null;
+      return {
+        ...d,
+        tarefas: d.tarefas.map(t => {
+          if (t.id !== id) return t;
+          const dataConclusao = novoStatus === 'concluído' ? hojeISO() : null;
+          return { ...t, status: novoStatus, dataConclusao, dataProximaOcorrencia: proxOcorrencia };
+        }),
+        metas: novoStatus === 'concluído'
+          ? d.metas.map(m => {
+            const t = d.tarefas.find(t => t.id === id);
+            return t?.metaId === m.id ? { ...m, dataUltimaAcao: hojeISO() } : m;
+          })
+          : d.metas,
+      };
+    });
+  }, [setData]);
+
+  const reabrirTarefa = useCallback((id: string) => {
     setData(d => ({
       ...d,
       tarefas: d.tarefas.map(t => {
         if (t.id !== id) return t;
-        const dataConclusao = novoStatus === 'concluído' ? hojeISO() : null;
-        return { ...t, status: novoStatus, dataConclusao };
+        const proxOcorrencia = t.tipoAcao === 'rotineira' && t.periodicidade
+          ? calcularProximaOcorrencia(hojeISO(), t.periodicidade, t.intervaloDias ?? 1)
+          : null;
+        return {
+          ...t,
+          status: 'não iniciado' as const,
+          dataConclusao: null,
+          ultimaReabertura: hojeISO(),
+          dataProximaOcorrencia: proxOcorrencia,
+        };
       }),
-      metas: novoStatus === 'concluído'
-        ? d.metas.map(m => {
-          const t = d.tarefas.find(t => t.id === id);
-          return t?.metaId === m.id ? { ...m, dataUltimaAcao: hojeISO() } : m;
-        })
-        : d.metas,
     }));
   }, [setData]);
 
@@ -351,7 +489,7 @@ export function PlanoAcaoPage() {
     moverTarefa(tarefa.id, novoStatus);
   };
 
-  // Filtrar tarefas para o Kanban
+  // Filtrar tarefas
   const tarefasFiltradas = (() => {
     let ts = data.tarefas;
     if (busca) ts = ts.filter(t => t.titulo.toLowerCase().includes(busca.toLowerCase()));
@@ -359,7 +497,6 @@ export function PlanoAcaoPage() {
       case 'hoje': return ts.filter(t => eHoje(t.prazo));
       case 'semana': return ts.filter(t => eSemanaAtual(t.prazo));
       case 'atrasadas': return ts.filter(t => eAtrasada(t.prazo) && t.status !== 'concluído');
-      case 'por-meta': return ts;
       case 'urgente':
       case 'alto impacto':
       case 'médio impacto':
@@ -369,7 +506,9 @@ export function PlanoAcaoPage() {
     }
   })();
 
-  const porStatus = (s: StatusTarefa) => tarefasFiltradas.filter(t => t.status === s);
+  // Separar ativas de concluídas para o kanban
+  const porStatus = (s: StatusTarefa) => tarefasFiltradas.filter(t => t.status === s && s !== 'concluído');
+  const todasConcluidas = tarefasFiltradas.filter(t => t.status === 'concluído');
 
   const filtroBotoes: { id: FiltroAtivo; label: string; badge?: number }[] = [
     { id: 'todos', label: 'Todas' },
@@ -392,20 +531,21 @@ export function PlanoAcaoPage() {
 
   const pendentes = data.tarefas.filter(t => t.status !== 'concluído').length;
 
-  // ── Painel de disponibilidade do dia ──
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   const dispHoje = useMemo(
     () => calcularDisponibilidadeDia(hojeISO(), data.eventosAgenda),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [data.eventosAgenda]
   );
 
-  const tarefasHoje = data.tarefas.filter(
-    t => t.status !== 'concluído' && t.prazo === hojeISO()
-  );
+  const tarefasHoje = data.tarefas.filter(t => t.status !== 'concluído' && t.prazo === hojeISO());
   const minutosPlanejadasHoje = tarefasHoje.reduce((acc, t) => acc + t.tempoEstimado, 0);
   const saldo = dispHoje.minutosDisponiveis - minutosPlanejadasHoje;
   const temAgenda = data.eventosAgenda.length > 0;
+
+  // Resumo rotinas
+  const totalRotineiras = data.tarefas.filter(t => t.tipoAcao === 'rotineira').length;
+  const rotineirasAtivas = data.tarefas.filter(t => t.tipoAcao === 'rotineira' && t.status !== 'concluído').length;
+  const rotineirasConcluidas = data.tarefas.filter(t => t.tipoAcao === 'rotineira' && t.status === 'concluído').length;
 
   return (
     <div className="max-w-7xl mx-auto space-y-4 animate-fade-in">
@@ -418,7 +558,7 @@ export function PlanoAcaoPage() {
         <Button icon={<Plus size={16} />} onClick={abrirNova}>Nova Tarefa</Button>
       </div>
 
-      {/* ── PAINEL DE DISPONIBILIDADE DO DIA ── */}
+      {/* Painel de disponibilidade */}
       <div className={`rounded-2xl border p-4 flex flex-wrap items-center gap-4 ${
         !temAgenda
           ? 'bg-surface-50 dark:bg-surface-800 border-surface-200 dark:border-surface-700'
@@ -426,7 +566,6 @@ export function PlanoAcaoPage() {
           ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-700/50'
           : 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-700/50'
       }`}>
-        {/* Tempo disponível */}
         <div className="flex items-center gap-2 flex-shrink-0">
           <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${temAgenda ? 'bg-emerald-100 dark:bg-emerald-900/30' : 'bg-surface-100 dark:bg-surface-700'}`}>
             <Clock size={18} className={temAgenda ? 'text-emerald-600 dark:text-emerald-400' : 'text-surface-400'} />
@@ -436,43 +575,29 @@ export function PlanoAcaoPage() {
             <p className="text-lg font-extrabold text-surface-900 dark:text-white">{fmtMin(dispHoje.minutosDisponiveis)}</p>
           </div>
         </div>
-
-        {/* Divisor */}
         <div className="hidden sm:block w-px h-10 bg-surface-200 dark:bg-surface-700" />
-
-        {/* Ocupado */}
         <div className="flex-shrink-0">
           <p className="text-xs text-surface-400 dark:text-surface-500">Ocupado</p>
           <p className="text-sm font-bold text-red-600 dark:text-red-400">{fmtMin(dispHoje.minutosOcupados)}</p>
         </div>
-
-        {/* Janela */}
         <div className="flex-shrink-0">
           <p className="text-xs text-surface-400 dark:text-surface-500">Janela útil</p>
           <p className="text-sm font-bold text-surface-700 dark:text-surface-200">{dispHoje.inicioJanela} – {dispHoje.fimJanela}</p>
         </div>
-
-        {/* Eventos */}
         <div className="flex-shrink-0">
           <p className="text-xs text-surface-400 dark:text-surface-500">Eventos</p>
           <p className="text-sm font-bold text-surface-700 dark:text-surface-200">{dispHoje.eventos.length}</p>
         </div>
-
-        {/* Tarefas planejadas */}
         <div className="flex-shrink-0">
           <p className="text-xs text-surface-400 dark:text-surface-500">Tarefas para hoje</p>
           <p className="text-sm font-bold text-surface-700 dark:text-surface-200">{fmtMin(minutosPlanejadasHoje)}</p>
         </div>
-
-        {/* Saldo */}
         <div className="flex-shrink-0">
           <p className="text-xs text-surface-400 dark:text-surface-500">Saldo</p>
           <p className={`text-sm font-extrabold ${saldo >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
             {saldo >= 0 ? '+' : ''}{fmtMin(Math.abs(saldo))}
           </p>
         </div>
-
-        {/* Alerta */}
         <div className="flex-1 min-w-[200px]">
           {!temAgenda ? (
             <div className="flex items-center gap-1.5 text-xs text-surface-400 dark:text-surface-500">
@@ -492,6 +617,17 @@ export function PlanoAcaoPage() {
           ) : null}
         </div>
       </div>
+
+      {/* Resumo de rotinas */}
+      {totalRotineiras > 0 && (
+        <div className="flex items-center gap-3 flex-wrap bg-violet-50 dark:bg-violet-900/10 border border-violet-200 dark:border-violet-800 rounded-xl px-4 py-2.5">
+          <RefreshCw size={14} className="text-violet-600 dark:text-violet-400 flex-shrink-0" />
+          <span className="text-xs font-semibold text-violet-700 dark:text-violet-300">Rotinas:</span>
+          <span className="text-xs text-violet-600 dark:text-violet-400">
+            {rotineirasAtivas} ativa{rotineirasAtivas !== 1 ? 's' : ''} · {rotineirasConcluidas} concluída{rotineirasConcluidas !== 1 ? 's' : ''} · {totalRotineiras} total
+          </span>
+        </div>
+      )}
 
       {/* Resumo de faixas + alerta UG */}
       {(() => {
@@ -577,11 +713,13 @@ export function PlanoAcaoPage() {
               status={col.status}
               label={col.label}
               tarefas={porStatus(col.status)}
+              concluidas={todasConcluidas}
               metas={data.metas}
-              count={porStatus(col.status).length}
+              count={col.status === 'concluído' ? todasConcluidas.length : porStatus(col.status).length}
               onEdit={abrirEditar}
               onDelete={excluir}
               onMover={moverTarefa}
+              onReabrir={reabrirTarefa}
             />
           ))}
         </div>
@@ -641,7 +779,88 @@ export function PlanoAcaoPage() {
             {categorias.map(c => <option key={c} value={c}>{c}</option>)}
           </Select>
 
-          {/* Faixa — auto ou manual */}
+          {/* Tipo da ação */}
+          <div className="space-y-3">
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-surface-700 dark:text-surface-300">Tipo da ação</span>
+              <div className="flex gap-2">
+                {(['eventual', 'rotineira'] as TipoAcao[]).map(tipo => (
+                  <button
+                    key={tipo}
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, tipoAcao: tipo, periodicidade: tipo === 'eventual' ? undefined : f.periodicidade }))}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-sm font-medium transition-all ${
+                      form.tipoAcao === tipo
+                        ? tipo === 'rotineira'
+                          ? 'bg-violet-600 text-white border-violet-600'
+                          : 'bg-primary-600 text-white border-primary-600'
+                        : 'border-surface-300 dark:border-surface-600 text-surface-600 dark:text-surface-400 hover:bg-surface-50 dark:hover:bg-surface-700'
+                    }`}
+                  >
+                    {tipo === 'rotineira' ? <RefreshCw size={13} /> : <Zap size={13} />}
+                    {tipo.charAt(0).toUpperCase() + tipo.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Campos de rotina */}
+            {form.tipoAcao === 'rotineira' && (
+              <div className="space-y-3 p-3 bg-violet-50 dark:bg-violet-900/10 border border-violet-200 dark:border-violet-800 rounded-xl">
+                <Select
+                  id="tarefa-periodicidade"
+                  label="Periodicidade"
+                  required
+                  value={form.periodicidade ?? ''}
+                  onChange={e => setForm(f => ({ ...f, periodicidade: e.target.value as PeriodicidadeAcao || undefined }))}
+                  error={erros.periodicidade}
+                >
+                  <option value="">— Selecionar —</option>
+                  {periodicidadeList.map(p => (
+                    <option key={p} value={p}>{labelPeriodicidade(p)}</option>
+                  ))}
+                </Select>
+
+                {form.periodicidade === 'personalizada' && (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-sm font-medium text-surface-700 dark:text-surface-300">
+                      Intervalo (dias): {form.intervaloDias ?? 1}
+                    </label>
+                    <input
+                      type="range" min={1} max={90} step={1}
+                      value={form.intervaloDias ?? 1}
+                      onChange={e => setForm(f => ({ ...f, intervaloDias: Number(e.target.value) }))}
+                      className="w-full accent-violet-600"
+                    />
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-surface-700 dark:text-surface-300">
+                    Tempo mínimo (min): {form.tempoMinimoMinutos ?? 0} min
+                  </label>
+                  <input
+                    type="range" min={0} max={120} step={5}
+                    value={form.tempoMinimoMinutos ?? 0}
+                    onChange={e => setForm(f => ({ ...f, tempoMinimoMinutos: Number(e.target.value) || undefined }))}
+                    className="w-full accent-violet-600"
+                  />
+                </div>
+
+                {form.periodicidade && (
+                  <DateInputBR
+                    id="tarefa-proxima"
+                    label="Próxima ocorrência"
+                    value={form.dataProximaOcorrencia ?? ''}
+                    onChange={iso => setForm(f => ({ ...f, dataProximaOcorrencia: iso || null }))}
+                    hint="Deixe vazio para calcular automaticamente"
+                  />
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Faixa */}
           <div className="space-y-2">
             {(() => {
               const metaVinc = data.metas.find(m => m.id === form.metaId) ?? null;
@@ -649,9 +868,7 @@ export function PlanoAcaoPage() {
               return (
                 <>
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-surface-600 dark:text-surface-300">
-                      Faixa de impacto
-                    </span>
+                    <span className="text-xs font-medium text-surface-600 dark:text-surface-300">Faixa de impacto</span>
                     <label className="flex items-center gap-1.5 cursor-pointer text-xs text-surface-500 dark:text-surface-400 select-none">
                       <input
                         type="checkbox"
@@ -686,13 +903,12 @@ export function PlanoAcaoPage() {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <Input
+            <DateInputBR
               id="tarefa-prazo"
               label="Prazo"
               required
-              type="date"
               value={form.prazo}
-              onChange={e => setForm(f => ({ ...f, prazo: e.target.value }))}
+              onChange={iso => setForm(f => ({ ...f, prazo: iso }))}
               error={erros.prazo}
             />
             <div className="flex flex-col gap-1">
@@ -700,10 +916,7 @@ export function PlanoAcaoPage() {
                 Tempo estimado: {formatarMinutos(form.tempoEstimado)}
               </label>
               <input
-                type="range"
-                min={5}
-                max={240}
-                step={5}
+                type="range" min={5} max={240} step={5}
                 value={form.tempoEstimado}
                 onChange={e => setForm(f => ({ ...f, tempoEstimado: Number(e.target.value) }))}
                 className="w-full accent-primary-600"

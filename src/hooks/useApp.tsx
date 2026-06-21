@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import type { AppData, Tarefa, FaixaTarefa, StatusTarefa, Meta, FrequenciaRevisao, StatusMeta, EventoAgenda, ConfiguracaoAgenda, ClassificacaoPrazoMeta } from '../types';
-import { calcularClassificacaoPrazo } from '../utils';
+import { calcularClassificacaoPrazo, processarRotinas } from '../utils';
 import { dadosDemonstracaoInicial } from '../data/dadosDemonstracao';
 
 const STORAGE_KEY = 'adapta-central-pessoal-v1';
@@ -113,6 +113,7 @@ function migrarTarefas(raw: Record<string, unknown>[]): Tarefa[] {
     else if (s === 'pendente' || s === 'reagendada') status = 'não iniciado';
     else if (s === 'cancelada') status = 'não iniciado';
 
+    const tipoAcao = (t.tipoAcao as Tarefa['tipoAcao']) ?? 'eventual';
     return {
       id: (t.id as string) || '',
       titulo: (t.titulo as string) || '',
@@ -127,6 +128,12 @@ function migrarTarefas(raw: Record<string, unknown>[]): Tarefa[] {
       observacoes: (t.observacoes as string) || '',
       dataCriacao: (t.dataCriacao as string) || '',
       dataConclusao: status === 'concluído' ? ((t.dataConclusao as string | null) ?? null) : null,
+      tipoAcao,
+      periodicidade: (t.periodicidade as Tarefa['periodicidade']) ?? undefined,
+      intervaloDias: typeof t.intervaloDias === 'number' ? t.intervaloDias : undefined,
+      tempoMinimoMinutos: typeof t.tempoMinimoMinutos === 'number' ? t.tempoMinimoMinutos : undefined,
+      dataProximaOcorrencia: (t.dataProximaOcorrencia as string | null) ?? null,
+      ultimaReabertura: (t.ultimaReabertura as string | null) ?? null,
     };
   });
 }
@@ -197,7 +204,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const raw = JSON.parse(stored) as Record<string, unknown>;
-        return migrarDados(raw);
+        const migrado = migrarDados(raw);
+        return { ...migrado, tarefas: processarRotinas(migrado.tarefas) };
       }
     } catch { /* ignore */ }
     return dadosDemonstracaoInicial;
