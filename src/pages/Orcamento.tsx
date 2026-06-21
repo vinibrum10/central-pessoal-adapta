@@ -668,16 +668,29 @@ export function OrcamentoPage() {
               </Button>
             )}
           </div>
-          {despesasFiltradas.length > 0 && (
-            <div className="flex items-center justify-between px-1">
-              <span className="text-sm text-surface-500 dark:text-surface-400">
-                {despesasFiltradas.length} {despesasFiltradas.length === 1 ? 'despesa' : 'despesas'} em {MESES[mesFiltro.mes]} {mesFiltro.ano}
-              </span>
-              <span className="text-base font-bold text-danger-600 dark:text-danger-400">
-                Total: {formatarDinheiro(despesasFiltradas.reduce((acc, d) => acc + d.valor, 0))}
-              </span>
-            </div>
-          )}
+          {despesasFiltradas.length > 0 && (() => {
+            const parcelados = despesasFiltradas.filter(d => d.faturaId && (d.quantidadeParcelas ?? 1) > 1);
+            const naoParcelados = despesasFiltradas.filter(d => !(d.faturaId && (d.quantidadeParcelas ?? 1) > 1));
+            const totalParcelados = parcelados.reduce((acc, d) => acc + d.valor, 0);
+            const totalNormal = naoParcelados.reduce((acc, d) => acc + d.valor, 0);
+            return (
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-1">
+                <span className="text-sm text-surface-500 dark:text-surface-400">
+                  {despesasFiltradas.length} {despesasFiltradas.length === 1 ? 'despesa' : 'despesas'} em {MESES[mesFiltro.mes]} {mesFiltro.ano}
+                </span>
+                <div className="flex flex-col sm:items-end gap-0.5">
+                  {parcelados.length > 0 && (
+                    <span className="text-xs text-surface-400 dark:text-surface-500">
+                      Parcelas ({parcelados.length}): <span className="font-semibold text-warning-600 dark:text-warning-400">{formatarDinheiro(totalParcelados)}</span>
+                    </span>
+                  )}
+                  <span className="text-base font-bold text-danger-600 dark:text-danger-400">
+                    Total: {formatarDinheiro(totalNormal)}
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
           <Card>
             <CardBody className="!px-4 !pb-4">
               {despesasFiltradas.length === 0 ? (
