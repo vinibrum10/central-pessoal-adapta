@@ -13,6 +13,7 @@ import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { Input, Textarea, Select } from '../components/FormFields';
+import { DateInputBR } from '../components/DateInputBR';
 import {
   corCategoria, formatarData, gerarId, hojeISO,
   revisaoAtrasada, proximaRevisaoISO, labelFrequencia,
@@ -635,13 +636,13 @@ export function MetasPage() {
         </Select>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Input
-          id="meta-ini" label="Data de início" type="date"
-          value={form.dataInicio} onChange={e => setForm({ ...form, dataInicio: e.target.value })}
+        <DateInputBR
+          id="meta-ini" label="Data de início"
+          value={form.dataInicio} onChange={v => setForm({ ...form, dataInicio: v })}
         />
-        <Input
-          id="meta-prazo" label="Prazo final" required type="date"
-          value={form.prazoFinal} onChange={e => setForm({ ...form, prazoFinal: e.target.value })}
+        <DateInputBR
+          id="meta-prazo" label="Prazo final" required
+          value={form.prazoFinal} onChange={v => setForm({ ...form, prazoFinal: v })}
           error={erros.prazoFinal}
         />
       </div>
@@ -828,9 +829,9 @@ export function MetasPage() {
           >
             {categorias.map(c => <option key={c} value={c}>{c}</option>)}
           </Select>
-          <Input
-            id="futura-prazo" label="Prazo planejado (opcional)" type="date"
-            value={formFutura.prazoFinal} onChange={e => setFormFutura({ ...formFutura, prazoFinal: e.target.value })}
+          <DateInputBR
+            id="futura-prazo" label="Prazo planejado (opcional)"
+            value={formFutura.prazoFinal} onChange={v => setFormFutura({ ...formFutura, prazoFinal: v })}
           />
           <Textarea
             id="futura-motivo" label="Por que isso importa?"
@@ -894,10 +895,10 @@ export function MetasPage() {
             )}
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Input
-              id="reativar-prazo" label="Prazo final" required type="date"
+            <DateInputBR
+              id="reativar-prazo" label="Prazo final" required
               value={formReativar.prazoFinal}
-              onChange={e => setFormReativar({ ...formReativar, prazoFinal: e.target.value })}
+              onChange={v => setFormReativar({ ...formReativar, prazoFinal: v })}
               error={errosReativar.prazoFinal}
             />
             <Select

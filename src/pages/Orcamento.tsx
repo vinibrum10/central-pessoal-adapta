@@ -4,6 +4,7 @@ import {
   CreditCard, AlertTriangle, PiggyBank, Package,
   ChevronLeft, ChevronRight, Info
 } from 'lucide-react';
+import { parseBRLMoney, moneyToInputBR } from '../utils/money';
 
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 import { useApp } from '../hooks/useApp';
@@ -105,12 +106,22 @@ export function OrcamentoPage() {
 
   // Forms
   const [formReceita, setFormReceita] = useState<Omit<Receita, 'id' | 'dataCriacao'>>({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Salário', recorrente: false });
+  const [formReceitaValorStr, setFormReceitaValorStr] = useState('');
   const [formDespesa, setFormDespesa] = useState<Omit<Despesa, 'id' | 'dataCriacao'>>({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Alimentação', formaPagamento: 'PIX', recorrente: false, essencial: true });
+  const [formDespesaValorStr, setFormDespesaValorStr] = useState('');
   const [formDespesaExtra, setFormDespesaExtra] = useState<FormDespesaExtra>({ tipoCobrancaCartao: 'avista', quantidadeParcelas: 2, mesInicioParcelas: hojeISO().slice(0, 7) });
   const [formCartao, setFormCartao] = useState<Omit<Cartao, 'id' | 'dataCriacao'>>({ nome: '', limite: 0, faturaAtual: 0, vencimento: 10, status: 'ativo', diaFechamento: undefined });
+  const [formCartaoLimiteStr, setFormCartaoLimiteStr] = useState('');
+  const [formCartaoFaturaStr, setFormCartaoFaturaStr] = useState('');
   const [formDivida, setFormDivida] = useState<Omit<Divida, 'id' | 'dataCriacao'>>({ nome: '', valorTotal: 0, valorParcela: 0, totalParcelas: 1, parcelasPagas: 0, taxaJuros: 0, prioridadeQuitacao: 'média', dataInicio: hojeISO(), diaVencimento: 10, status: 'ativa' });
+  const [formDividaTotalStr, setFormDividaTotalStr] = useState('');
+  const [formDividaParcelaStr, setFormDividaParcelaStr] = useState('');
   const [formReserva, setFormReserva] = useState<Omit<Reserva, 'id' | 'dataCriacao'>>({ nome: '', metaReserva: 0, valorAtual: 0, prazoDesejado: '' });
+  const [formReservaMetaStr, setFormReservaMetaStr] = useState('');
+  const [formReservaAtualStr, setFormReservaAtualStr] = useState('');
   const [formBem, setFormBem] = useState<Omit<Bem, 'id' | 'dataCriacao'>>({ nome: '', tipo: 'Carro', valorEstimado: 0, status: 'manter', observacoes: '' });
+  const [formBemValorStr, setFormBemValorStr] = useState('');
+  const [formFaturaValorStr, setFormFaturaValorStr] = useState('');
 
   // Resumo financeiro do mês filtrado
   const receitasFiltradas = data.receitas.filter(r => new Date(r.data).getMonth() === mesFiltro.mes && new Date(r.data).getFullYear() === mesFiltro.ano);
@@ -160,17 +171,19 @@ export function OrcamentoPage() {
       valorInformado: fatura?.valorInformado ?? 0,
       observacoes: fatura?.observacoes ?? '',
     });
+    setFormFaturaValorStr(fatura?.valorInformado ? moneyToInputBR(fatura.valorInformado) : '');
   };
 
   const salvarFatura = useCallback(() => {
     if (!modalFatura) return;
     const { cartaoId, competencia } = modalFatura;
+    const valorFaturaFinal = parseBRLMoney(formFaturaValorStr);
     setData(d => {
       const faturasAtual = [...(d.faturas ?? [])];
       const { fatura, isNova } = obterOuCriarFatura(cartaoId, competencia, faturasAtual);
       const faturaAtualizada: FaturaCartao = {
         ...fatura,
-        valorInformado: formFatura.valorInformado > 0 ? formFatura.valorInformado : null,
+        valorInformado: valorFaturaFinal > 0 ? valorFaturaFinal : null,
         observacoes: formFatura.observacoes || undefined,
       };
       const faturaRecalculada = recalcularFatura(faturaAtualizada, d.despesas);
@@ -179,7 +192,7 @@ export function OrcamentoPage() {
       }
       return { ...d, faturas: faturasAtual.map(f => f.id === faturaRecalculada.id ? faturaRecalculada : f) };
     });
-  }, [modalFatura, formFatura, setData]);
+  }, [modalFatura, formFatura, formFaturaValorStr, setData]);
 
   const criarAjusteDiferenca = useCallback((fatura: FaturaCartao) => {
     setData(d => {
@@ -214,24 +227,29 @@ export function OrcamentoPage() {
   }, [setData]);
 
   const salvarReceita = useCallback(() => {
+    const valorFinal = parseBRLMoney(formReceitaValorStr);
+    const receitaComValor = { ...formReceita, valor: valorFinal };
     setData(d => ({
       ...d,
       receitas: editandoId
-        ? d.receitas.map(r => r.id === editandoId ? { ...r, ...formReceita } : r)
-        : [...d.receitas, { id: gerarId(), ...formReceita, dataCriacao: hojeISO() }],
+        ? d.receitas.map(r => r.id === editandoId ? { ...r, ...receitaComValor } : r)
+        : [...d.receitas, { id: gerarId(), ...receitaComValor, dataCriacao: hojeISO() }],
     }));
     setModal(null);
     setEditandoId(null);
     setFormReceita({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Salário', recorrente: false });
-  }, [formReceita, editandoId, setData]);
+    setFormReceitaValorStr('');
+  }, [formReceita, formReceitaValorStr, editandoId, setData]);
 
   const salvarDespesa = useCallback(() => {
-    const isCartao = formDespesa.formaPagamento === 'Cartão de crédito';
+    const valorDespesa = parseBRLMoney(formDespesaValorStr);
+    const formDespesaComValor = { ...formDespesa, valor: valorDespesa };
+    const isCartao = formDespesaComValor.formaPagamento === 'Cartão de crédito';
     const isParcelado = isCartao && formDespesaExtra.tipoCobrancaCartao === 'parcelado' && !editandoId;
 
     if (isParcelado) {
       const qtd = formDespesaExtra.quantidadeParcelas;
-      const valorParcela = formDespesa.valor / qtd;
+      const valorParcela = formDespesaComValor.valor / qtd;
       const grupoId = crypto.randomUUID();
       const [ano, mes] = formDespesaExtra.mesInicioParcelas.split('-').map(Number);
       const cartaoId = cartaoSelecionadoId || undefined;
@@ -254,13 +272,13 @@ export function OrcamentoPage() {
 
           return {
             id: gerarId(),
-            descricao: `${formDespesa.descricao} — Parcela ${i + 1}/${qtd}`,
+            descricao: `${formDespesaComValor.descricao} — Parcela ${i + 1}/${qtd}`,
             valor: valorParcela,
             data: dataStr,
-            categoria: formDespesa.categoria,
-            formaPagamento: formDespesa.formaPagamento,
+            categoria: formDespesaComValor.categoria,
+            formaPagamento: formDespesaComValor.formaPagamento,
             recorrente: false,
-            essencial: formDespesa.essencial,
+            essencial: formDespesaComValor.essencial,
             dataCriacao: hojeISO(),
             grupoParcelamentoId: grupoId,
             parcelaAtual: i + 1,
@@ -278,10 +296,10 @@ export function OrcamentoPage() {
 
         return { ...d, despesas: todasDespesas, faturas: faturasAtual };
       });
-    } else if (!editandoId && formDespesa.recorrente) {
+    } else if (!editandoId && formDespesaComValor.recorrente) {
       // Gera despesa do mês atual + próximos 11 meses (total 12)
       setData(d => {
-        const dataBase = new Date(formDespesa.data + 'T12:00:00');
+        const dataBase = new Date(formDespesaComValor.data + 'T12:00:00');
         const novasDespesas: Despesa[] = [];
         for (let i = 0; i < 12; i++) {
           const dt = new Date(dataBase);
@@ -292,14 +310,14 @@ export function OrcamentoPage() {
           // Verificar duplicata: mesma descrição, recorrente, mesmo mês/ano
           const jaExiste = d.despesas.some(dep =>
             dep.recorrente === true &&
-            dep.descricao === formDespesa.descricao &&
+            dep.descricao === formDespesaComValor.descricao &&
             new Date(dep.data).getMonth() === mesDt &&
             new Date(dep.data).getFullYear() === anoDt
           );
           if (!jaExiste) {
             novasDespesas.push({
               id: gerarId(),
-              ...formDespesa,
+              ...formDespesaComValor,
               data: dataStr,
               dataCriacao: hojeISO(),
             });
@@ -315,7 +333,7 @@ export function OrcamentoPage() {
           // (via aplicarEdicaoParcela). Aqui edita só esta.
           return {
             ...d,
-            despesas: d.despesas.map(dep => dep.id === editandoId ? { ...dep, ...formDespesa, grupoParcelamentoId: depAtual?.grupoParcelamentoId, parcelaAtual: depAtual?.parcelaAtual, quantidadeParcelas: depAtual?.quantidadeParcelas } : dep),
+            despesas: d.despesas.map(dep => dep.id === editandoId ? { ...dep, ...formDespesaComValor, grupoParcelamentoId: depAtual?.grupoParcelamentoId, parcelaAtual: depAtual?.parcelaAtual, quantidadeParcelas: depAtual?.quantidadeParcelas } : dep),
           };
         }
         // Nova despesa à vista com cartão
@@ -325,7 +343,7 @@ export function OrcamentoPage() {
         let faturaId: string | undefined;
 
         if (cartaoId) {
-          const competencia = obterCompetenciaFatura(formDespesa.data, cartao?.diaFechamento);
+          const competencia = obterCompetenciaFatura(formDespesaComValor.data, cartao?.diaFechamento);
           const { fatura, isNova } = obterOuCriarFatura(cartaoId, competencia, faturasAtual);
           if (isNova) faturasAtual = [...faturasAtual, fatura];
           faturaId = fatura.id;
@@ -333,7 +351,7 @@ export function OrcamentoPage() {
 
         const novaDespesa: Despesa = {
           id: gerarId(),
-          ...formDespesa,
+          ...formDespesaComValor,
           dataCriacao: hojeISO(),
           cartaoId,
           faturaId,
@@ -350,8 +368,9 @@ export function OrcamentoPage() {
     setEditandoId(null);
     setCartaoSelecionadoId('');
     setFormDespesa({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Alimentação', formaPagamento: 'PIX', recorrente: false, essencial: true });
+    setFormDespesaValorStr('');
     setFormDespesaExtra({ tipoCobrancaCartao: 'avista', quantidadeParcelas: 2, mesInicioParcelas: hojeISO().slice(0, 7) });
-  }, [formDespesa, formDespesaExtra, editandoId, setData]);
+  }, [formDespesa, formDespesaValorStr, formDespesaExtra, editandoId, setData]);
 
   // Chamado pelo botão Salvar do modal de despesa
   const handleSalvarDespesa = useCallback(() => {
@@ -386,7 +405,7 @@ export function OrcamentoPage() {
           // Esta e futuras: atualiza valor, categoria, essencial (mantém descrição com número da parcela)
           return {
             ...dep,
-            valor: formDespesa.valor / (depAtual.quantidadeParcelas ?? 1),
+            valor: parseBRLMoney(formDespesaValorStr) / (depAtual.quantidadeParcelas ?? 1),
             categoria: formDespesa.categoria,
             essencial: formDespesa.essencial,
           };
@@ -397,48 +416,68 @@ export function OrcamentoPage() {
     setEditandoId(null);
     setCartaoSelecionadoId('');
     setFormDespesa({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Alimentação', formaPagamento: 'PIX', recorrente: false, essencial: true });
+    setFormDespesaValorStr('');
     setFormDespesaExtra({ tipoCobrancaCartao: 'avista', quantidadeParcelas: 2, mesInicioParcelas: hojeISO().slice(0, 7) });
-  }, [editandoId, formDespesa, salvarDespesa, setData]);
+  }, [editandoId, formDespesa, formDespesaValorStr, salvarDespesa, setData]);
 
   const salvarCartao = useCallback(() => {
+    const cartaoComValor = {
+      ...formCartao,
+      limite: parseBRLMoney(formCartaoLimiteStr),
+      faturaAtual: parseBRLMoney(formCartaoFaturaStr),
+    };
     setData(d => ({
       ...d,
       cartoes: editandoId
-        ? d.cartoes.map(c => c.id === editandoId ? { ...c, ...formCartao } : c)
-        : [...d.cartoes, { id: gerarId(), ...formCartao, dataCriacao: hojeISO() }],
+        ? d.cartoes.map(c => c.id === editandoId ? { ...c, ...cartaoComValor } : c)
+        : [...d.cartoes, { id: gerarId(), ...cartaoComValor, dataCriacao: hojeISO() }],
     }));
     setModal(null);
-  }, [formCartao, editandoId, setData]);
+  }, [formCartao, formCartaoLimiteStr, formCartaoFaturaStr, editandoId, setData]);
 
   const salvarDivida = useCallback(() => {
+    const dividaComValor = {
+      ...formDivida,
+      valorTotal: parseBRLMoney(formDividaTotalStr),
+      valorParcela: parseBRLMoney(formDividaParcelaStr),
+    };
     setData(d => ({
       ...d,
       dividas: editandoId
-        ? d.dividas.map(div => div.id === editandoId ? { ...div, ...formDivida } : div)
-        : [...d.dividas, { id: gerarId(), ...formDivida, dataCriacao: hojeISO() }],
+        ? d.dividas.map(div => div.id === editandoId ? { ...div, ...dividaComValor } : div)
+        : [...d.dividas, { id: gerarId(), ...dividaComValor, dataCriacao: hojeISO() }],
     }));
     setModal(null);
-  }, [formDivida, editandoId, setData]);
+  }, [formDivida, formDividaTotalStr, formDividaParcelaStr, editandoId, setData]);
 
   const salvarReserva = useCallback(() => {
+    const reservaComValor = {
+      ...formReserva,
+      metaReserva: parseBRLMoney(formReservaMetaStr),
+      valorAtual: parseBRLMoney(formReservaAtualStr),
+    };
     setData(d => ({
       ...d,
       reservas: editandoId
-        ? d.reservas.map(r => r.id === editandoId ? { ...r, ...formReserva } : r)
-        : [...d.reservas, { id: gerarId(), ...formReserva, dataCriacao: hojeISO() }],
+        ? d.reservas.map(r => r.id === editandoId ? { ...r, ...reservaComValor } : r)
+        : [...d.reservas, { id: gerarId(), ...reservaComValor, dataCriacao: hojeISO() }],
     }));
     setModal(null);
-  }, [formReserva, editandoId, setData]);
+  }, [formReserva, formReservaMetaStr, formReservaAtualStr, editandoId, setData]);
 
   const salvarBem = useCallback(() => {
+    const bemComValor = {
+      ...formBem,
+      valorEstimado: parseBRLMoney(formBemValorStr),
+    };
     setData(d => ({
       ...d,
       bens: editandoId
-        ? d.bens.map(b => b.id === editandoId ? { ...b, ...formBem } : b)
-        : [...d.bens, { id: gerarId(), ...formBem, dataCriacao: hojeISO() }],
+        ? d.bens.map(b => b.id === editandoId ? { ...b, ...bemComValor } : b)
+        : [...d.bens, { id: gerarId(), ...bemComValor, dataCriacao: hojeISO() }],
     }));
     setModal(null);
-  }, [formBem, editandoId, setData]);
+  }, [formBem, formBemValorStr, editandoId, setData]);
 
   const tabs: { id: Aba; label: string }[] = [
     { id: 'resumo', label: 'Resumo' },
@@ -574,7 +613,7 @@ export function OrcamentoPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold text-success-600 dark:text-success-400">{formatarDinheiro(r.valor)}</span>
-                        <button onClick={() => { setFormReceita({ descricao: r.descricao, valor: r.valor, data: r.data, categoria: r.categoria, recorrente: r.recorrente }); abrirModal('receita', r); }} className="p-1.5 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
+                        <button onClick={() => { setFormReceita({ descricao: r.descricao, valor: r.valor, data: r.data, categoria: r.categoria, recorrente: r.recorrente }); setFormReceitaValorStr(moneyToInputBR(r.valor)); abrirModal('receita', r); }} className="p-1.5 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
                         <button onClick={() => setData(d => ({ ...d, receitas: d.receitas.filter(x => x.id !== r.id) }))} className="p-1.5 rounded text-surface-400 hover:text-danger-600 transition-colors"><Trash2 size={13} /></button>
                       </div>
                     </div>
@@ -621,7 +660,7 @@ export function OrcamentoPage() {
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold text-danger-600 dark:text-danger-400">{formatarDinheiro(d.valor)}</span>
                         {canEditExpense(perfil) && (
-                          <button onClick={() => { setFormDespesa({ descricao: d.descricao, valor: d.valor, data: d.data, categoria: d.categoria, formaPagamento: d.formaPagamento, recorrente: d.recorrente, essencial: d.essencial }); abrirModal('despesa', d); }} className="p-1.5 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
+                          <button onClick={() => { setFormDespesa({ descricao: d.descricao, valor: d.valor, data: d.data, categoria: d.categoria, formaPagamento: d.formaPagamento, recorrente: d.recorrente, essencial: d.essencial }); setFormDespesaValorStr(moneyToInputBR(d.valor)); abrirModal('despesa', d); }} className="p-1.5 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
                         )}
                         {canDeleteExpense(perfil) && (
                           <button onClick={() => setData(prev => ({ ...prev, despesas: prev.despesas.filter(x => x.id !== d.id) }))} className="p-1.5 rounded text-surface-400 hover:text-danger-600 transition-colors"><Trash2 size={13} /></button>
@@ -659,7 +698,7 @@ export function OrcamentoPage() {
                       </div>
                     </div>
                     <div className="flex gap-1">
-                      <button onClick={() => { setFormCartao({ nome: c.nome, limite: c.limite, faturaAtual: c.faturaAtual, vencimento: c.vencimento, status: c.status, diaFechamento: c.diaFechamento }); abrirModal('cartao', c); }} className="p-1 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
+                      <button onClick={() => { setFormCartao({ nome: c.nome, limite: c.limite, faturaAtual: c.faturaAtual, vencimento: c.vencimento, status: c.status, diaFechamento: c.diaFechamento }); setFormCartaoLimiteStr(moneyToInputBR(c.limite)); setFormCartaoFaturaStr(moneyToInputBR(c.faturaAtual)); abrirModal('cartao', c); }} className="p-1 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
                       <button onClick={() => setData(d => ({ ...d, cartoes: d.cartoes.filter(x => x.id !== c.id) }))} className="p-1 rounded text-surface-400 hover:text-danger-600 transition-colors"><Trash2 size={13} /></button>
                     </div>
                   </div>
@@ -743,7 +782,7 @@ export function OrcamentoPage() {
                         </p>
                       </div>
                       <div className="flex gap-1">
-                        <button onClick={() => { setFormDivida({ nome: d.nome, valorTotal: d.valorTotal, valorParcela: d.valorParcela, totalParcelas: d.totalParcelas, parcelasPagas: d.parcelasPagas, taxaJuros: d.taxaJuros, prioridadeQuitacao: d.prioridadeQuitacao, dataInicio: d.dataInicio ?? hojeISO(), diaVencimento: d.diaVencimento ?? 10, status: d.status ?? 'ativa' }); abrirModal('divida', d); }} className="p-1 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
+                        <button onClick={() => { setFormDivida({ nome: d.nome, valorTotal: d.valorTotal, valorParcela: d.valorParcela, totalParcelas: d.totalParcelas, parcelasPagas: d.parcelasPagas, taxaJuros: d.taxaJuros, prioridadeQuitacao: d.prioridadeQuitacao, dataInicio: d.dataInicio ?? hojeISO(), diaVencimento: d.diaVencimento ?? 10, status: d.status ?? 'ativa' }); setFormDividaTotalStr(moneyToInputBR(d.valorTotal)); setFormDividaParcelaStr(moneyToInputBR(d.valorParcela)); abrirModal('divida', d); }} className="p-1 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
                         <button onClick={() => setData(prev => ({ ...prev, dividas: prev.dividas.filter(x => x.id !== d.id) }))} className="p-1 rounded text-surface-400 hover:text-danger-600 transition-colors"><Trash2 size={13} /></button>
                       </div>
                     </div>
@@ -785,7 +824,7 @@ export function OrcamentoPage() {
                       {r.prazoDesejado && <p className="text-xs text-surface-400">Prazo: {formatarData(r.prazoDesejado)}</p>}
                     </div>
                     <div className="flex gap-1">
-                      <button onClick={() => { setFormReserva({ nome: r.nome, metaReserva: r.metaReserva, valorAtual: r.valorAtual, prazoDesejado: r.prazoDesejado }); abrirModal('reserva', r); }} className="p-1 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
+                      <button onClick={() => { setFormReserva({ nome: r.nome, metaReserva: r.metaReserva, valorAtual: r.valorAtual, prazoDesejado: r.prazoDesejado }); setFormReservaMetaStr(moneyToInputBR(r.metaReserva)); setFormReservaAtualStr(moneyToInputBR(r.valorAtual)); abrirModal('reserva', r); }} className="p-1 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
                       <button onClick={() => setData(d => ({ ...d, reservas: d.reservas.filter(x => x.id !== r.id) }))} className="p-1 rounded text-surface-400 hover:text-danger-600 transition-colors"><Trash2 size={13} /></button>
                     </div>
                   </div>
@@ -829,7 +868,7 @@ export function OrcamentoPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-bold text-surface-700 dark:text-surface-300">{formatarDinheiro(b.valorEstimado)}</span>
-                      <button onClick={() => { setFormBem({ nome: b.nome, tipo: b.tipo, valorEstimado: b.valorEstimado, status: b.status, observacoes: b.observacoes }); abrirModal('bem', b); }} className="p-1 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
+                      <button onClick={() => { setFormBem({ nome: b.nome, tipo: b.tipo, valorEstimado: b.valorEstimado, status: b.status, observacoes: b.observacoes }); setFormBemValorStr(moneyToInputBR(b.valorEstimado)); abrirModal('bem', b); }} className="p-1 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
                       <button onClick={() => setData(d => ({ ...d, bens: d.bens.filter(x => x.id !== b.id) }))} className="p-1 rounded text-surface-400 hover:text-danger-600 transition-colors"><Trash2 size={13} /></button>
                     </div>
                   </div>
@@ -846,7 +885,7 @@ export function OrcamentoPage() {
         <div className="space-y-4">
           <Input id="rec-desc" label="Descrição" required value={formReceita.descricao} onChange={e => setFormReceita(f => ({ ...f, descricao: e.target.value }))} placeholder="Ex: Salário, freelance..." />
           <div className="grid grid-cols-2 gap-3">
-            <Input id="rec-valor" label="Valor (R$)" required type="number" min="0" step="0.01" value={formReceita.valor || ''} onChange={e => setFormReceita(f => ({ ...f, valor: Number(e.target.value) }))} />
+            <Input id="rec-valor" label="Valor (R$)" required type="text" inputMode="decimal" placeholder="0,00" value={formReceitaValorStr} onChange={e => setFormReceitaValorStr(e.target.value)} />
             <DateSelectBR label="Data" value={formReceita.data} onChange={v => setFormReceita(f => ({ ...f, data: v }))} />
           </div>
           <Select id="rec-cat" label="Categoria" value={formReceita.categoria} onChange={e => setFormReceita(f => ({ ...f, categoria: e.target.value as CategoriaFinanceira }))}>
@@ -864,7 +903,7 @@ export function OrcamentoPage() {
         <div className="space-y-3">
           <Input id="desp-desc" label="Descrição" required value={formDespesa.descricao} onChange={e => setFormDespesa(f => ({ ...f, descricao: e.target.value }))} placeholder="Ex: Aluguel, supermercado..." />
           <div className="grid grid-cols-2 gap-3">
-            <Input id="desp-valor" label="Valor (R$)" required type="number" min="0" step="0.01" value={formDespesa.valor || ''} onChange={e => setFormDespesa(f => ({ ...f, valor: Number(e.target.value) }))} />
+            <Input id="desp-valor" label="Valor (R$)" required type="text" inputMode="decimal" placeholder="0,00" value={formDespesaValorStr} onChange={e => setFormDespesaValorStr(e.target.value)} />
             <DateSelectBR label="Data" value={formDespesa.data} onChange={v => setFormDespesa(f => ({ ...f, data: v }))} />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -955,9 +994,9 @@ export function OrcamentoPage() {
                       </div>
                     </div>
                   </div>
-                  {formDespesa.valor > 0 && formDespesaExtra.quantidadeParcelas >= 2 && (
+                  {parseBRLMoney(formDespesaValorStr) > 0 && formDespesaExtra.quantidadeParcelas >= 2 && (
                     <p className="text-xs text-surface-500 dark:text-surface-400">
-                      Valor por parcela: <strong>{formatarDinheiro(formDespesa.valor / formDespesaExtra.quantidadeParcelas)}</strong>
+                      Valor por parcela: <strong>{formatarDinheiro(parseBRLMoney(formDespesaValorStr) / formDespesaExtra.quantidadeParcelas)}</strong>
                     </p>
                   )}
                 </div>
@@ -971,7 +1010,7 @@ export function OrcamentoPage() {
             const isParc = formDespesaExtra.tipoCobrancaCartao === 'parcelado';
             if (isParc && formDespesaExtra.quantidadeParcelas >= 2) {
               const qtd = formDespesaExtra.quantidadeParcelas;
-              const valorParcela = formDespesa.valor / qtd;
+              const valorParcela = parseBRLMoney(formDespesaValorStr) / qtd;
               const [ano, mes] = formDespesaExtra.mesInicioParcelas.split('-').map(Number);
               const primeiraData = new Date(ano, mes - 1, 1).toISOString().slice(0, 10);
               const competencia = obterCompetenciaFatura(primeiraData, cartao?.diaFechamento);
@@ -1032,8 +1071,8 @@ export function OrcamentoPage() {
         <div className="space-y-4">
           <Input id="cart-nome" label="Nome do cartão" required value={formCartao.nome} onChange={e => setFormCartao(f => ({ ...f, nome: e.target.value }))} placeholder="Ex: Nubank, Bradesco..." />
           <div className="grid grid-cols-2 gap-3">
-            <Input id="cart-limite" label="Limite (R$)" type="number" min="0" value={formCartao.limite || ''} onChange={e => setFormCartao(f => ({ ...f, limite: Number(e.target.value) }))} />
-            <Input id="cart-fatura" label="Fatura atual (R$)" type="number" min="0" value={formCartao.faturaAtual || ''} onChange={e => setFormCartao(f => ({ ...f, faturaAtual: Number(e.target.value) }))} />
+            <Input id="cart-limite" label="Limite (R$)" type="text" inputMode="decimal" placeholder="0,00" value={formCartaoLimiteStr} onChange={e => setFormCartaoLimiteStr(e.target.value)} />
+            <Input id="cart-fatura" label="Fatura atual (R$)" type="text" inputMode="decimal" placeholder="0,00" value={formCartaoFaturaStr} onChange={e => setFormCartaoFaturaStr(e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Input id="cart-venc" label="Dia vencimento" type="number" min="1" max="31" value={formCartao.vencimento} onChange={e => setFormCartao(f => ({ ...f, vencimento: Number(e.target.value) }))} />
@@ -1055,8 +1094,8 @@ export function OrcamentoPage() {
         <div className="space-y-4">
           <Input id="div-nome" label="Nome da dívida" required value={formDivida.nome} onChange={e => setFormDivida(f => ({ ...f, nome: e.target.value }))} placeholder="Ex: Empréstimo banco..." />
           <div className="grid grid-cols-2 gap-3">
-            <Input id="div-total" label="Valor total (R$)" type="number" min="0" value={formDivida.valorTotal || ''} onChange={e => setFormDivida(f => ({ ...f, valorTotal: Number(e.target.value) }))} />
-            <Input id="div-parcela" label="Valor parcela (R$)" type="number" min="0" value={formDivida.valorParcela || ''} onChange={e => setFormDivida(f => ({ ...f, valorParcela: Number(e.target.value) }))} />
+            <Input id="div-total" label="Valor total (R$)" type="text" inputMode="decimal" placeholder="0,00" value={formDividaTotalStr} onChange={e => setFormDividaTotalStr(e.target.value)} />
+            <Input id="div-parcela" label="Valor parcela (R$)" type="text" inputMode="decimal" placeholder="0,00" value={formDividaParcelaStr} onChange={e => setFormDividaParcelaStr(e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Input id="div-totparc" label="Total de parcelas" type="number" min="1" value={formDivida.totalParcelas} onChange={e => setFormDivida(f => ({ ...f, totalParcelas: Number(e.target.value) }))} />
@@ -1089,8 +1128,8 @@ export function OrcamentoPage() {
         <div className="space-y-4">
           <Input id="res-nome" label="Nome da reserva" required value={formReserva.nome} onChange={e => setFormReserva(f => ({ ...f, nome: e.target.value }))} placeholder="Ex: Reserva para EUA..." />
           <div className="grid grid-cols-2 gap-3">
-            <Input id="res-meta" label="Meta (R$)" type="number" min="0" value={formReserva.metaReserva || ''} onChange={e => setFormReserva(f => ({ ...f, metaReserva: Number(e.target.value) }))} />
-            <Input id="res-atual" label="Valor atual (R$)" type="number" min="0" value={formReserva.valorAtual || ''} onChange={e => setFormReserva(f => ({ ...f, valorAtual: Number(e.target.value) }))} />
+            <Input id="res-meta" label="Meta (R$)" type="text" inputMode="decimal" placeholder="0,00" value={formReservaMetaStr} onChange={e => setFormReservaMetaStr(e.target.value)} />
+            <Input id="res-atual" label="Valor atual (R$)" type="text" inputMode="decimal" placeholder="0,00" value={formReservaAtualStr} onChange={e => setFormReservaAtualStr(e.target.value)} />
           </div>
           <DateSelectBR label="Prazo desejado" value={formReserva.prazoDesejado || hojeISO()} onChange={v => setFormReserva(f => ({ ...f, prazoDesejado: v }))} />
           <div className="flex gap-3 pt-2">
@@ -1121,12 +1160,11 @@ export function OrcamentoPage() {
               <Input
                 id="fat-valor"
                 label="Valor total da fatura (R$)"
-                type="number"
-                min="0"
-                step="0.01"
-                value={formFatura.valorInformado || ''}
-                onChange={e => setFormFatura(f => ({ ...f, valorInformado: Number(e.target.value) }))}
-                placeholder="Digite o valor da fatura"
+                type="text"
+                inputMode="decimal"
+                value={formFaturaValorStr}
+                onChange={e => setFormFaturaValorStr(e.target.value)}
+                placeholder="0,00"
               />
               <Textarea
                 id="fat-obs"
@@ -1213,7 +1251,7 @@ export function OrcamentoPage() {
             <Select id="bem-tipo" label="Tipo" value={formBem.tipo} onChange={e => setFormBem(f => ({ ...f, tipo: e.target.value as TipoBem }))}>
               {(['Casa', 'Carro', 'Eletrônico', 'Móvel', 'Outro'] as TipoBem[]).map(t => <option key={t} value={t}>{t}</option>)}
             </Select>
-            <Input id="bem-valor" label="Valor estimado (R$)" type="number" min="0" value={formBem.valorEstimado || ''} onChange={e => setFormBem(f => ({ ...f, valorEstimado: Number(e.target.value) }))} />
+            <Input id="bem-valor" label="Valor estimado (R$)" type="text" inputMode="decimal" placeholder="0,00" value={formBemValorStr} onChange={e => setFormBemValorStr(e.target.value)} />
           </div>
           <Select id="bem-status" label="Status" value={formBem.status} onChange={e => setFormBem(f => ({ ...f, status: e.target.value as StatusBem }))}>
             <option value="manter">Manter</option>
