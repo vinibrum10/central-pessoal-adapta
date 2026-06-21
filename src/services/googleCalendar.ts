@@ -1,17 +1,14 @@
 /**
  * Integração com Google Calendar (somente leitura)
  *
- * Implementação usando Google Identity Services (GSI) carregado dinamicamente.
- * Não requer client secret — usa OAuth 2.0 com implicit flow para SPAs.
+ * Usa Google Identity Services (GSI) — carregado dinamicamente, sem client secret.
+ * Escopo: https://www.googleapis.com/auth/calendar.readonly
  *
  * Como configurar:
- * 1. Acesse console.cloud.google.com
- * 2. Crie um projeto e habilite a "Google Calendar API"
- * 3. Em "Credenciais", crie um "ID do cliente OAuth 2.0" do tipo "Aplicativo Web"
- * 4. Adicione http://localhost:5173 em "Origens JavaScript autorizadas"
- * 5. Copie o Client ID para a variável VITE_GOOGLE_CLIENT_ID no .env
- *
- * Escopos utilizados: https://www.googleapis.com/auth/calendar.readonly
+ * 1. console.cloud.google.com → habilitar "Google Calendar API"
+ * 2. Credenciais → OAuth 2.0 → Aplicativo Web
+ * 3. Origens JS autorizadas: http://localhost:5173 e https://central-pessoal-adapta.vercel.app
+ * 4. Copiar Client ID → VITE_GOOGLE_CLIENT_ID no .env / Vercel
  */
 
 /// <reference types="vite/client" />
@@ -22,7 +19,7 @@ const SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
 const GSI_URL = 'https://accounts.google.com/gsi/client';
 const CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
 
-// Token em memória apenas — não persiste no LocalStorage
+// Token em memória — não persiste no LocalStorage
 let tokenEmMemoria: string | null = null;
 
 // ============================================================
@@ -34,7 +31,7 @@ export function isGoogleConfigured(): boolean {
 }
 
 export function getMensagemNaoConfigurado(): string {
-  return 'Google Calendar ainda não configurado. Defina VITE_GOOGLE_CLIENT_ID no arquivo .env para habilitar esta integração.';
+  return 'Google Calendar não configurado. Adicione VITE_GOOGLE_CLIENT_ID nas variáveis de ambiente do Vercel e em .env local para habilitar esta integração.';
 }
 
 // ============================================================
@@ -49,7 +46,6 @@ function carregarScriptGSI(): Promise<void> {
 
     const existing = document.getElementById('google-gsi-script');
     if (existing) {
-      // Aguardar carregamento já em andamento
       const check = setInterval(() => {
         if ((window as unknown as Record<string, unknown>)['google']) {
           clearInterval(check);
@@ -65,7 +61,7 @@ function carregarScriptGSI(): Promise<void> {
     script.async = true;
     script.defer = true;
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Falha ao carregar script do Google'));
+    script.onerror = () => reject(new Error('Falha ao carregar script do Google Identity Services'));
     document.head.appendChild(script);
   });
 }
@@ -97,7 +93,7 @@ export async function conectarGoogleCalendar(): Promise<string> {
     };
 
     if (!win.google?.accounts?.oauth2) {
-      return reject(new Error('Google Identity Services não carregado'));
+      return reject(new Error('Google Identity Services não carregado corretamente'));
     }
 
     const tokenClient = win.google.accounts.oauth2.initTokenClient({
@@ -105,7 +101,11 @@ export async function conectarGoogleCalendar(): Promise<string> {
       scope: SCOPE,
       callback: (resp) => {
         if (resp.error || !resp.access_token) {
-          reject(new Error(resp.error ?? 'Falha na autenticação Google'));
+          if (resp.error === 'access_denied') {
+            reject(new Error('Permissão negada. Você pode conectar novamente a qualquer momento.'));
+          } else {
+            reject(new Error(resp.error ?? 'Falha na autenticação com o Google'));
+          }
           return;
         }
         tokenEmMemoria = resp.access_token;
@@ -135,8 +135,44 @@ export function isGoogleConectado(): boolean {
 }
 
 // ============================================================
+// LISTAGEM DE CALENDÁRIOS
+// ============================================================
+
+export interface CalendarioGoogle {
+  id: string;
+  summary: string;
+  primary?: boolean;
+  selected?: boolean;
+  accessRole?: string;
+}
+
+export async function listarCalendarios(): Promise<CalendarioGoogle[]> {
+  if (!tokenEmMemoria) throw new Error('Não conectado ao Google Calendar');
+
+  const resp = await fetch(`${CALENDAR_API}/users/me/calendarList`, {
+    headers: { Authorization: `Bearer ${tokenEmMemoria}` },
+  });
+
+  if (!resp.ok) {
+    if (resp.status === 401) {
+      tokenEmMemoria = null;
+      throw new Error('Sessão Google expirada. Reconecte.');
+    }
+    throw new Error(`Erro ao listar calendários: ${resp.status}`);
+  }
+
+  const body = await resp.json() as { items?: CalendarioGoogle[] };
+  return (body.items ?? []).filter(c => c.accessRole !== 'none');
+}
+
+// ============================================================
 // LISTAGEM DE EVENTOS
 // ============================================================
+
+interface ConferenceEntryPoint {
+  entryPointType: string;
+  uri: string;
+}
 
 interface GoogleEvent {
   id: string;
@@ -144,26 +180,37 @@ interface GoogleEvent {
   description?: string;
   location?: string;
   start: { dateTime?: string; date?: string };
-  end:   { dateTime?: string; date?: string };
+  end: { dateTime?: string; date?: string };
+  hangoutLink?: string;
+  conferenceData?: {
+    entryPoints?: ConferenceEntryPoint[];
+  };
 }
 
-export async function listarEventosGoogle(
+function extrairLinkReuniao(ev: GoogleEvent): string | undefined {
+  if (ev.hangoutLink) return ev.hangoutLink;
+  const entry = ev.conferenceData?.entryPoints?.find(
+    ep => ep.entryPointType === 'video' || ep.entryPointType === 'phone'
+  );
+  return entry?.uri;
+}
+
+async function buscarEventosCalendario(
+  calendarId: string,
+  calendarNome: string,
   dataInicio: string,
   dataFim: string
 ): Promise<EventoAgenda[]> {
-  if (!tokenEmMemoria) throw new Error('Não conectado ao Google Calendar');
-
   const params = new URLSearchParams({
-    calendarId: 'primary',
     timeMin: `${dataInicio}T00:00:00Z`,
     timeMax: `${dataFim}T23:59:59Z`,
     singleEvents: 'true',
     orderBy: 'startTime',
-    maxResults: '250',
+    maxResults: '500',
   });
 
   const resp = await fetch(
-    `${CALENDAR_API}/calendars/primary/events?${params}`,
+    `${CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
     { headers: { Authorization: `Bearer ${tokenEmMemoria}` } }
   );
 
@@ -172,7 +219,9 @@ export async function listarEventosGoogle(
       tokenEmMemoria = null;
       throw new Error('Sessão Google expirada. Reconecte.');
     }
-    throw new Error(`Erro ao buscar eventos Google: ${resp.status}`);
+    // Calendários sem acesso de leitura retornam 403/404 — ignorar silenciosamente
+    if (resp.status === 403 || resp.status === 404) return [];
+    throw new Error(`Erro ao buscar eventos (${calendarId}): ${resp.status}`);
   }
 
   const body = await resp.json() as { items?: GoogleEvent[] };
@@ -181,10 +230,11 @@ export async function listarEventosGoogle(
   return items.map((ev): EventoAgenda => {
     const diaInteiro = Boolean(ev.start.date && !ev.start.dateTime);
     const inicio = ev.start.dateTime ?? `${ev.start.date}T00:00:00`;
-    const fim    = ev.end.dateTime   ?? `${ev.end.date}T23:59:59`;
+    const fim = ev.end.dateTime ?? `${ev.end.date}T23:59:59`;
+    const linkReuniao = extrairLinkReuniao(ev);
 
     return {
-      id: `google-${ev.id}`,
+      id: `google-${calendarId}-${ev.id}`,
       fonte: 'google',
       titulo: ev.summary ?? '(Sem título)',
       descricao: ev.description,
@@ -196,20 +246,35 @@ export async function listarEventosGoogle(
       importadoEm: new Date().toISOString(),
       tarefaGeradaId: null,
       ignorado: false,
+      calendarNome,
+      linkReuniao,
     };
   });
+}
+
+export async function listarEventosTodosCalendarios(
+  dataInicio: string,
+  dataFim: string
+): Promise<EventoAgenda[]> {
+  if (!tokenEmMemoria) throw new Error('Não conectado ao Google Calendar');
+
+  const calendarios = await listarCalendarios();
+  const resultados = await Promise.all(
+    calendarios.map(c => buscarEventosCalendario(c.id, c.summary, dataInicio, dataFim))
+  );
+
+  return resultados.flat();
 }
 
 export async function sincronizarGoogleCalendar(
   dataInicio: string,
   dataFim: string
 ): Promise<EventoAgenda[]> {
-  const eventos = await listarEventosGoogle(dataInicio, dataFim);
-  return eventos;
+  return listarEventosTodosCalendarios(dataInicio, dataFim);
 }
 
 // ============================================================
-// ID ÚNICO — evita duplicatas
+// DEDUPLICAÇÃO
 // ============================================================
 
 export function deduplicarEventos(

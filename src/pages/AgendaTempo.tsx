@@ -4,7 +4,7 @@ import { ptBR } from 'date-fns/locale';
 import {
   Clock, Plus, Trash2, Calendar, RefreshCw, Link2, Link2Off,
   Upload, CheckCircle2, XCircle, AlertTriangle, ChevronDown, ChevronUp,
-  Zap, Info,
+  Zap, Info, ExternalLink,
 } from 'lucide-react';
 import { useApp } from '../hooks/useApp';
 import { useCalendario } from '../hooks/useCalendario';
@@ -72,6 +72,121 @@ const iconFonte = (fonte: string): React.ReactNode => {
     default: return <Clock size={13} className="text-surface-500" />;
   }
 };
+
+// ============================================================
+// CARD DE EVENTO REUTILIZÁVEL
+// ============================================================
+
+function EventoCard({
+  ev,
+  onToggle,
+  onExcluir,
+  compact = false,
+}: {
+  ev: EventoAgenda;
+  onToggle?: (id: string) => void;
+  onExcluir?: (id: string) => void;
+  compact?: boolean;
+}) {
+  const [expandido, setExpandido] = useState(false);
+  const temExtra = Boolean(ev.descricao || ev.linkReuniao || ev.calendarNome);
+
+  return (
+    <div className={`rounded-xl border ${corFonte(ev.fonte)} ${ev.ignorado ? 'opacity-40' : ''}`}>
+      <div className={`flex items-center gap-3 ${compact ? 'p-2.5' : 'p-3'}`}>
+        <div className={`${compact ? 'w-6 h-6' : 'w-7 h-7'} rounded-lg bg-white dark:bg-surface-800 flex items-center justify-center flex-shrink-0 shadow-sm`}>
+          {iconFonte(ev.fonte)}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className={`${compact ? 'text-xs' : 'text-sm'} font-semibold text-surface-900 dark:text-white truncate`}>{ev.titulo}</p>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
+            <span className="text-[10px] text-surface-400 dark:text-surface-500">{formatarIntervaloEvento(ev)}</span>
+            {ev.calendarNome && (
+              <span className="text-[10px] text-surface-400 dark:text-surface-500 truncate max-w-[120px]" title={ev.calendarNome}>
+                · {ev.calendarNome}
+              </span>
+            )}
+            {ev.linkReuniao && (
+              <a
+                href={ev.linkReuniao}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={e => e.stopPropagation()}
+                className="text-[10px] text-primary-600 dark:text-primary-400 flex items-center gap-0.5 hover:underline"
+              >
+                <ExternalLink size={9} /> Entrar na reunião
+              </a>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {temExtra && (
+            <button
+              onClick={() => setExpandido(v => !v)}
+              className="p-1 rounded hover:bg-white dark:hover:bg-surface-800 text-surface-300 hover:text-surface-600 dark:hover:text-surface-300 transition-colors"
+              title="Ver detalhes"
+            >
+              {expandido ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+            </button>
+          )}
+          {onToggle && (
+            <button
+              onClick={() => onToggle(ev.id)}
+              title={ev.bloqueiaTempo ? 'Bloqueia tempo' : 'Não bloqueia'}
+              className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium transition-colors ${
+                ev.bloqueiaTempo
+                  ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                  : 'bg-surface-100 dark:bg-surface-700 text-surface-400'
+              }`}
+            >
+              {ev.bloqueiaTempo ? 'Bloqueia' : 'Livre'}
+            </button>
+          )}
+          {onExcluir && (
+            <button
+              onClick={() => onExcluir(ev.id)}
+              className="p-1 rounded hover:bg-white dark:hover:bg-surface-800 text-surface-300 hover:text-danger-500 transition-colors"
+            >
+              <Trash2 size={11} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {expandido && temExtra && (
+        <div className="px-3 pb-3 space-y-1.5 border-t border-black/5 dark:border-white/5 pt-2">
+          {ev.calendarNome && (
+            <p className="text-[11px] text-surface-500 dark:text-surface-400">
+              <span className="font-medium">Calendário:</span> {ev.calendarNome}
+            </p>
+          )}
+          {ev.local && (
+            <p className="text-[11px] text-surface-500 dark:text-surface-400">
+              <span className="font-medium">Local:</span> {ev.local}
+            </p>
+          )}
+          {ev.linkReuniao && (
+            <p className="text-[11px]">
+              <a
+                href={ev.linkReuniao}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary-600 dark:text-primary-400 flex items-center gap-1 hover:underline"
+              >
+                <ExternalLink size={10} /> Entrar na reunião
+              </a>
+            </p>
+          )}
+          {ev.descricao && (
+            <p className="text-[11px] text-surface-500 dark:text-surface-400 leading-relaxed line-clamp-4 whitespace-pre-line">
+              {ev.descricao.replace(/<[^>]+>/g, ' ').trim()}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ============================================================
 // MODAL CLASSIFICAR EVENTO DO FIM DE SEMANA
@@ -248,38 +363,28 @@ function EventosLista({
   onToggle: (id: string) => void;
 }) {
   const [expandido, setExpandido] = useState(false);
-  const sorted = [...eventos].sort((a, b) => b.importadoEm.localeCompare(a.importadoEm));
+  const sorted = [...eventos].sort((a, b) => a.inicio.localeCompare(b.inicio));
   const visivel = expandido ? sorted : sorted.slice(0, 5);
+
+  if (sorted.length === 0) {
+    return (
+      <div className="text-center py-6 space-y-1">
+        <Calendar size={24} className="mx-auto text-surface-300 dark:text-surface-600" />
+        <p className="text-xs text-surface-400 dark:text-surface-500">Nenhum evento importado</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2">
       {visivel.map(ev => (
-        <div key={ev.id} className={`flex items-center gap-3 p-3 rounded-xl border ${corFonte(ev.fonte)} ${ev.ignorado ? 'opacity-40' : ''}`}>
-          <div className="w-6 h-6 rounded-lg bg-white dark:bg-surface-800 flex items-center justify-center flex-shrink-0 shadow-sm">
-            {iconFonte(ev.fonte)}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-surface-900 dark:text-white truncate">{ev.titulo}</p>
-            <p className="text-[10px] text-surface-400 dark:text-surface-500">
-              {ev.inicio.split('T')[0]} · {formatarIntervaloEvento(ev)} · {labelFonteAgenda(ev.fonte)}
-            </p>
-          </div>
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            <button
-              onClick={() => onToggle(ev.id)}
-              className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium transition-colors ${
-                ev.bloqueiaTempo
-                  ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
-                  : 'bg-surface-100 dark:bg-surface-700 text-surface-400'
-              }`}
-            >
-              {ev.bloqueiaTempo ? 'Bloqueia' : 'Livre'}
-            </button>
-            <button onClick={() => onExcluir(ev.id)} className="p-1 rounded hover:bg-white dark:hover:bg-surface-800 text-surface-300 hover:text-danger-500 transition-colors">
-              <Trash2 size={11} />
-            </button>
-          </div>
-        </div>
+        <EventoCard
+          key={ev.id}
+          ev={ev}
+          compact
+          onToggle={onToggle}
+          onExcluir={onExcluir}
+        />
       ))}
       {sorted.length > 5 && (
         <button
@@ -536,13 +641,27 @@ export function AgendaTempoPage() {
     });
   }, [setData]);
 
+  // Janela de 30 dias a partir de hoje
+  const rangeGoogle = useMemo(() => {
+    const d30 = new Date();
+    d30.setDate(d30.getDate() + 30);
+    return { ini: hoje, fim: d30.toISOString().slice(0, 10) };
+  }, [hoje]);
+
   // ── Google ──
   const handleConectarGoogle = async () => {
     setCarregandoGoogle(true); setErroConexao(null);
     try {
       await conectarGoogleCalendar();
-      const eventos = await sincronizarGoogleCalendar(semana[0], semana[6]);
-      adicionarEventos(eventos);
+      const eventos = await sincronizarGoogleCalendar(rangeGoogle.ini, rangeGoogle.fim);
+      // Substitui todos eventos google existentes para evitar duplicatas ao reconectar
+      setData(d => ({
+        ...d,
+        eventosAgenda: [
+          ...d.eventosAgenda.filter(e => e.fonte !== 'google'),
+          ...eventos,
+        ],
+      }));
       setSincGoogleEm(new Date().toISOString());
     } catch (e) {
       setErroConexao(e instanceof Error ? e.message : String(e));
@@ -552,8 +671,14 @@ export function AgendaTempoPage() {
   const handleSincronizarGoogle = async () => {
     setCarregandoGoogle(true); setErroConexao(null);
     try {
-      const eventos = await sincronizarGoogleCalendar(semana[0], semana[6]);
-      adicionarEventos(eventos);
+      const eventos = await sincronizarGoogleCalendar(rangeGoogle.ini, rangeGoogle.fim);
+      setData(d => ({
+        ...d,
+        eventosAgenda: [
+          ...d.eventosAgenda.filter(e => e.fonte !== 'google'),
+          ...eventos,
+        ],
+      }));
       setSincGoogleEm(new Date().toISOString());
     } catch (e) {
       setErroConexao(e instanceof Error ? e.message : String(e));
@@ -876,27 +1001,12 @@ export function AgendaTempoPage() {
               ) : (
                 <div className="space-y-2">
                   {eventosHoje.map(ev => (
-                    <div key={ev.id} className={`flex items-center gap-3 p-3 rounded-xl border ${corFonte(ev.fonte)}`}>
-                      <div className="w-7 h-7 rounded-lg bg-white dark:bg-surface-800 flex items-center justify-center flex-shrink-0 shadow-sm">
-                        {iconFonte(ev.fonte)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-surface-900 dark:text-white truncate">{ev.titulo}</p>
-                        <p className="text-xs text-surface-400 dark:text-surface-500">{formatarIntervaloEvento(ev)}</p>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <button
-                          onClick={() => toggleBloqueiaTempo(ev.id)}
-                          title={ev.bloqueiaTempo ? 'Bloqueia tempo' : 'Não bloqueia'}
-                          className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${ev.bloqueiaTempo ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' : 'bg-surface-100 dark:bg-surface-700 text-surface-400'}`}
-                        >
-                          {ev.bloqueiaTempo ? 'Bloqueia' : 'Livre'}
-                        </button>
-                        <button onClick={() => excluirEvento(ev.id)} className="p-1 rounded hover:bg-white dark:hover:bg-surface-800 text-surface-300 hover:text-danger-500 transition-colors">
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    </div>
+                    <EventoCard
+                      key={ev.id}
+                      ev={ev}
+                      onToggle={toggleBloqueiaTempo}
+                      onExcluir={excluirEvento}
+                    />
                   ))}
                 </div>
               )}

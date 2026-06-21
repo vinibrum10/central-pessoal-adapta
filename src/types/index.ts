@@ -298,6 +298,8 @@ export interface EventoAgenda {
   importadoEm: string;
   tarefaGeradaId?: string | null;
   ignorado?: boolean;
+  calendarNome?: string;  // nome do calendário de origem (ex: "Pessoal", "Trabalho")
+  linkReuniao?: string;   // link Google Meet, Teams, Zoom etc.
 }
 
 export interface ConfiguracaoAgenda {
