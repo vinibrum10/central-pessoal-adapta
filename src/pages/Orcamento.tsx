@@ -109,6 +109,7 @@ export function OrcamentoPage() {
   const [formReceitaValorStr, setFormReceitaValorStr] = useState('');
   const [formDespesa, setFormDespesa] = useState<Omit<Despesa, 'id' | 'dataCriacao'>>({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Alimentação', formaPagamento: 'PIX', recorrente: false, essencial: true });
   const [formDespesaValorStr, setFormDespesaValorStr] = useState('');
+  const [formDespesaMesFatura, setFormDespesaMesFatura] = useState<string>(hojeISO().slice(0, 7)); // YYYY-MM para edição de cartão
   const [formDespesaExtra, setFormDespesaExtra] = useState<FormDespesaExtra>({ tipoCobrancaCartao: 'avista', quantidadeParcelas: 2, mesInicioParcelas: hojeISO().slice(0, 7) });
   const [formCartao, setFormCartao] = useState<Omit<Cartao, 'id' | 'dataCriacao'>>({ nome: '', limite: 0, faturaAtual: 0, vencimento: 10, status: 'ativo', diaFechamento: undefined });
   const [formCartaoLimiteStr, setFormCartaoLimiteStr] = useState('');
@@ -329,12 +330,21 @@ export function OrcamentoPage() {
       setData(d => {
         if (editandoId) {
           const depAtual = d.despesas.find(dep => dep.id === editandoId);
-          // Se tem grupo de parcelamento, a pergunta sobre escopo já foi feita antes de chegar aqui
-          // (via aplicarEdicaoParcela). Aqui edita só esta.
-          return {
-            ...d,
-            despesas: d.despesas.map(dep => dep.id === editandoId ? { ...dep, ...formDespesaComValor, grupoParcelamentoId: depAtual?.grupoParcelamentoId, parcelaAtual: depAtual?.parcelaAtual, quantidadeParcelas: depAtual?.quantidadeParcelas } : dep),
-          };
+          // Se for cartão de crédito, atualizar faturaId conforme mês da fatura selecionado
+          let faturasAtual = [...(d.faturas ?? [])];
+          let faturaIdEditado = depAtual?.faturaId;
+          if (formDespesaComValor.formaPagamento === 'Cartão de crédito' && cartaoSelecionadoId) {
+            const { fatura, isNova } = obterOuCriarFatura(cartaoSelecionadoId, formDespesaMesFatura, faturasAtual);
+            if (isNova) faturasAtual = [...faturasAtual, fatura];
+            faturaIdEditado = fatura.id;
+          }
+          const despesasAtual = d.despesas.map(dep =>
+            dep.id === editandoId
+              ? { ...dep, ...formDespesaComValor, cartaoId: cartaoSelecionadoId || depAtual?.cartaoId, faturaId: faturaIdEditado, grupoParcelamentoId: depAtual?.grupoParcelamentoId, parcelaAtual: depAtual?.parcelaAtual, quantidadeParcelas: depAtual?.quantidadeParcelas }
+              : dep
+          );
+          const faturasRecalculadas = faturasAtual.map(f => recalcularFatura(f, despesasAtual));
+          return { ...d, despesas: despesasAtual, faturas: faturasRecalculadas };
         }
         // Nova despesa à vista com cartão
         const cartaoId = isCartao && cartaoSelecionadoId ? cartaoSelecionadoId : undefined;
@@ -369,8 +379,9 @@ export function OrcamentoPage() {
     setCartaoSelecionadoId('');
     setFormDespesa({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Alimentação', formaPagamento: 'PIX', recorrente: false, essencial: true });
     setFormDespesaValorStr('');
+    setFormDespesaMesFatura(hojeISO().slice(0, 7));
     setFormDespesaExtra({ tipoCobrancaCartao: 'avista', quantidadeParcelas: 2, mesInicioParcelas: hojeISO().slice(0, 7) });
-  }, [formDespesa, formDespesaValorStr, formDespesaExtra, editandoId, setData]);
+  }, [formDespesa, formDespesaValorStr, formDespesaMesFatura, formDespesaExtra, editandoId, cartaoSelecionadoId, setData]);
 
   // Chamado pelo botão Salvar do modal de despesa
   const handleSalvarDespesa = useCallback(() => {
@@ -418,6 +429,7 @@ export function OrcamentoPage() {
     setCartaoSelecionadoId('');
     setFormDespesa({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Alimentação', formaPagamento: 'PIX', recorrente: false, essencial: true });
     setFormDespesaValorStr('');
+    setFormDespesaMesFatura(hojeISO().slice(0, 7));
     setFormDespesaExtra({ tipoCobrancaCartao: 'avista', quantidadeParcelas: 2, mesInicioParcelas: hojeISO().slice(0, 7) });
   }, [editandoId, formDespesa, formDespesaValorStr, salvarDespesa, setData]);
 
@@ -661,7 +673,19 @@ export function OrcamentoPage() {
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold text-danger-600 dark:text-danger-400">{formatarDinheiro(d.valor)}</span>
                         {canEditExpense(perfil) && (
-                          <button onClick={() => { setFormDespesa({ descricao: d.descricao, valor: d.valor, data: d.data, categoria: d.categoria, formaPagamento: d.formaPagamento, recorrente: d.recorrente, essencial: d.essencial }); setFormDespesaValorStr(moneyToInputBR(d.valor)); abrirModal('despesa', d); }} className="p-1.5 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
+                          <button onClick={() => {
+                            setFormDespesa({ descricao: d.descricao, valor: d.valor, data: d.data, categoria: d.categoria, formaPagamento: d.formaPagamento, recorrente: d.recorrente, essencial: d.essencial });
+                            setFormDespesaValorStr(moneyToInputBR(d.valor));
+                            setCartaoSelecionadoId(d.cartaoId ?? '');
+                            // Popular mês da fatura para edição de cartão
+                            if (d.formaPagamento === 'Cartão de crédito' && d.faturaId) {
+                              const fat = (data.faturas ?? []).find(f => f.id === d.faturaId);
+                              setFormDespesaMesFatura(fat?.competencia ?? hojeISO().slice(0, 7));
+                            } else {
+                              setFormDespesaMesFatura(d.data.slice(0, 7));
+                            }
+                            abrirModal('despesa', d);
+                          }} className="p-1.5 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
                         )}
                         {canDeleteExpense(perfil) && (
                           <button onClick={() => setData(prev => ({ ...prev, despesas: prev.despesas.filter(x => x.id !== d.id) }))} className="p-1.5 rounded text-surface-400 hover:text-danger-600 transition-colors"><Trash2 size={13} /></button>
@@ -905,7 +929,35 @@ export function OrcamentoPage() {
           <Input id="desp-desc" label="Descrição" required value={formDespesa.descricao} onChange={e => setFormDespesa(f => ({ ...f, descricao: e.target.value }))} placeholder="Ex: Aluguel, supermercado..." />
           <div className="grid grid-cols-2 gap-3">
             <Input id="desp-valor" label="Valor (R$)" required type="text" inputMode="decimal" placeholder="0,00" value={formDespesaValorStr} onChange={e => setFormDespesaValorStr(e.target.value)} />
-            <DateSelectBR label="Data" value={formDespesa.data} onChange={v => setFormDespesa(f => ({ ...f, data: v }))} />
+            {editandoId && formDespesa.formaPagamento === 'Cartão de crédito' ? (
+              <div>
+                <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Mês da fatura</label>
+                <div className="flex gap-2">
+                  <select
+                    value={formDespesaMesFatura.split('-')[1] ?? ''}
+                    onChange={e => {
+                      const ano = formDespesaMesFatura.split('-')[0] ?? new Date().getFullYear().toString();
+                      setFormDespesaMesFatura(`${ano}-${e.target.value}`);
+                    }}
+                    className="flex-1 px-3 py-2.5 rounded-lg border text-sm bg-white dark:bg-surface-900 border-surface-300 dark:border-surface-600 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                    {MESES.map((m, i) => <option key={i} value={String(i + 1).padStart(2, '0')}>{m}</option>)}
+                  </select>
+                  <select
+                    value={formDespesaMesFatura.split('-')[0] ?? ''}
+                    onChange={e => {
+                      const mes = formDespesaMesFatura.split('-')[1] ?? '01';
+                      setFormDespesaMesFatura(`${e.target.value}-${mes}`);
+                    }}
+                    className="w-24 px-3 py-2.5 rounded-lg border text-sm bg-white dark:bg-surface-900 border-surface-300 dark:border-surface-600 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                    {[-1, 0, 1, 2].map(offset => { const y = new Date().getFullYear() + offset; return <option key={y} value={y}>{y}</option>; })}
+                  </select>
+                </div>
+              </div>
+            ) : (
+              <DateSelectBR label="Data" value={formDespesa.data} onChange={v => setFormDespesa(f => ({ ...f, data: v }))} />
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Select id="desp-cat" label="Categoria" value={formDespesa.categoria} onChange={e => setFormDespesa(f => ({ ...f, categoria: e.target.value as CategoriaFinanceira }))}>
