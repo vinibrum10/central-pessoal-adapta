@@ -113,40 +113,34 @@ export function LoginPage() {
             {modo === 'login' ? 'Entrar na sua conta' : 'Criar conta'}
           </h2>
 
-          {/* Botões sociais — só aparecem se o provider estiver configurado */}
-          {(googleConfigurado || microsoftConfigurado) && (
-            <>
-              <div className={`grid gap-2 ${googleConfigurado && microsoftConfigurado ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                {googleConfigurado && (
-                  <button
-                    type="button"
-                    onClick={handleGoogle}
-                    disabled={carregandoGoogle}
-                    className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-900 text-sm font-medium text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors disabled:opacity-50"
-                  >
-                    <GoogleIcon />
-                    <span className="text-xs">Google</span>
-                  </button>
-                )}
-                {microsoftConfigurado && (
-                  <button
-                    type="button"
-                    onClick={handleMicrosoft}
-                    disabled={carregandoMicrosoft}
-                    className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-900 text-sm font-medium text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors disabled:opacity-50"
-                  >
-                    <MicrosoftIcon />
-                    <span className="text-xs">Microsoft</span>
-                  </button>
-                )}
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="flex-1 h-px bg-surface-200 dark:bg-surface-700" />
-                <span className="text-xs text-surface-400 dark:text-surface-500">ou continue com e-mail</span>
-                <div className="flex-1 h-px bg-surface-200 dark:bg-surface-700" />
-              </div>
-            </>
-          )}
+          {/* Botões sociais — sempre visíveis */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={handleGoogle}
+              disabled={carregandoGoogle}
+              className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-900 text-sm font-medium text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors disabled:opacity-50"
+            >
+              <GoogleIcon />
+              <span className="text-xs">{carregandoGoogle ? '...' : 'Google'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleMicrosoft}
+              disabled={carregandoMicrosoft}
+              className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-900 text-sm font-medium text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors disabled:opacity-50"
+            >
+              <MicrosoftIcon />
+              <span className="text-xs">{carregandoMicrosoft ? '...' : 'Microsoft'}</span>
+            </button>
+          </div>
+
+          {/* Separador */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-surface-200 dark:bg-surface-700" />
+            <span className="text-xs text-surface-400 dark:text-surface-500">ou continue com e-mail</span>
+            <div className="flex-1 h-px bg-surface-200 dark:bg-surface-700" />
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-3">
             {modo === 'cadastro' && (
