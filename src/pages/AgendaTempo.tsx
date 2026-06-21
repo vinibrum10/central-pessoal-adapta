@@ -8,7 +8,7 @@ import { Modal } from '../components/Modal';
 import { Input, Select, Textarea } from '../components/FormFields';
 import {
   calcularMinutosDisponiveis, sugerirTarefas,
-  formatarMinutos, corPrioridade, hojeISO, gerarId
+  formatarMinutos, corFaixa, siglaFaixa, hojeISO, gerarId
 } from '../utils';
 import { format } from 'date-fns';
 
@@ -198,7 +198,7 @@ export function AgendaTempoPage() {
                           <span className="text-xs text-surface-400">{formatarMinutos(tarefa.tempoEstimado)}</span>
                         </div>
                       </div>
-                      <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${corPrioridade(tarefa.prioridade)}`}>{tarefa.prioridade}</span>
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${corFaixa(tarefa.faixa)}`}>{siglaFaixa(tarefa.faixa)}</span>
                     </div>
                   );
                 })}

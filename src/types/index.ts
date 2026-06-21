@@ -12,31 +12,32 @@ export type Categoria =
 export type Prioridade = 'baixa' | 'média' | 'alta' | 'crítica';
 
 // ---- META ----
-export type StatusMeta = 'ativa' | 'pausada' | 'concluída' | 'cancelada';
+export type StatusMeta = 'ativa' | 'planejar futuro' | 'pausada' | 'concluída' | 'cancelada';
+export type FrequenciaRevisao = 'semanal' | 'quinzenal' | 'mensal' | 'sob demanda';
 
 export interface Meta {
   id: string;
   nome: string;
   categoria: Categoria;
-  descricao: string;
-  prazoFinal: string; // ISO date string
-  prioridade: Prioridade;
+  // grau obrigatório para metas ativas; pode ser 0 para "planejar futuro"
+  grau: number;
   status: StatusMeta;
-  progresso: number; // 0-100
-  resultadoEsperado: string;
   motivo: string;
+  resultadoEsperado: string;
+  prazoFinal: string;
+  frequenciaRevisao: FrequenciaRevisao;
   dataCriacao: string;
+  dataUltimaRevisao: string | null;
   dataUltimaAcao: string | null;
+  // campos legados opcionais (mantidos para compatibilidade)
+  descricao?: string;
+  progresso?: number;
+  prioridade?: Prioridade;
 }
 
 // ---- TAREFA ----
-export type TipoTarefa = 'diária' | 'semanal' | 'mensal' | 'avulsa';
-export type StatusTarefa =
-  | 'pendente'
-  | 'em andamento'
-  | 'concluída'
-  | 'reagendada'
-  | 'cancelada';
+export type FaixaTarefa = 'urgente' | 'alto impacto' | 'médio impacto' | 'baixo impacto';
+export type StatusTarefa = 'não iniciado' | 'em andamento' | 'concluído';
 export type NivelEnergia = 'baixa' | 'média' | 'alta';
 
 export interface Tarefa {
@@ -44,10 +45,9 @@ export interface Tarefa {
   titulo: string;
   metaId: string | null;
   categoria: Categoria;
-  tipo: TipoTarefa;
-  prazo: string; // ISO date string
-  tempoEstimado: number; // em minutos
-  prioridade: Prioridade;
+  prazo: string;
+  tempoEstimado: number;
+  faixa: FaixaTarefa;
   status: StatusTarefa;
   energiaNecessaria: NivelEnergia;
   observacoes: string;
@@ -69,7 +69,7 @@ export type Periodo = 'manhã' | 'tarde' | 'noite';
 
 export interface BlocoTempo {
   id: string;
-  data: string; // ISO date string
+  data: string;
   diaSemana: DiaSemana;
   periodo: Periodo;
   horasDisponiveis: number;
@@ -125,7 +125,7 @@ export interface Cartao {
   nome: string;
   limite: number;
   faturaAtual: number;
-  vencimento: number; // dia do mês
+  vencimento: number;
   status: StatusCartao;
   dataCriacao: string;
 }
@@ -139,7 +139,7 @@ export interface Divida {
   valorParcela: number;
   totalParcelas: number;
   parcelasPagas: number;
-  taxaJuros: number; // percentual anual
+  taxaJuros: number;
   prioridadeQuitacao: PrioridadeQuitacao;
   dataCriacao: string;
 }
@@ -166,34 +166,6 @@ export interface Bem {
   dataCriacao: string;
 }
 
-// ---- DIÁRIO DE EVOLUÇÃO ----
-export interface DiarioEvolucao {
-  id: string;
-  data: string; // ISO date string
-  energia: number; // 1-5
-  foco: number; // 1-5
-  humor: number; // 1-5
-  principalVitoria: string;
-  principalDificuldade: string;
-  gatilhos: string;
-  aprendizado: string;
-  ajusteAmanha: string;
-  dataCriacao: string;
-}
-
-export interface RevisaoSemanal {
-  id: string;
-  semanaInicio: string; // ISO date string
-  semanaFim: string; // ISO date string
-  oqueavancou: string;
-  oqueFicouParado: string;
-  metaNegligenciada: string;
-  ondePerdeuTempo: string;
-  ondeMelhorou: string;
-  focoProximaSemana: string;
-  dataCriacao: string;
-}
-
 // ---- CONFIGURAÇÕES ----
 export type Tema = 'claro' | 'escuro' | 'sistema';
 
@@ -203,18 +175,42 @@ export interface Configuracoes {
   visualizacaoPadrao: 'hoje' | 'semana' | 'mes';
 }
 
+// ---- ROTINA SEMANAL ----
+export type CategoriaRotina =
+  | 'Trabalho'
+  | 'Inglês'
+  | 'Programação'
+  | 'Doutorado'
+  | 'Elétrica 4.0'
+  | 'Família'
+  | 'Descanso'
+  | 'Revisão Semanal'
+  | 'Finanças'
+  | 'Exercício'
+  | 'Outro';
+
+export interface BlocoRotina {
+  id: string;
+  diaSemana: DiaSemana;
+  horarioInicio: string;
+  horarioFim: string;
+  categoria: CategoriaRotina;
+  energiaEsperada: NivelEnergia;
+  observacoes: string;
+  ativo: boolean;
+}
+
 // ---- STORE GLOBAL (LocalStorage) ----
 export interface AppData {
   metas: Meta[];
   tarefas: Tarefa[];
   blocosTempo: BlocoTempo[];
+  rotinasSemana: BlocoRotina[];
   receitas: Receita[];
   despesas: Despesa[];
   cartoes: Cartao[];
   dividas: Divida[];
   reservas: Reserva[];
   bens: Bem[];
-  diarioEvolucao: DiarioEvolucao[];
-  revisoesSemana: RevisaoSemanal[];
   configuracoes: Configuracoes;
 }
