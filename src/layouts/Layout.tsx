@@ -1,9 +1,18 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Target, ListChecks, Clock,
-  Wallet, Settings, Menu, X, Moon, Sun, Zap, BookOpen, LogOut,
+  Wallet, Settings, Menu, X, Moon, Sun, BookOpen, LogOut,
   ChevronLeft, ChevronRight,
 } from 'lucide-react';
+
+function AppIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <polygon points="16,4 24,8.5 24,17.5 16,22 8,17.5 8,8.5" fill="none" stroke="white" strokeWidth="1.5" strokeOpacity="0.5"/>
+      <path d="M18 10L14 16H17L14 22" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
 import { useState, useEffect } from 'react';
 import { useApp } from '../hooks/useApp';
 import { useAuth } from '../contexts/AuthContext';
@@ -47,35 +56,35 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div className={`border-b border-surface-200 dark:border-surface-700 flex items-center ${collapsed ? 'justify-center p-3' : 'justify-between p-5'}`}>
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-9 h-9 bg-primary-600 rounded-xl flex items-center justify-center shadow-lg shadow-primary-600/30 flex-shrink-0">
-              <Zap size={18} className="text-white" />
+              <AppIcon size={18} />
             </div>
             {!collapsed && (
               <div className="min-w-0">
-                <p className="font-bold text-sm text-surface-900 dark:text-white leading-tight">ADAPTA</p>
-                <p className="text-xs text-surface-400 dark:text-surface-500">Central Pessoal</p>
+                <p className="font-bold text-sm text-surface-900 dark:text-white leading-tight">SGP</p>
+                <p className="text-xs text-surface-400 dark:text-surface-500">Gestão Pessoal</p>
               </div>
             )}
           </div>
           {!collapsed && (
             <button
               onClick={() => setCollapsed(true)}
-              className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-400 flex-shrink-0"
+              className="p-2 rounded-lg bg-surface-100 dark:bg-surface-700 hover:bg-surface-200 dark:hover:bg-surface-600 text-surface-600 dark:text-surface-300 flex-shrink-0 transition-colors"
               title="Recolher menu"
             >
-              <ChevronLeft size={16} />
+              <ChevronLeft size={15} />
             </button>
           )}
         </div>
 
-        {/* Collapse button when collapsed */}
+        {/* Expand button when collapsed — fica bem visível no centro */}
         {collapsed && (
           <div className="flex justify-center py-2 border-b border-surface-200 dark:border-surface-700">
             <button
               onClick={() => setCollapsed(false)}
-              className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-400"
+              className="p-2 rounded-lg bg-surface-100 dark:bg-surface-700 hover:bg-surface-200 dark:hover:bg-surface-600 text-surface-600 dark:text-surface-300 transition-colors"
               title="Expandir menu"
             >
-              <ChevronRight size={16} />
+              <ChevronRight size={15} />
             </button>
           </div>
         )}
@@ -146,11 +155,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div className="p-5 border-b border-surface-200 dark:border-surface-700 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 bg-primary-600 rounded-xl flex items-center justify-center">
-                  <Zap size={18} className="text-white" />
+                  <AppIcon size={18} />
                 </div>
                 <div>
-                  <p className="font-bold text-sm text-surface-900 dark:text-white">ADAPTA</p>
-                  <p className="text-xs text-surface-400">Central Pessoal</p>
+                  <p className="font-bold text-sm text-surface-900 dark:text-white">SGP</p>
+                  <p className="text-xs text-surface-400">Gestão Pessoal</p>
                 </div>
               </div>
               <button onClick={() => setSidebarOpen(false)} className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700">
@@ -205,9 +214,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </button>
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 bg-primary-600 rounded-lg flex items-center justify-center">
-              <Zap size={14} className="text-white" />
+              <AppIcon size={14} />
             </div>
-            <span className="font-bold text-sm text-surface-900 dark:text-white">ADAPTA</span>
+            <span className="font-bold text-sm text-surface-900 dark:text-white">SGP</span>
           </div>
           <button onClick={toggleTema} className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700">
             {tema === 'escuro' ? <Sun size={18} className="text-surface-500" /> : <Moon size={18} className="text-surface-500" />}
@@ -216,7 +225,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
         {/* Page title bar (desktop) */}
         <div className="hidden lg:flex items-center px-6 py-4 border-b border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 flex-shrink-0">
-          <h1 className="font-semibold text-surface-900 dark:text-white">{currentPage?.label ?? 'Central Pessoal ADAPTA'}</h1>
+          <h1 className="font-semibold text-surface-900 dark:text-white">{currentPage?.label ?? 'Sistema de Gestão Pessoal'}</h1>
         </div>
 
         {/* Page content */}

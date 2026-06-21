@@ -1,7 +1,7 @@
 {
-  "name": "Central Pessoal ADAPTA",
-  "short_name": "ADAPTA",
-  "description": "Sua central de comando pessoal para organizar metas, tarefas, tempo e finanças.",
+  "name": "Sistema de Gestão Pessoal",
+  "short_name": "SGP",
+  "description": "Organize metas, tarefas, tempo e finanças com foco e clareza.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f172a",

@@ -1,4 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <rect width="32" height="32" rx="8" fill="#2563EB"/>
-  <path d="M16 6L20 14H24L17 20L19 28L16 24L13 28L15 20L8 14H12L16 6Z" fill="white"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4f46e5"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="8" fill="url(#bg)"/>
+  <!-- Hexágono tecnológico -->
+  <polygon points="16,5 23,9 23,17 16,21 9,17 9,9" fill="none" stroke="white" stroke-width="1.5" stroke-opacity="0.4"/>
+  <!-- Nós de circuito -->
+  <circle cx="16" cy="5" r="1.5" fill="white" opacity="0.7"/>
+  <circle cx="23" cy="9" r="1.5" fill="white" opacity="0.7"/>
+  <circle cx="23" cy="17" r="1.5" fill="white" opacity="0.7"/>
+  <circle cx="16" cy="21" r="1.5" fill="white" opacity="0.7"/>
+  <circle cx="9" cy="17" r="1.5" fill="white" opacity="0.7"/>
+  <circle cx="9" cy="9" r="1.5" fill="white" opacity="0.7"/>
+  <!-- Raio central -->
+  <path d="M18 10L14 15H17L14 21" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Linha horizontal de circuito -->
+  <line x1="4" y1="26" x2="11" y2="26" stroke="white" stroke-width="1" opacity="0.3"/>
+  <circle cx="11" cy="26" r="1" fill="white" opacity="0.3"/>
+  <line x1="11" y1="26" x2="11" y2="23" stroke="white" stroke-width="1" opacity="0.3"/>
+  <line x1="21" y1="26" x2="28" y2="26" stroke="white" stroke-width="1" opacity="0.3"/>
+  <circle cx="21" cy="26" r="1" fill="white" opacity="0.3"/>
+  <line x1="21" y1="26" x2="21" y2="23" stroke="white" stroke-width="1" opacity="0.3"/>
 </svg>

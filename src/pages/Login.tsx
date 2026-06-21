@@ -1,5 +1,14 @@
 import { useState } from 'react';
-import { Zap, Mail, Lock, User, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { Mail, Lock, User, Eye, EyeOff, AlertCircle } from 'lucide-react';
+
+function AppLogo() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <polygon points="16,4 24,8.5 24,17.5 16,22 8,17.5 8,8.5" fill="none" stroke="white" strokeWidth="1.5" strokeOpacity="0.5"/>
+      <path d="M18 10L14 16H17L14 22" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/Button';
 
@@ -39,11 +48,11 @@ export function LoginPage() {
         {/* Logo */}
         <div className="flex flex-col items-center gap-3 mb-8">
           <div className="w-14 h-14 bg-primary-600 rounded-2xl flex items-center justify-center shadow-lg shadow-primary-600/30">
-            <Zap size={28} className="text-white" />
+            <AppLogo />
           </div>
           <div className="text-center">
-            <h1 className="text-xl font-bold text-surface-900 dark:text-white">ADAPTA</h1>
-            <p className="text-sm text-surface-400 dark:text-surface-500">Central Pessoal</p>
+            <h1 className="text-xl font-bold text-surface-900 dark:text-white">Sistema de Gestão Pessoal</h1>
+            <p className="text-sm text-surface-400 dark:text-surface-500">Organizado, focado e no controle</p>
           </div>
         </div>
 

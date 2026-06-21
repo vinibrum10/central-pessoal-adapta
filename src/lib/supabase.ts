@@ -9,7 +9,23 @@ export const isSupabaseConfigured = Boolean(
   SUPABASE_KEY && SUPABASE_KEY.length > 10
 );
 
-// Se não configurado, exporta um cliente mock para evitar erros de importação
+/**
+ * Em produção (não-dev), o app SEMPRE exige Supabase configurado.
+ * Em desenvolvimento, pode-se usar VITE_ENABLE_LOCAL_MODE=true para
+ * rodar sem banco (dados no LocalStorage).
+ */
+export const isDev = import.meta.env.DEV === true;
+export const localModeEnabled = isDev && import.meta.env.VITE_ENABLE_LOCAL_MODE === 'true';
+
+/**
+ * O app está em modo seguro (exige autenticação) quando:
+ * - Supabase está configurado, OU
+ * - Está em produção (independente de configuração)
+ *
+ * Modo local apenas funciona em DEV com VITE_ENABLE_LOCAL_MODE=true.
+ */
+export const modoLocalAtivo = localModeEnabled && !isSupabaseConfigured;
+
 export const supabase = isSupabaseConfigured
   ? createClient(SUPABASE_URL!, SUPABASE_KEY!)
   : createClient('https://placeholder.supabase.co', 'placeholder-key');

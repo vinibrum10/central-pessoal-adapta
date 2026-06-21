@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import {
   Settings, User, Moon, Sun, Download, Upload, RotateCcw, Trash2,
   CheckCircle, Database, Calendar, FolderOpen, Smartphone, LogOut, RefreshCw,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { useApp } from '../hooks/useApp';
 import { useAuth } from '../contexts/AuthContext';
@@ -12,6 +13,7 @@ import { isSupabaseConfigured } from '../lib/supabase';
 import { isGoogleConfigured } from '../services/googleCalendar';
 import { isDriveConfigurado } from '../services/googleDrive';
 import { possuiDadosLocais, migracaoConcluida, migrarDadosParaSupabase } from '../services/dataMigration';
+import { exportarDadosExcel } from '../utils/exportExcel';
 
 export function ConfiguracoesPage() {
   const { data, setData, exportData, importData, resetToDemo, clearAll, tema, toggleTema } = useApp();
@@ -265,10 +267,17 @@ export function ConfiguracoesPage() {
           <div className="space-y-3">
             <div className="flex items-center justify-between p-3 bg-surface-50 dark:bg-surface-700/30 rounded-xl">
               <div>
-                <p className="text-sm font-medium text-surface-700 dark:text-surface-300">Exportar dados</p>
-                <p className="text-xs text-surface-400 dark:text-surface-500">Baixe um backup completo em JSON</p>
+                <p className="text-sm font-medium text-surface-700 dark:text-surface-300">Exportar Excel</p>
+                <p className="text-xs text-surface-400 dark:text-surface-500">Baixe todas as abas em formato .xlsx</p>
               </div>
-              <Button variant="secondary" size="sm" icon={<Download size={14} />} onClick={exportData}>Exportar</Button>
+              <Button variant="secondary" size="sm" icon={<FileSpreadsheet size={14} />} onClick={() => exportarDadosExcel(data)}>Exportar Excel</Button>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-surface-50 dark:bg-surface-700/30 rounded-xl">
+              <div>
+                <p className="text-sm font-medium text-surface-700 dark:text-surface-300">Exportar backup JSON</p>
+                <p className="text-xs text-surface-400 dark:text-surface-500">Backup técnico completo em JSON</p>
+              </div>
+              <Button variant="secondary" size="sm" icon={<Download size={14} />} onClick={exportData}>Exportar JSON</Button>
             </div>
             <div className="flex items-center justify-between p-3 bg-surface-50 dark:bg-surface-700/30 rounded-xl">
               <div>
@@ -281,7 +290,7 @@ export function ConfiguracoesPage() {
             <div className="flex items-center justify-between p-3 bg-warning-50 dark:bg-warning-900/10 border border-warning-200 dark:border-warning-800/30 rounded-xl">
               <div>
                 <p className="text-sm font-medium text-surface-700 dark:text-surface-300">Restaurar demonstração</p>
-                <p className="text-xs text-surface-400 dark:text-surface-500">Volta os dados de exemplo do ADAPTA</p>
+                <p className="text-xs text-surface-400 dark:text-surface-500">Volta os dados de exemplo do sistema</p>
               </div>
               <Button variant="secondary" size="sm" icon={<RotateCcw size={14} />} onClick={() => { if (confirm('Restaurar os dados de demonstração? Seus dados atuais serão substituídos.')) resetToDemo(); }}>Restaurar</Button>
             </div>
@@ -308,9 +317,9 @@ export function ConfiguracoesPage() {
       </Card>
 
       <div className="text-center py-4 text-xs text-surface-400 dark:text-surface-500 space-y-1">
-        <p className="font-semibold text-surface-500 dark:text-surface-400">Central Pessoal ADAPTA</p>
-        <p>Versão 2.0.0 · {isSupabaseConfigured ? 'Modo online (Supabase)' : 'Modo local (LocalStorage)'}</p>
-        <p>Desenvolvido sob medida para suas metas e sua rotina</p>
+        <p className="font-semibold text-surface-500 dark:text-surface-400">Sistema de Gestão Pessoal</p>
+        <p>Versão 2.1.0 · {isSupabaseConfigured ? 'Modo online (Supabase)' : 'Modo local (LocalStorage)'}</p>
+        <p>Organizado, focado e no controle.</p>
       </div>
     </div>
   );

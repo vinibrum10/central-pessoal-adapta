@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, modoLocalAtivo } from '../lib/supabase';
 import type { RoleUsuario, StatusUsuario, PerfilUsuario } from '../types';
 
 interface AuthContextType {
@@ -113,14 +113,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setPerfil(null);
   };
 
-  // Role e status derivados do perfil (fallback editor em modo local)
-  const role: RoleUsuario = isSupabaseConfigured ? (perfil?.role ?? 'visualizador') : 'admin';
-  const statusConta: StatusUsuario = isSupabaseConfigured ? (perfil?.status ?? 'pendente') : 'aprovado';
+  // Role e status derivados do perfil (fallback admin em modo local dev)
+  const role: RoleUsuario = (isSupabaseConfigured && user) ? (perfil?.role ?? 'visualizador') : (modoLocalAtivo ? 'admin' : 'visualizador');
+  const statusConta: StatusUsuario = (isSupabaseConfigured && user) ? (perfil?.status ?? 'pendente') : (modoLocalAtivo ? 'aprovado' : 'pendente');
 
   return (
     <AuthContext.Provider value={{
       user, session, perfil, loading,
-      supabaseAtivo: isSupabaseConfigured,
+      supabaseAtivo: isSupabaseConfigured && !modoLocalAtivo,
       role,
       statusConta,
       signIn, signUp, signOut,
