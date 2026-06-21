@@ -11,6 +11,8 @@ create table if not exists profiles (
   id         uuid primary key references auth.users(id) on delete cascade,
   nome       text not null default '',
   email      text,
+  role       text not null default 'visualizador',
+  status     text not null default 'pendente',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
