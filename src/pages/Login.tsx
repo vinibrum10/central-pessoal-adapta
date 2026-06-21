@@ -3,6 +3,9 @@ import { Mail, Lock, User, Eye, EyeOff, AlertCircle, ShieldCheck, KeyRound } fro
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/Button';
 
+const googleAtivo = import.meta.env.VITE_GOOGLE_ENABLED === 'true';
+const microsoftAtivo = import.meta.env.VITE_MICROSOFT_ENABLED === 'true';
+
 function AppLogo() {
   return (
     <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -83,6 +86,10 @@ export function LoginPage() {
 
   const handleGoogle = async () => {
     setErro('');
+    if (!googleAtivo) {
+      setErro('Login com Google não está disponível. Use e-mail e senha.');
+      return;
+    }
     setCarregandoGoogle(true);
     const { error } = await signInWithGoogle();
     if (error) setErro(error);
@@ -91,6 +98,10 @@ export function LoginPage() {
 
   const handleMicrosoft = async () => {
     setErro('');
+    if (!microsoftAtivo) {
+      setErro('Login com Microsoft não está disponível. Use e-mail e senha.');
+      return;
+    }
     setCarregandoMicrosoft(true);
     const { error } = await signInWithMicrosoft();
     if (error) setErro(error);
@@ -125,7 +136,12 @@ export function LoginPage() {
                   type="button"
                   onClick={handleGoogle}
                   disabled={carregandoGoogle}
-                  className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-900 text-sm font-medium text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors disabled:opacity-50"
+                  title={!googleAtivo ? 'Login com Google não configurado' : ''}
+                  className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors disabled:opacity-50 ${
+                    googleAtivo
+                      ? 'border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-900 text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700'
+                      : 'border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 text-surface-400 dark:text-surface-600 cursor-not-allowed'
+                  }`}
                 >
                   <GoogleIcon />
                   <span className="text-xs">{carregandoGoogle ? '...' : 'Google'}</span>
@@ -134,7 +150,12 @@ export function LoginPage() {
                   type="button"
                   onClick={handleMicrosoft}
                   disabled={carregandoMicrosoft}
-                  className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-900 text-sm font-medium text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors disabled:opacity-50"
+                  title={!microsoftAtivo ? 'Login com Microsoft não configurado' : ''}
+                  className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors disabled:opacity-50 ${
+                    microsoftAtivo
+                      ? 'border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-900 text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700'
+                      : 'border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 text-surface-400 dark:text-surface-600 cursor-not-allowed'
+                  }`}
                 >
                   <MicrosoftIcon />
                   <span className="text-xs">{carregandoMicrosoft ? '...' : 'Microsoft'}</span>
