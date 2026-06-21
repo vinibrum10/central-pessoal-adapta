@@ -9,10 +9,12 @@ function migrarMetas(raw: Record<string, unknown>[]): Meta[] {
   const validStatuses: StatusMeta[] = ['ativa', 'planejar futuro', 'pausada', 'concluída', 'cancelada'];
 
   // Primeiro passo: converter campos
+  // 'pausada' → 'planejar futuro' para garantir que nenhuma meta suma
   const metas: Meta[] = raw.map(m => {
-    const status = validStatuses.includes(m.status as StatusMeta)
+    let status: StatusMeta = validStatuses.includes(m.status as StatusMeta)
       ? (m.status as StatusMeta)
       : 'ativa';
+    if (status === 'pausada') status = 'planejar futuro';
 
     const freq: FrequenciaRevisao =
       (['semanal', 'quinzenal', 'mensal', 'sob demanda'] as FrequenciaRevisao[]).includes(m.frequenciaRevisao as FrequenciaRevisao)
