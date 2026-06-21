@@ -125,14 +125,26 @@ export function OrcamentoPage() {
   const [formFaturaValorStr, setFormFaturaValorStr] = useState('');
 
   // Resumo financeiro do mês filtrado
-  const receitasFiltradas = data.receitas.filter(r => new Date(r.data).getMonth() === mesFiltro.mes && new Date(r.data).getFullYear() === mesFiltro.ano);
-  // Despesas: não-cartão filtra por data da compra; cartão filtra pela competência da fatura
+  // Lê mês/ano diretamente da string ISO para evitar bug de fuso horário (UTC vs local)
+  const mesAnoDeData = (iso: string) => {
+    const [anoStr, mesStr] = iso.slice(0, 7).split('-');
+    return { mes: Number(mesStr) - 1, ano: Number(anoStr) };
+  };
+  const receitasFiltradas = data.receitas.filter(r => {
+    const { mes, ano } = mesAnoDeData(r.data);
+    return mes === mesFiltro.mes && ano === mesFiltro.ano;
+  });
+  // Despesas: não-cartão filtra por mês de referência; cartão filtra pela competência da fatura
   const despesasFiltradas = data.despesas.filter(d => {
     if (d.formaPagamento !== 'Cartão de crédito' || !d.faturaId) {
-      return new Date(d.data).getMonth() === mesFiltro.mes && new Date(d.data).getFullYear() === mesFiltro.ano;
+      const { mes, ano } = mesAnoDeData(d.data);
+      return mes === mesFiltro.mes && ano === mesFiltro.ano;
     }
     const fatura = (data.faturas ?? []).find(f => f.id === d.faturaId);
-    if (!fatura) return new Date(d.data).getMonth() === mesFiltro.mes && new Date(d.data).getFullYear() === mesFiltro.ano;
+    if (!fatura) {
+      const { mes, ano } = mesAnoDeData(d.data);
+      return mes === mesFiltro.mes && ano === mesFiltro.ano;
+    }
     const [fAno, fMes] = fatura.competencia.split('-').map(Number);
     return fMes === mesFiltro.mes + 1 && fAno === mesFiltro.ano;
   });
