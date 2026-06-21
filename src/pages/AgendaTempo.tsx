@@ -8,7 +8,11 @@ import {
 } from 'lucide-react';
 import { useApp } from '../hooks/useApp';
 import { useCalendario } from '../hooks/useCalendario';
-import type { EventoAgenda, Meta } from '../types';
+import type { EventoAgenda, Meta, SugestaoCalendario } from '../types';
+import { getWeekDays, classifyWeek, getFreeWeekNights } from '../utils/nightAvailability';
+import { selectTasksForFreeNights } from '../utils/taskSuggestionEngine';
+import { criarEventoSugestao, removerEventoSugestao } from '../services/calendarSuggestionService';
+import { PlanejamentoSemanal } from '../components/PlanejamentoSemanal';
 import { Card, CardHeader, CardBody } from '../components/Card';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
@@ -489,7 +493,7 @@ export function AgendaTempoPage() {
   const { data, setData } = useApp();
 
   const hoje = hojeISO();
-  const [abaAtiva, setAbaAtiva] = useState<'hoje' | 'semana' | 'fds' | 'fontes'>('hoje');
+  const [abaAtiva, setAbaAtiva] = useState<'hoje' | 'semana' | 'fds' | 'fontes' | 'planejamento'>('hoje');
   const [modalManual, setModalManual] = useState(false);
   const [formManual, setFormManual] = useState({ titulo: '', data: hoje, horaInicio: '09:00', horaFim: '10:00', diaInteiro: false, bloqueiaTempo: true });
   const [errosManual, setErrosManual] = useState<Record<string, string>>({});
@@ -664,11 +668,94 @@ export function AgendaTempoPage() {
     setEventoClassificar(null);
   }, [eventoClassificar, setData]);
 
+  // ── Planejamento Semanal ──
+  const handleGerarSugestoes = useCallback(async () => {
+    const agora = new Date();
+    const freeNights = getFreeWeekNights(data.eventosAgenda, agora);
+    const semanaInicio = getWeekDays(agora)[0].toISOString().slice(0, 10);
+    const weekClass = classifyWeek(data.eventosAgenda, agora);
+
+    const existingIds = (data.sugestoes ?? [])
+      .filter(s => s.semanaInicio === semanaInicio && (s.status === 'sugerida' || s.status === 'aceita'))
+      .map(s => s.tarefaId);
+
+    const candidatos = selectTasksForFreeNights(
+      freeNights,
+      data.tarefas ?? [],
+      data.metas ?? [],
+      weekClass,
+      existingIds
+    );
+
+    const novasSugestoes: SugestaoCalendario[] = [];
+    for (let i = 0; i < Math.min(candidatos.length, freeNights.length); i++) {
+      const noite = freeNights[i];
+      const cand = candidatos[i];
+      const horaFimH = Math.min(20, 19 + 1);
+      const sugestao: SugestaoCalendario = {
+        id: crypto.randomUUID(),
+        semanaInicio,
+        tarefaId: cand.tarefa.id,
+        metaId: cand.meta?.id,
+        diaAgendado: noite.toISOString().slice(0, 10),
+        horaInicio: '19:00',
+        horaFim: `${String(horaFimH).padStart(2, '0')}:00`,
+        status: 'sugerida',
+        motivo: cand.reason,
+        criadaEm: new Date().toISOString(),
+        atualizadaEm: new Date().toISOString(),
+      };
+      const extId = await criarEventoSugestao(sugestao, cand.tarefa, cand.meta);
+      if (extId) {
+        sugestao.externalEventId = extId;
+        sugestao.calendarProvider = 'google';
+      }
+      novasSugestoes.push(sugestao);
+    }
+
+    setData(d => ({
+      ...d,
+      sugestoes: [...(d.sugestoes ?? []), ...novasSugestoes],
+    }));
+  }, [data, setData]);
+
+  const handleAceitarSugestao = useCallback((id: string) => {
+    setData(d => ({
+      ...d,
+      sugestoes: (d.sugestoes ?? []).map(s =>
+        s.id === id ? { ...s, status: 'aceita' as const, atualizadaEm: new Date().toISOString() } : s
+      ),
+    }));
+  }, [setData]);
+
+  const handleCancelarSugestao = useCallback(async (id: string) => {
+    const sugestao = (data.sugestoes ?? []).find(s => s.id === id);
+    if (sugestao?.externalEventId) {
+      await removerEventoSugestao(sugestao.externalEventId);
+    }
+    setData(d => ({
+      ...d,
+      sugestoes: (d.sugestoes ?? []).map(s =>
+        s.id === id ? { ...s, status: 'cancelada' as const, atualizadaEm: new Date().toISOString() } : s
+      ),
+    }));
+  }, [data.sugestoes, setData]);
+
+  const handleRecusarSugestao = useCallback((id: string) => {
+    setData(d => ({
+      ...d,
+      sugestoes: (d.sugestoes ?? []).map(s =>
+        s.id === id ? { ...s, status: 'recusada' as const, atualizadaEm: new Date().toISOString() } : s
+      ),
+    }));
+  }, [setData]);
+
   const abas = [
     { id: 'hoje' as const, label: 'Hoje' },
     { id: 'semana' as const, label: 'Semana' },
     { id: 'fds' as const, label: `Fim de semana${eventosFDS.length > 0 ? ` (${eventosFDS.length})` : ''}` },
     { id: 'fontes' as const, label: 'Conexões' },
+    { id: 'planejamento' as const, label: 'Planejamento' },
   ];
 
   // ── RENDER ──
@@ -954,6 +1041,22 @@ export function AgendaTempoPage() {
             )}
           </CardBody>
         </Card>
+      )}
+
+      {/* ── ABA PLANEJAMENTO ── */}
+      {abaAtiva === 'planejamento' && (
+        <div className="space-y-5 animate-fade-in">
+          <PlanejamentoSemanal
+            eventos={data.eventosAgenda}
+            tarefas={data.tarefas}
+            metas={data.metas}
+            sugestoes={data.sugestoes ?? []}
+            onGerarSugestoes={handleGerarSugestoes}
+            onAceitar={handleAceitarSugestao}
+            onCancelar={handleCancelarSugestao}
+            onRecusar={handleRecusarSugestao}
+          />
+        </div>
       )}
 
       {/* ── ABA CONEXÕES ── */}

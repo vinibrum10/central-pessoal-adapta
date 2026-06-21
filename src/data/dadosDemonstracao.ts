@@ -471,4 +471,5 @@ export const dadosDemonstracaoInicial: AppData = {
   leiturasDiarias: [],
   fontesLeitura: [],
   faturas: [],
+  sugestoes: [],
 };

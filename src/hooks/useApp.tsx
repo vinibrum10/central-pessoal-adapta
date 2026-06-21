@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
-import type { AppData, Tarefa, FaixaTarefa, StatusTarefa, Meta, FrequenciaRevisao, StatusMeta, EventoAgenda, ConfiguracaoAgenda, ClassificacaoPrazoMeta } from '../types';
+import type { AppData, Tarefa, FaixaTarefa, StatusTarefa, Meta, FrequenciaRevisao, StatusMeta, EventoAgenda, ConfiguracaoAgenda, ClassificacaoPrazoMeta, SugestaoCalendario } from '../types';
 import { calcularClassificacaoPrazo, processarRotinas } from '../utils';
 import { dadosDemonstracaoInicial } from '../data/dadosDemonstracao';
 
@@ -191,6 +191,9 @@ function migrarDados(raw: Record<string, unknown>): AppData {
     faturas: Array.isArray(raw.faturas)
       ? (raw.faturas as AppData['faturas'])
       : [],
+    sugestoes: Array.isArray(raw.sugestoes)
+      ? (raw.sugestoes as SugestaoCalendario[])
+      : [],
   };
 }
 
@@ -280,6 +283,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       leiturasDiarias: [],
       fontesLeitura: [],
       faturas: [],
+      sugestoes: [],
     };
     setDataState(empty);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(empty));

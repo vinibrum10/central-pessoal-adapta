@@ -347,6 +347,23 @@ export interface FonteLeitura {
   ultimaSincronizacao?: string | null;
 }
 
+// ---- SUGESTÕES DE CALENDÁRIO ----
+export interface SugestaoCalendario {
+  id: string;
+  semanaInicio: string; // YYYY-MM-DD
+  tarefaId: string;
+  metaId?: string;
+  diaAgendado: string; // YYYY-MM-DD
+  horaInicio: string; // "19:00"
+  horaFim: string;    // "20:00"
+  status: 'sugerida' | 'aceita' | 'editada' | 'cancelada' | 'recusada';
+  motivo: string;
+  externalEventId?: string;
+  calendarProvider?: 'google' | 'microsoft';
+  criadaEm: string;
+  atualizadaEm: string;
+}
+
 // ---- STORE GLOBAL (LocalStorage) ----
 export interface AppData {
   metas: Meta[];
@@ -365,4 +382,5 @@ export interface AppData {
   leiturasDiarias: LeituraDiaria[];
   fontesLeitura: FonteLeitura[];
   faturas: FaturaCartao[];
+  sugestoes: SugestaoCalendario[];
 }
