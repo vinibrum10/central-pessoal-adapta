@@ -27,7 +27,7 @@ import { Modal } from '../components/Modal';
 import { Input, Select, Textarea, Checkbox } from '../components/FormFields';
 import { formatarDinheiro, formatarData, isoParaDataBR, gerarId, hojeISO } from '../utils';
 
-const SELECT_CLASS = 'px-2 py-2.5 rounded-lg border text-sm bg-white dark:bg-surface-900 border-surface-300 dark:border-surface-600 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500';
+const SELECT_CLASS = 'px-1.5 py-2 rounded-lg border text-sm bg-white dark:bg-surface-900 border-surface-300 dark:border-surface-600 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500';
 
 function DateSelectBR({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   const [d, m, y] = value ? value.split('-').map(Number) : [new Date().getDate(), new Date().getMonth() + 1, new Date().getFullYear()];
@@ -794,8 +794,8 @@ export function OrcamentoPage() {
         </div>
       </Modal>
 
-      <Modal isOpen={modal === 'despesa'} onClose={() => setModal(null)} title={editandoId ? 'Editar Despesa' : 'Nova Despesa'}>
-        <div className="space-y-4">
+      <Modal isOpen={modal === 'despesa'} onClose={() => setModal(null)} title={editandoId ? 'Editar Despesa' : 'Nova Despesa'} size="lg">
+        <div className="space-y-3">
           <Input id="desp-desc" label="Descrição" required value={formDespesa.descricao} onChange={e => setFormDespesa(f => ({ ...f, descricao: e.target.value }))} placeholder="Ex: Aluguel, supermercado..." />
           <div className="grid grid-cols-2 gap-3">
             <Input id="desp-valor" label="Valor (R$)" required type="number" min="0" step="0.01" value={formDespesa.valor || ''} onChange={e => setFormDespesa(f => ({ ...f, valor: Number(e.target.value) }))} />
