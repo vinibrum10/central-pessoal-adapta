@@ -167,8 +167,29 @@ export function OrcamentoPage() {
     // Sem fatura para este mês → usa faturaAtual do cartão como estimativa
     return total + (c.faturaAtual ?? 0);
   }, 0);
-  // Total do mês = despesas sem cartão + total de faturas dos cartões
-  const despesasMes = despesasSemCartao.reduce((a, d) => a + d.valor, 0) + totalCartoes;
+  // Parcelas de dívidas ativas que vencem no mês filtrado (calculado automaticamente, sem duplicar em data.despesas)
+  const parcelasDividasNoMes = useMemo(() => {
+    return (data.dividas ?? [])
+      .filter(d => (d.status === 'ativa' || !d.status) && d.dataInicio)
+      .flatMap(d => {
+        const [inicioAno, inicioMes] = d.dataInicio!.slice(0, 7).split('-').map(Number);
+        const mesesDecorridos = (mesFiltro.ano - inicioAno) * 12 + (mesFiltro.mes - (inicioMes - 1));
+        const numeroParcela = mesesDecorridos + 1;
+        if (numeroParcela < 1 || numeroParcela > d.totalParcelas) return [];
+        return [{
+          virtualId: `vd-${d.id}-${mesFiltro.ano}-${mesFiltro.mes}`,
+          dividaId: d.id,
+          nome: d.nome,
+          valorParcela: d.valorParcela,
+          numeroParcela,
+          totalParcelas: d.totalParcelas,
+        }];
+      });
+  }, [data.dividas, mesFiltro]);
+
+  const totalParcelasDividas = parcelasDividasNoMes.reduce((a, p) => a + p.valorParcela, 0);
+  // Total do mês = despesas sem cartão + total de faturas dos cartões + parcelas de dívidas
+  const despesasMes = despesasSemCartao.reduce((a, d) => a + d.valor, 0) + totalCartoes + totalParcelasDividas;
   const saldoMes = receitasMes - despesasMes;
   const totalDividas = data.dividas.reduce((a, d) => a + Math.max(0, d.valorTotal - calcularParcelasPagasAuto(d) * d.valorParcela), 0);
   const totalReservas = data.reservas.reduce((a, r) => a + r.valorAtual, 0);
@@ -672,24 +693,31 @@ export function OrcamentoPage() {
               </Button>
             )}
           </div>
-          {despesasFiltradas.length > 0 && (() => {
+          {(despesasFiltradas.length > 0 || parcelasDividasNoMes.length > 0) && (() => {
             const parcelados = despesasFiltradas.filter(d => d.faturaId && (d.quantidadeParcelas ?? 1) > 1);
             const naoParcelados = despesasFiltradas.filter(d => !(d.faturaId && (d.quantidadeParcelas ?? 1) > 1));
             const totalParcelados = parcelados.reduce((acc, d) => acc + d.valor, 0);
             const totalNormal = naoParcelados.reduce((acc, d) => acc + d.valor, 0);
+            const totalGeralMes = totalNormal + totalParcelasDividas;
+            const countTotal = despesasFiltradas.length + parcelasDividasNoMes.length;
             return (
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-1">
                 <span className="text-sm text-surface-500 dark:text-surface-400">
-                  {despesasFiltradas.length} {despesasFiltradas.length === 1 ? 'despesa' : 'despesas'} em {MESES[mesFiltro.mes]} {mesFiltro.ano}
+                  {countTotal} {countTotal === 1 ? 'despesa' : 'despesas'} em {MESES[mesFiltro.mes]} {mesFiltro.ano}
                 </span>
                 <div className="flex flex-col sm:items-end gap-0.5">
                   {parcelados.length > 0 && (
                     <span className="text-xs text-surface-400 dark:text-surface-500">
-                      Parcelas ({parcelados.length}): <span className="font-semibold text-warning-600 dark:text-warning-400">{formatarDinheiro(totalParcelados)}</span>
+                      Parcelas cartão ({parcelados.length}): <span className="font-semibold text-warning-600 dark:text-warning-400">{formatarDinheiro(totalParcelados)}</span>
+                    </span>
+                  )}
+                  {parcelasDividasNoMes.length > 0 && (
+                    <span className="text-xs text-surface-400 dark:text-surface-500">
+                      Empréstimos ({parcelasDividasNoMes.length}): <span className="font-semibold text-amber-600 dark:text-amber-400">{formatarDinheiro(totalParcelasDividas)}</span>
                     </span>
                   )}
                   <span className="text-base font-bold text-danger-600 dark:text-danger-400">
-                    Total: {formatarDinheiro(totalNormal)}
+                    Total: {formatarDinheiro(totalGeralMes)}
                   </span>
                 </div>
               </div>
@@ -697,7 +725,7 @@ export function OrcamentoPage() {
           })()}
           <Card>
             <CardBody className="!px-4 !pb-4">
-              {despesasFiltradas.length === 0 ? (
+              {despesasFiltradas.length === 0 && parcelasDividasNoMes.length === 0 ? (
                 <p className="text-center py-8 text-surface-400">Nenhuma despesa em {MESES[mesFiltro.mes]} {mesFiltro.ano}</p>
               ) : (
                 <div className="space-y-2">
@@ -740,6 +768,29 @@ export function OrcamentoPage() {
                       </div>
                     </div>
                   ))}
+                  {parcelasDividasNoMes.length > 0 && (
+                    <>
+                      {despesasFiltradas.length > 0 && <div className="border-t border-surface-100 dark:border-surface-700 my-1" />}
+                      <p className="text-xs font-semibold text-surface-400 dark:text-surface-500 uppercase tracking-wide px-1 pt-1">Empréstimos e dívidas (automático)</p>
+                      {parcelasDividasNoMes.map(p => (
+                        <div key={p.virtualId} className="flex items-center justify-between p-3 rounded-xl border border-amber-200 dark:border-amber-700/50 bg-amber-50/40 dark:bg-amber-900/10">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                              <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-surface-900 dark:text-white">{p.nome}</p>
+                              <p className="text-xs text-surface-400 dark:text-surface-500">
+                                Parcela {p.numeroParcela}/{p.totalParcelas} · Dívidas · Débito
+                                <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-[10px] font-medium">Automático</span>
+                              </p>
+                            </div>
+                          </div>
+                          <span className="text-sm font-semibold text-danger-600 dark:text-danger-400">{formatarDinheiro(p.valorParcela)}</span>
+                        </div>
+                      ))}
+                    </>
+                  )}
                 </div>
               )}
             </CardBody>
