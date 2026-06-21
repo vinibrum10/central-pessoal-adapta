@@ -158,7 +158,9 @@ export function OrcamentoPage() {
   // Total de cartões: para cada cartão, usa valorInformado da fatura se existir, senão faturaAtual do cartão
   const totalCartoes = (data.cartoes ?? []).reduce((total, c) => {
     const fatura = faturasMes.find(f => f.cartaoId === c.id);
-    if (fatura && fatura.valorInformado !== null) return total + fatura.valorInformado;
+    // Fatura existe (mesmo sem valorInformado) → usa valorInformado ?? 0 (espelha o card do cartão)
+    if (fatura) return total + (fatura.valorInformado ?? 0);
+    // Sem fatura para este mês → usa faturaAtual do cartão como estimativa
     return total + (c.faturaAtual ?? 0);
   }, 0);
   // Total do mês = despesas sem cartão + total de faturas dos cartões
