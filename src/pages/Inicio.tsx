@@ -1,54 +1,174 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  CheckCircle2, AlertTriangle, Clock, TrendingDown,
-  TrendingUp, Target, Zap, ChevronRight, AlertCircle, CheckCheck,
-  Lightbulb
-} from 'lucide-react';
-import { useApp } from '../hooks/useApp';
-import {
-  getTarefasHoje, getTarefasAtrasadas,
-  formatarDinheiro, calcularMinutosDisponiveis,
-  sugerirTarefas, formatarMinutos, corFaixa, siglaFaixa, hojeISO,
-  calcularEficienciaFoco, corEficiencia, corBarraEficiencia, mensagemEficiencia,
-  revisaoAtrasada,
-} from '../utils';
-import { Card, CardHeader, CardBody } from '../components/Card';
-import { Badge } from '../components/Badge';
-import { Button } from '../components/Button';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import type { FaixaTarefa } from '../types';
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend, type PieLabelRenderProps,
+} from 'recharts';
+import {
+  Target, ListChecks, Zap, AlertTriangle, CheckCircle2,
+  TrendingUp, TrendingDown, ArrowRight, ChevronRight,
+  Clock, Wallet, RefreshCw, Lightbulb,
+} from 'lucide-react';
+import { useApp } from '../hooks/useApp';
+import { formatarDinheiro, calcularMinutosDisponiveis, formatarMinutos } from '../utils';
+import {
+  obterResumoDashboard, obterRankingMetas, obterMetasEmAtencao,
+  obterAcoesPorStatus, obterAcoesPorFaixa, obterMetasPorCategoria,
+  obterFocoRecomendado, bgSaude, labelSaude, corGrau,
+  siglaFaixaDash, corFaixaDash, type SaudeMeta,
+} from '../utils/dashboardMetrics';
+import { Button } from '../components/Button';
 
+// ============================================================
+// TIPOS
+// ============================================================
+type FiltroCategoria = 'Todas' | 'Profissão' | 'Estudos' | 'Finanças' | 'Projetos' | 'Desenvolvimento Pessoal';
+type FiltroSaude = 'todas' | SaudeMeta;
+
+// ============================================================
+// KPI CARD GRADIENTE
+// ============================================================
+function KpiCard({
+  label, value, sub, cor, icon,
+}: {
+  label: string;
+  value: string | number;
+  sub?: string;
+  cor?: 'blue' | 'green' | 'yellow' | 'red' | 'purple' | 'gray';
+  icon?: React.ReactNode;
+}) {
+  const paleta = {
+    blue: 'from-blue-700 to-blue-600',
+    green: 'from-emerald-700 to-emerald-600',
+    yellow: 'from-amber-600 to-amber-500',
+    red: 'from-red-700 to-red-600',
+    purple: 'from-violet-700 to-violet-600',
+    gray: 'from-slate-700 to-slate-600',
+  };
+  const grad = paleta[cor ?? 'blue'];
+
+  return (
+    <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${grad} p-5 text-white shadow-lg`}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider opacity-75 leading-tight">{label}</p>
+          <p className="mt-2 text-4xl font-extrabold leading-none">{value}</p>
+          {sub && <p className="mt-1.5 text-xs opacity-60 leading-tight">{sub}</p>}
+        </div>
+        {icon && <div className="opacity-15 -mt-1 -mr-2 w-16 h-16 flex items-end justify-end">{icon}</div>}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// GAUGE DE EFICIÊNCIA
+// ============================================================
+function EficienciaCard({ eficiencia, qtd }: { eficiencia: number; qtd: number }) {
+  const bg =
+    eficiencia >= 85 ? 'from-emerald-700 to-emerald-600' :
+    eficiencia >= 60 ? 'from-amber-600 to-amber-500' :
+    'from-red-700 to-red-600';
+  const strokeColor =
+    eficiencia >= 85 ? '#86efac' :
+    eficiencia >= 60 ? '#fde68a' :
+    '#fca5a5';
+  const label =
+    eficiencia >= 85 ? 'Foco saudável' :
+    eficiencia >= 60 ? 'Atenção à dispersão' :
+    'Risco alto de dispersão';
+
+  const r = 38;
+  const circ = 2 * Math.PI * r;
+  const offset = circ * (1 - eficiencia / 100);
+
+  return (
+    <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${bg} p-5 text-white shadow-lg h-full`}>
+      <p className="text-xs font-semibold uppercase tracking-wider opacity-75">Eficiência de Foco</p>
+      <div className="flex items-center gap-4 mt-3">
+        <div className="relative flex-shrink-0 w-24 h-24">
+          <svg width="96" height="96" viewBox="0 0 96 96" className="-rotate-90">
+            <circle cx="48" cy="48" r={r} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="10" />
+            <circle
+              cx="48" cy="48" r={r} fill="none"
+              stroke={strokeColor}
+              strokeWidth="10"
+              strokeDasharray={circ}
+              strokeDashoffset={offset}
+              strokeLinecap="round"
+            />
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-2xl font-extrabold">{eficiencia}%</span>
+          </div>
+        </div>
+        <div>
+          <p className="text-base font-bold leading-tight">{label}</p>
+          <p className="text-xs opacity-60 mt-1">{qtd} meta{qtd !== 1 ? 's' : ''} ativa{qtd !== 1 ? 's' : ''}</p>
+          <p className="text-xs opacity-50 mt-0.5">Ideal: ≤ 3 metas ativas</p>
+          {qtd > 3 && (
+            <p className="text-xs opacity-50 mt-1">Mova metas para futuro para melhorar.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// TOOLTIP CUSTOMIZADO
+// ============================================================
+function TooltipDark({ active, payload, label }: {
+  active?: boolean;
+  payload?: { name: string; value: number }[];
+  label?: string;
+}) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 shadow-xl text-xs text-white">
+      {label && <p className="font-semibold mb-1">{label}</p>}
+      {payload.map((p, i) => (
+        <p key={i}>{p.name}: <span className="font-bold">{p.value}{p.name === 'Atendimento' ? '%' : ''}</span></p>
+      ))}
+    </div>
+  );
+}
+
+const RADIAN = Math.PI / 180;
+function LabelPie(props: PieLabelRenderProps) {
+  const { cx, cy, midAngle, innerRadius, outerRadius, percent } = props;
+  if (!midAngle || !innerRadius || !outerRadius || !percent || percent < 0.06) return null;
+  const cxN = Number(cx);
+  const cyN = Number(cy);
+  const iR = Number(innerRadius);
+  const oR = Number(outerRadius);
+  const radius = iR + (oR - iR) * 0.5;
+  const x = cxN + radius * Math.cos(-Number(midAngle) * RADIAN);
+  const y = cyN + radius * Math.sin(-Number(midAngle) * RADIAN);
+  return (
+    <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight="bold">
+      {`${(Number(percent) * 100).toFixed(0)}%`}
+    </text>
+  );
+}
+
+// ============================================================
+// PÁGINA
+// ============================================================
 export function InicioPage() {
-  const { data, setData } = useApp();
+  const { data } = useApp();
   const navigate = useNavigate();
-  const [concluindoId, setConcluindoId] = useState<string | null>(null);
+
+  const [filtroCategoria, setFiltroCategoria] = useState<FiltroCategoria>('Todas');
+  const [filtroSaude, setFiltroSaude] = useState<FiltroSaude>('todas');
 
   const hoje = new Date();
-
-  const tarefasHoje = getTarefasHoje(data.tarefas);
-  const tarefasAtrasadas = getTarefasAtrasadas(data.tarefas);
-
-  const metasAtivas = data.metas
-    .filter(m => m.status === 'ativa')
-    .sort((a, b) => b.grau - a.grau);
-  const metaFoco = metasAtivas[0] ?? null;
-  const metasFuturo = data.metas.filter(m => m.status === 'planejar futuro');
-  const metasRevisaoAtrasada = metasAtivas.filter(m => revisaoAtrasada(m));
-  const eficiencia = calcularEficienciaFoco(metasAtivas.length);
-
-  const minutosDisponiveis = calcularMinutosDisponiveis(data.blocosTempo);
-  const sugestoes = sugerirTarefas(data.tarefas, data.metas, minutosDisponiveis || 120);
-
-  // Contagem por faixa
-  const faixas: FaixaTarefa[] = ['urgente', 'alto impacto', 'médio impacto', 'baixo impacto'];
-  const contFaixa = (f: FaixaTarefa) =>
-    data.tarefas.filter(t => t.faixa === f && t.status !== 'concluído').length;
-
-  // Resumo financeiro do mês atual
   const mesAtual = hoje.getMonth();
   const anoAtual = hoje.getFullYear();
+
+  // Finanças
   const receitasMes = data.receitas
     .filter(r => new Date(r.data).getMonth() === mesAtual && new Date(r.data).getFullYear() === anoAtual)
     .reduce((acc, r) => acc + r.valor, 0);
@@ -56,292 +176,616 @@ export function InicioPage() {
     .filter(d => new Date(d.data).getMonth() === mesAtual && new Date(d.data).getFullYear() === anoAtual)
     .reduce((acc, d) => acc + d.valor, 0);
   const saldoMes = receitasMes - despesasMes;
+  const minutosDisponiveis = calcularMinutosDisponiveis(data.blocosTempo);
 
-  const concluirTarefa = (id: string) => {
-    setConcluindoId(id);
-    setTimeout(() => {
-      setData(d => ({
-        ...d,
-        tarefas: d.tarefas.map(t =>
-          t.id === id ? { ...t, status: 'concluído', dataConclusao: hojeISO() } : t
-        ),
-        metas: d.metas.map(m => {
-          const tarefa = d.tarefas.find(t => t.id === id);
-          if (tarefa?.metaId === m.id) return { ...m, dataUltimaAcao: hojeISO() };
-          return m;
-        }),
-      }));
-      setConcluindoId(null);
-    }, 300);
-  };
+  // Métricas
+  const resumo = useMemo(() => obterResumoDashboard(data.metas, data.tarefas), [data.metas, data.tarefas]);
+  const rankingCompleto = useMemo(() => obterRankingMetas(data.metas, data.tarefas), [data.metas, data.tarefas]);
+  const metasAtencao = useMemo(() => obterMetasEmAtencao(data.metas, data.tarefas), [data.metas, data.tarefas]);
+  const foco = useMemo(() => obterFocoRecomendado(data.metas, data.tarefas), [data.metas, data.tarefas]);
+  const acoesPorStatus = useMemo(() => obterAcoesPorStatus(data.metas, data.tarefas), [data.metas, data.tarefas]);
+  const acoesPorFaixa = useMemo(() => obterAcoesPorFaixa(data.metas, data.tarefas), [data.metas, data.tarefas]);
+  const metasPorCategoria = useMemo(() => obterMetasPorCategoria(data.metas), [data.metas]);
 
-  const tarefasConcluidas = data.tarefas.filter(t =>
-    t.status === 'concluído' && t.dataConclusao === hojeISO()
-  ).length;
+  // Ranking com filtros
+  const rankingFiltrado = useMemo(() =>
+    rankingCompleto.filter(mm => {
+      const catOk = filtroCategoria === 'Todas' || mm.meta.categoria === filtroCategoria;
+      const saudeOk = filtroSaude === 'todas' || mm.saude === filtroSaude;
+      return catOk && saudeOk;
+    }),
+    [rankingCompleto, filtroCategoria, filtroSaude]
+  );
+
+  // Dados para gráfico de atendimento
+  const dadosAtendimento = useMemo(() =>
+    rankingCompleto.map(mm => ({
+      nome: mm.meta.nome.length > 24 ? mm.meta.nome.slice(0, 24) + '…' : mm.meta.nome,
+      atendimento: mm.percentualAtendimento,
+      grau: mm.meta.grau,
+      fill: mm.percentualAtendimento >= 70 ? '#22c55e' : mm.percentualAtendimento >= 30 ? '#3b82f6' : '#ef4444',
+    })),
+    [rankingCompleto]
+  );
+
+  const categorias: FiltroCategoria[] = ['Todas', 'Profissão', 'Estudos', 'Finanças', 'Projetos', 'Desenvolvimento Pessoal'];
+  const opcoesSaude: { v: FiltroSaude; label: string }[] = [
+    { v: 'todas', label: 'Todas' },
+    { v: 'crítica', label: 'Crítica' },
+    { v: 'atenção', label: 'Atenção' },
+    { v: 'boa', label: 'Boa' },
+    { v: 'atendida', label: 'Atendida' },
+    { v: 'sem ações', label: 'Sem ações' },
+  ];
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
-      {/* Header do dia */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div className="space-y-6 max-w-screen-2xl mx-auto animate-fade-in pb-10">
+
+      {/* ── CABEÇALHO ── */}
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
-          <p className="text-sm text-surface-500 dark:text-surface-400 capitalize">
+          <h2 className="text-2xl font-extrabold text-surface-900 dark:text-white tracking-tight">
+            Dashboard de Metas
+          </h2>
+          <p className="text-sm text-surface-500 dark:text-surface-400 mt-1">
+            Visão executiva das suas metas, ações e eficiência de foco.
+          </p>
+          <p className="text-xs text-surface-400 dark:text-surface-500 mt-0.5 capitalize">
             {format(hoje, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
           </p>
-          <h2 className="text-2xl font-bold text-surface-900 dark:text-white mt-0.5">
-            Bom dia, {data.configuracoes.nomeUsuario}! 👋
-          </h2>
         </div>
-        <Button variant="primary" size="sm" icon={<ChevronRight size={14} />} onClick={() => navigate('/plano')}>
-          Ver Plano de Ação
-        </Button>
+        <div className="flex gap-2 flex-shrink-0">
+          <Button size="sm" variant="secondary" onClick={() => navigate('/metas')} icon={<Target size={14} />}>
+            Metas
+          </Button>
+          <Button size="sm" onClick={() => navigate('/plano')} icon={<ListChecks size={14} />}>
+            Ver Plano de Ação
+          </Button>
+        </div>
       </div>
 
-      {/* Meta de maior grau (foco principal) */}
-      {metaFoco && (
-        <div
-          className="flex items-center gap-4 bg-primary-50 dark:bg-primary-900/20 border border-primary-100 dark:border-primary-800 rounded-2xl px-5 py-4 cursor-pointer hover:border-primary-300 transition-colors"
-          onClick={() => navigate('/metas')}
-        >
-          <div className="w-12 h-12 rounded-xl bg-primary-600 flex items-center justify-center font-bold text-xl text-white flex-shrink-0 shadow-md shadow-primary-600/30">
-            {metaFoco.grau}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs text-primary-600 dark:text-primary-400 font-semibold uppercase tracking-wide">Meta Principal</p>
-            <p className="font-bold text-surface-900 dark:text-white truncate">{metaFoco.nome}</p>
-            {metaFoco.resultadoEsperado && (
-              <p className="text-xs text-surface-500 dark:text-surface-400 truncate mt-0.5">{metaFoco.resultadoEsperado}</p>
-            )}
-          </div>
-          <ChevronRight size={16} className="text-primary-400 flex-shrink-0" />
+      {/* ── KPIs LINHA 1 ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+        <div className="col-span-2 xl:col-span-1">
+          <EficienciaCard eficiencia={resumo.eficienciaFoco} qtd={resumo.metasAtivas} />
         </div>
-      )}
-
-      {/* Contadores de faixa */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {faixas.map(f => (
-          <button
-            key={f}
-            onClick={() => navigate(`/plano?faixa=${encodeURIComponent(f)}`)}
-            className="flex flex-col items-center gap-1 p-3 rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 hover:border-primary-300 dark:hover:border-primary-700 transition-all"
-          >
-            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${corFaixa(f)}`}>
-              {siglaFaixa(f)}
-            </span>
-            <span className="text-2xl font-bold text-surface-900 dark:text-white">{contFaixa(f)}</span>
-            <span className="text-[10px] text-surface-400 dark:text-surface-500 text-center leading-tight capitalize">{f}</span>
-          </button>
-        ))}
+        <KpiCard
+          label="Metas Ativas"
+          value={resumo.metasAtivas}
+          sub={`${resumo.metasFuturo} no futuro`}
+          cor="blue"
+          icon={<Target size={56} />}
+        />
+        <KpiCard
+          label="Ações Totais"
+          value={resumo.acoesvinculas}
+          sub="Vinculadas a metas ativas"
+          cor="gray"
+          icon={<ListChecks size={56} />}
+        />
+        <KpiCard
+          label="Ações Concluídas"
+          value={resumo.acoesConcluidas}
+          sub={resumo.acoesvinculas > 0
+            ? `${Math.round((resumo.acoesConcluidas / resumo.acoesvinculas) * 100)}% do total`
+            : '—'}
+          cor="green"
+          icon={<CheckCircle2 size={56} />}
+        />
+        <KpiCard
+          label="Atendimento Médio"
+          value={`${resumo.atendimentoMedio}%`}
+          sub="Média de conclusão das metas"
+          cor={resumo.atendimentoMedio >= 70 ? 'green' : resumo.atendimentoMedio >= 30 ? 'yellow' : 'red'}
+          icon={<TrendingUp size={56} />}
+        />
       </div>
 
-      {/* Alertas */}
-      {(tarefasAtrasadas.length > 0 || metasRevisaoAtrasada.length > 0) && (
-        <div className="flex flex-col sm:flex-row gap-3">
-          {tarefasAtrasadas.length > 0 && (
-            <div className="flex-1 flex items-center gap-3 bg-danger-50 dark:bg-danger-600/10 border border-danger-200 dark:border-danger-600/30 rounded-xl px-4 py-3">
-              <AlertCircle size={18} className="text-danger-600 dark:text-danger-400 flex-shrink-0" />
-              <p className="text-sm text-danger-700 dark:text-danger-300 font-medium">
-                {tarefasAtrasadas.length} {tarefasAtrasadas.length === 1 ? 'tarefa atrasada' : 'tarefas atrasadas'}
-              </p>
-              <button onClick={() => navigate('/plano?filtro=atrasadas')} className="ml-auto text-xs text-danger-600 dark:text-danger-400 hover:underline">
-                Ver →
+      {/* ── KPIs LINHA 2 ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <KpiCard
+          label="Metas em Atenção"
+          value={resumo.metasEmAtencao}
+          sub="Sem ações ou situação crítica"
+          cor={resumo.metasEmAtencao > 0 ? 'red' : 'green'}
+          icon={<AlertTriangle size={56} />}
+        />
+        <KpiCard
+          label="Planejar Futuro"
+          value={resumo.metasFuturo}
+          sub="Fora da eficiência de foco"
+          cor="purple"
+          icon={<Lightbulb size={56} />}
+        />
+        <KpiCard
+          label="Saldo do Mês"
+          value={formatarDinheiro(saldoMes)}
+          sub={`R${receitasMes.toLocaleString('pt-BR', { minimumFractionDigits: 0 })} rec · R${despesasMes.toLocaleString('pt-BR', { minimumFractionDigits: 0 })} desp`}
+          cor={saldoMes >= 0 ? 'green' : 'red'}
+          icon={saldoMes >= 0 ? <TrendingUp size={56} /> : <TrendingDown size={56} />}
+        />
+        <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-700 to-slate-600 p-5 text-white shadow-lg`}>
+          <p className="text-xs font-semibold uppercase tracking-wider opacity-75">Tempo hoje</p>
+          {minutosDisponiveis > 0 ? (
+            <>
+              <p className="mt-2 text-4xl font-extrabold leading-none">{formatarMinutos(minutosDisponiveis)}</p>
+              <p className="mt-1.5 text-xs opacity-60">disponíveis hoje</p>
+            </>
+          ) : (
+            <>
+              <p className="mt-2 text-lg font-bold leading-none opacity-70">Não cadastrado</p>
+              <button
+                onClick={() => navigate('/agenda')}
+                className="mt-2 text-xs opacity-70 hover:opacity-100 underline"
+              >
+                Cadastrar →
               </button>
-            </div>
+            </>
           )}
-          {metasRevisaoAtrasada.length > 0 && (
-            <div className="flex-1 flex items-center gap-3 bg-warning-50 dark:bg-warning-600/10 border border-warning-200 dark:border-warning-600/30 rounded-xl px-4 py-3">
-              <AlertTriangle size={18} className="text-warning-600 dark:text-warning-400 flex-shrink-0" />
-              <p className="text-sm text-warning-700 dark:text-warning-300 font-medium">
-                {metasRevisaoAtrasada.length} meta(s) com revisão atrasada
-              </p>
-              <button onClick={() => navigate('/metas')} className="ml-auto text-xs text-warning-600 dark:text-warning-400 hover:underline">
-                Revisar →
-              </button>
-            </div>
+          <div className="opacity-15 absolute -right-2 -bottom-2">
+            <Clock size={64} />
+          </div>
+        </div>
+      </div>
+
+      {/* ── GRÁFICOS ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+
+        {/* Gráfico 1 — Atendimento por meta (horizontal) */}
+        <div className="bg-white dark:bg-surface-800 rounded-2xl border border-surface-200 dark:border-surface-700 p-5 shadow-sm">
+          <h3 className="text-sm font-bold text-surface-900 dark:text-white">Atendimento por Meta</h3>
+          <p className="text-xs text-surface-400 dark:text-surface-500 mt-0.5 mb-4">% de ações concluídas · ordenado por grau</p>
+          {dadosAtendimento.length === 0 ? (
+            <div className="flex items-center justify-center h-40 text-surface-400 dark:text-surface-500 text-sm">Nenhuma meta ativa</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={Math.max(160, dadosAtendimento.length * 46)}>
+              <BarChart data={dadosAtendimento} layout="vertical" margin={{ top: 0, right: 40, left: 0, bottom: 0 }}>
+                <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 10, fill: '#64748b' }} tickFormatter={v => `${v}%`} />
+                <YAxis type="category" dataKey="nome" width={148} tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                <Tooltip content={<TooltipDark />} />
+                <Bar dataKey="atendimento" name="Atendimento" radius={[0, 6, 6, 0]}>
+                  {dadosAtendimento.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           )}
         </div>
-      )}
 
-      {/* Grid principal */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Col esquerda */}
-        <div className="lg:col-span-2 space-y-5">
-          {/* Tarefas de hoje */}
-          <Card>
-            <CardHeader
-              title="Tarefas de Hoje"
-              subtitle={tarefasConcluidas > 0 ? `${tarefasConcluidas} concluída(s) hoje` : 'Nenhuma concluída ainda'}
-              icon={<CheckCircle2 size={18} />}
-              action={
-                <Button variant="ghost" size="sm" icon={<ChevronRight size={14} />} onClick={() => navigate('/plano')}>
-                  Ver todas
-                </Button>
-              }
-            />
-            <CardBody>
-              {tarefasHoje.length === 0 ? (
-                <div className="text-center py-6">
-                  <CheckCheck size={32} className="mx-auto text-success-500 mb-2" />
-                  <p className="text-sm text-surface-500 dark:text-surface-400">Você está em dia! Nenhuma tarefa pendente para hoje.</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {tarefasHoje.slice(0, 5).map(tarefa => {
-                    const meta = data.metas.find(m => m.id === tarefa.metaId);
-                    const concluindo = concluindoId === tarefa.id;
-                    return (
-                      <div
-                        key={tarefa.id}
-                        className={`flex items-center gap-3 p-3 rounded-xl border transition-all duration-300
-                          ${concluindo ? 'opacity-50 scale-95' : ''}
-                          border-surface-200 dark:border-surface-700 hover:border-primary-200 dark:hover:border-primary-700 hover:bg-surface-50 dark:hover:bg-surface-700/50`}
-                      >
-                        <button
-                          onClick={() => concluirTarefa(tarefa.id)}
-                          className="w-5 h-5 rounded-full border-2 border-surface-300 dark:border-surface-600 hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors flex-shrink-0"
-                          title="Concluir tarefa"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-surface-900 dark:text-white truncate">{tarefa.titulo}</p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            {meta && <span className="text-xs text-surface-400 dark:text-surface-500 truncate">{meta.nome}</span>}
-                            <span className="text-xs text-surface-400 dark:text-surface-500 flex-shrink-0">• {formatarMinutos(tarefa.tempoEstimado)}</span>
-                          </div>
-                        </div>
-                        <Badge className={corFaixa(tarefa.faixa)}>{siglaFaixa(tarefa.faixa)}</Badge>
-                      </div>
-                    );
-                  })}
-                  {tarefasHoje.length > 5 && (
-                    <button onClick={() => navigate('/plano')} className="w-full text-center text-xs text-primary-600 dark:text-primary-400 py-2 hover:underline">
-                      +{tarefasHoje.length - 5} mais tarefas
-                    </button>
-                  )}
-                </div>
-              )}
-            </CardBody>
-          </Card>
+        {/* Gráfico 2 — Ações por status (rosca) */}
+        <div className="bg-white dark:bg-surface-800 rounded-2xl border border-surface-200 dark:border-surface-700 p-5 shadow-sm">
+          <h3 className="text-sm font-bold text-surface-900 dark:text-white">Ações por Status</h3>
+          <p className="text-xs text-surface-400 dark:text-surface-500 mt-0.5 mb-4">Distribuição das ações vinculadas a metas ativas</p>
+          {acoesPorStatus.length === 0 ? (
+            <div className="flex items-center justify-center h-40 text-surface-400 dark:text-surface-500 text-sm">Nenhuma ação</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie
+                  data={acoesPorStatus}
+                  cx="50%" cy="50%"
+                  innerRadius={55} outerRadius={90}
+                  paddingAngle={3}
+                  dataKey="value"
+                  labelLine={false}
+                  label={LabelPie}
+                >
+                  {acoesPorStatus.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
+                </Pie>
+                <Legend formatter={(v) => <span style={{ color: '#94a3b8', fontSize: 12 }}>{v}</span>} />
+                <Tooltip
+                  formatter={(v) => [`${v} ações`]}
+                  contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, fontSize: 12 }}
+                  itemStyle={{ color: '#fff' }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </div>
 
-          {/* Sugestão de foco */}
-          {sugestoes.length > 0 && (
-            <Card>
-              <CardHeader
-                title="Sugestão de Foco"
-                subtitle={`Com base em ${minutosDisponiveis > 0 ? formatarMinutos(minutosDisponiveis) : '2h'} disponíveis`}
-                icon={<Zap size={18} />}
+        {/* Gráfico 3 — Ações por Faixa */}
+        <div className="bg-white dark:bg-surface-800 rounded-2xl border border-surface-200 dark:border-surface-700 p-5 shadow-sm">
+          <h3 className="text-sm font-bold text-surface-900 dark:text-white">Ações por Faixa</h3>
+          <p className="text-xs text-surface-400 dark:text-surface-500 mt-0.5 mb-4">UG · AI · MI · BI — ações pendentes e concluídas</p>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={acoesPorFaixa} margin={{ top: 0, right: 8, left: -20, bottom: 0 }}>
+              <XAxis dataKey="sigla" tick={{ fontSize: 13, fill: '#94a3b8', fontWeight: 700 }} />
+              <YAxis tick={{ fontSize: 10, fill: '#64748b' }} allowDecimals={false} />
+              <Tooltip
+                content={({ active, payload }) => {
+                  if (!active || !payload?.length) return null;
+                  const d = payload[0]?.payload as { sigla: string; name: string; value: number };
+                  return (
+                    <div className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white shadow-xl">
+                      <p className="font-semibold">{d?.name}</p>
+                      <p>{d?.value} ações</p>
+                    </div>
+                  );
+                }}
               />
-              <CardBody>
-                <div className="space-y-2">
-                  {sugestoes.slice(0, 3).map(tarefa => {
-                    const meta = data.metas.find(m => m.id === tarefa.metaId);
-                    return (
-                      <div key={tarefa.id} className="flex items-center gap-3 p-3 bg-primary-50 dark:bg-primary-900/20 rounded-xl border border-primary-100 dark:border-primary-800">
-                        <Zap size={14} className="text-primary-600 dark:text-primary-400 flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-surface-900 dark:text-white truncate">{tarefa.titulo}</p>
-                          {meta && <p className="text-xs text-primary-600 dark:text-primary-400">{meta.nome}</p>}
-                        </div>
-                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                          <Badge className={corFaixa(tarefa.faixa)}>{siglaFaixa(tarefa.faixa)}</Badge>
-                          <span className="text-xs text-surface-500 dark:text-surface-400">{formatarMinutos(tarefa.tempoEstimado)}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </CardBody>
-            </Card>
-          )}
+              <Bar dataKey="value" name="Ações" radius={[6, 6, 0, 0]}>
+                {acoesPorFaixa.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
         </div>
 
-        {/* Col direita */}
-        <div className="space-y-5">
-          {/* Eficiência de foco resumida */}
-          <Card>
-            <CardHeader title="Foco" icon={<Target size={18} />} action={
-              <Button variant="ghost" size="sm" onClick={() => navigate('/metas')}>Ver metas</Button>
-            } />
-            <CardBody>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-surface-600 dark:text-surface-400">Eficiência</span>
-                  <span className={`text-lg font-bold ${corEficiencia(eficiencia)}`}>{eficiencia}%</span>
-                </div>
-                <div className="w-full h-2 bg-surface-100 dark:bg-surface-700 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${corBarraEficiencia(eficiencia)}`}
-                    style={{ width: `${eficiencia}%` }}
-                  />
-                </div>
-                <p className={`text-xs font-medium ${corEficiencia(eficiencia)}`}>{mensagemEficiencia(eficiencia)}</p>
-                <div className="flex items-center justify-between text-xs text-surface-400 dark:text-surface-500 pt-1 border-t border-surface-100 dark:border-surface-700">
-                  <span>{metasAtivas.length} ativa{metasAtivas.length !== 1 ? 's' : ''}</span>
-                  <span className="flex items-center gap-1">
-                    <Lightbulb size={11} className="text-amber-400" />
-                    {metasFuturo.length} no futuro
-                  </span>
-                </div>
-              </div>
-            </CardBody>
-          </Card>
+        {/* Gráfico 4 — Metas por Categoria */}
+        <div className="bg-white dark:bg-surface-800 rounded-2xl border border-surface-200 dark:border-surface-700 p-5 shadow-sm">
+          <h3 className="text-sm font-bold text-surface-900 dark:text-white">Metas por Categoria</h3>
+          <p className="text-xs text-surface-400 dark:text-surface-500 mt-0.5 mb-4">Distribuição das metas ativas por área de vida</p>
+          {metasPorCategoria.length === 0 ? (
+            <div className="flex items-center justify-center h-40 text-surface-400 dark:text-surface-500 text-sm">Nenhuma meta ativa</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={metasPorCategoria} margin={{ top: 0, right: 8, left: -20, bottom: 0 }}>
+                <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#94a3b8' }} />
+                <YAxis tick={{ fontSize: 10, fill: '#64748b' }} allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, fontSize: 12 }}
+                  itemStyle={{ color: '#fff' }}
+                  labelStyle={{ color: '#fff', fontWeight: 600 }}
+                />
+                <Bar dataKey="value" name="Metas" radius={[6, 6, 0, 0]}>
+                  {metasPorCategoria.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
 
-          {/* Tempo disponível */}
-          <Card>
-            <CardHeader title="Tempo Hoje" icon={<Clock size={18} />} action={
-              <Button variant="ghost" size="sm" onClick={() => navigate('/agenda')}>Ajustar</Button>
-            } />
-            <CardBody>
-              {minutosDisponiveis > 0 ? (
-                <div className="text-center">
-                  <p className="text-4xl font-bold text-primary-600 dark:text-primary-400">{formatarMinutos(minutosDisponiveis)}</p>
-                  <p className="text-xs text-surface-400 dark:text-surface-500 mt-1">disponíveis hoje</p>
-                </div>
-              ) : (
-                <div className="text-center py-2">
-                  <p className="text-sm text-surface-400 dark:text-surface-500">Nenhum tempo cadastrado</p>
-                  <Button variant="primary" size="sm" className="mt-3" onClick={() => navigate('/agenda')}>Cadastrar tempo</Button>
-                </div>
+      {/* ── FILTROS ── */}
+      <div className="bg-white dark:bg-surface-800 rounded-2xl border border-surface-200 dark:border-surface-700 px-5 py-3 shadow-sm">
+        <div className="flex flex-wrap gap-x-6 gap-y-3 items-start">
+          <div>
+            <p className="text-xs font-semibold text-surface-400 dark:text-surface-500 uppercase tracking-wide mb-2">Categoria</p>
+            <div className="flex flex-wrap gap-1.5">
+              {categorias.map(c => (
+                <button
+                  key={c}
+                  onClick={() => setFiltroCategoria(c)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                    filtroCategoria === c
+                      ? 'bg-primary-600 text-white'
+                      : 'bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-600'
+                  }`}
+                >
+                  {c === 'Desenvolvimento Pessoal' ? 'Desenv. Pessoal' : c}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-surface-400 dark:text-surface-500 uppercase tracking-wide mb-2">Saúde</p>
+            <div className="flex flex-wrap gap-1.5">
+              {opcoesSaude.map(o => (
+                <button
+                  key={o.v}
+                  onClick={() => setFiltroSaude(o.v)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                    filtroSaude === o.v
+                      ? 'bg-primary-600 text-white'
+                      : 'bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-600'
+                  }`}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── RANKING DAS METAS ── */}
+      <div className="bg-white dark:bg-surface-800 rounded-2xl border border-surface-200 dark:border-surface-700 shadow-sm overflow-hidden">
+        <div className="px-5 pt-5 pb-3 border-b border-surface-100 dark:border-surface-700 flex items-start justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-surface-900 dark:text-white">Ranking das Metas</h3>
+            <p className="text-xs text-surface-400 dark:text-surface-500 mt-0.5">
+              Por grau · revisão · atendimento
+              {rankingFiltrado.length !== rankingCompleto.length && (
+                <span className="ml-2 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 px-1.5 py-0.5 rounded text-[10px]">
+                  {rankingFiltrado.length}/{rankingCompleto.length} metas
+                </span>
               )}
-            </CardBody>
-          </Card>
+            </p>
+          </div>
+          <button onClick={() => navigate('/metas')} className="text-xs text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-1">
+            Ver todas <ChevronRight size={12} />
+          </button>
+        </div>
 
-          {/* Resumo financeiro */}
-          <Card>
-            <CardHeader title="Finanças do Mês" icon={<TrendingUp size={18} />} action={
-              <Button variant="ghost" size="sm" onClick={() => navigate('/orcamento')}>Ver mais</Button>
-            } />
-            <CardBody>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full bg-success-500" />
-                    <span className="text-sm text-surface-600 dark:text-surface-400">Receitas</span>
-                  </div>
-                  <span className="text-sm font-semibold text-success-600 dark:text-success-400">{formatarDinheiro(receitasMes)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full bg-danger-500" />
-                    <span className="text-sm text-surface-600 dark:text-surface-400">Despesas</span>
-                  </div>
-                  <span className="text-sm font-semibold text-danger-600 dark:text-danger-400">{formatarDinheiro(despesasMes)}</span>
-                </div>
-                <div className="border-t border-surface-200 dark:border-surface-700 pt-3 flex items-center justify-between">
-                  <span className="text-sm font-semibold text-surface-700 dark:text-surface-300">Saldo</span>
-                  <div className="flex items-center gap-1">
-                    {saldoMes >= 0
-                      ? <TrendingUp size={14} className="text-success-600 dark:text-success-400" />
-                      : <TrendingDown size={14} className="text-danger-600 dark:text-danger-400" />
-                    }
-                    <span className={`text-sm font-bold ${saldoMes >= 0 ? 'text-success-600 dark:text-success-400' : 'text-danger-600 dark:text-danger-400'}`}>
-                      {formatarDinheiro(saldoMes)}
+        {rankingFiltrado.length === 0 ? (
+          <div className="flex items-center justify-center py-12 text-surface-400 dark:text-surface-500 text-sm">
+            Nenhuma meta para este filtro
+          </div>
+        ) : (
+          <>
+            {/* Desktop — tabela */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-surface-100 dark:border-surface-700 bg-surface-50 dark:bg-surface-700/30">
+                    {['Grau', 'Meta', 'Categoria', 'Ações', 'Concl.', 'Atendimento', 'Atrasadas', 'Revisão', 'Saúde'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-surface-400 dark:text-surface-500 uppercase tracking-wide whitespace-nowrap">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-50 dark:divide-surface-700/50">
+                  {rankingFiltrado.map(mm => (
+                    <tr key={mm.meta.id} className="hover:bg-surface-50 dark:hover:bg-surface-700/30 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold ${corGrau(mm.meta.grau)}`}>
+                          {mm.meta.grau}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 max-w-[200px]">
+                        <p className="text-sm font-semibold text-surface-900 dark:text-white leading-tight line-clamp-2">
+                          {mm.meta.nome}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className="text-xs text-surface-500 dark:text-surface-400">{mm.meta.categoria}</span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="text-sm font-bold text-surface-700 dark:text-surface-200">{mm.totalAcoes}</span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="text-sm font-bold text-surface-700 dark:text-surface-200">{mm.acoesConcluidas}</span>
+                      </td>
+                      <td className="px-4 py-3 min-w-[130px]">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-2 bg-surface-100 dark:bg-surface-700 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all ${
+                                mm.percentualAtendimento >= 70 ? 'bg-emerald-500' :
+                                mm.percentualAtendimento >= 30 ? 'bg-blue-500' : 'bg-red-500'
+                              }`}
+                              style={{ width: `${mm.percentualAtendimento}%` }}
+                            />
+                          </div>
+                          <span className="text-xs font-bold text-surface-700 dark:text-surface-300 w-8 text-right shrink-0">
+                            {mm.percentualAtendimento}%
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {mm.acoesAtrasadas > 0
+                          ? <span className="text-xs font-bold text-red-500">{mm.acoesAtrasadas}</span>
+                          : <span className="text-xs text-surface-300 dark:text-surface-600">—</span>
+                        }
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {mm.revisaoAtrasada
+                          ? <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 font-medium"><RefreshCw size={10} /> Atrasada</span>
+                          : <span className="text-xs text-emerald-600 dark:text-emerald-400">Em dia</span>
+                        }
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${bgSaude(mm.saude)}`}>
+                          {labelSaude(mm.saude)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile — lista */}
+            <div className="md:hidden divide-y divide-surface-100 dark:divide-surface-700">
+              {rankingFiltrado.map(mm => (
+                <div key={mm.meta.id} className="p-4 space-y-2.5">
+                  <div className="flex items-start gap-3">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0 ${corGrau(mm.meta.grau)}`}>
+                      {mm.meta.grau}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-surface-900 dark:text-white leading-tight">{mm.meta.nome}</p>
+                      <p className="text-xs text-surface-400 dark:text-surface-500">{mm.meta.categoria}</p>
+                    </div>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${bgSaude(mm.saude)}`}>
+                      {labelSaude(mm.saude)}
                     </span>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-2 bg-surface-100 dark:bg-surface-700 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${mm.percentualAtendimento >= 70 ? 'bg-emerald-500' : mm.percentualAtendimento >= 30 ? 'bg-blue-500' : 'bg-red-500'}`}
+                        style={{ width: `${mm.percentualAtendimento}%` }}
+                      />
+                    </div>
+                    <span className="text-xs font-bold text-surface-700 dark:text-surface-300 w-8 text-right">{mm.percentualAtendimento}%</span>
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-surface-400 dark:text-surface-500">
+                    <span>{mm.totalAcoes} ações · {mm.acoesConcluidas} concluídas</span>
+                    {mm.acoesAtrasadas > 0 && <span className="text-red-500">{mm.acoesAtrasadas} atrasada(s)</span>}
+                    {mm.revisaoAtrasada && <span className="text-amber-500">Revisão atrasada</span>}
+                  </div>
                 </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ── METAS EM ATENÇÃO ── */}
+      {metasAtencao.length > 0 && (
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-sm font-bold text-surface-900 dark:text-white">Metas que exigem atenção</h3>
+            <p className="text-xs text-surface-400 dark:text-surface-500 mt-0.5">Metas sem ações ou em situação crítica — aja agora</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            {metasAtencao.map(mm => {
+              const alertas: string[] = [];
+              if (mm.totalAcoes === 0) alertas.push('Sem ações vinculadas');
+              if (mm.revisaoAtrasada) alertas.push('Revisão atrasada');
+              if (mm.acoesAtrasadas > 0) alertas.push(`${mm.acoesAtrasadas} ação(ões) atrasada(s)`);
+              if (mm.percentualAtendimento < 30 && mm.totalAcoes > 0) alertas.push('Atendimento abaixo de 30%');
+              if (mm.meta.grau >= 7 && mm.percentualAtendimento < 50) alertas.push('Alto grau com baixo atendimento');
+
+              return (
+                <div key={mm.meta.id} className="bg-white dark:bg-surface-800 rounded-2xl border border-red-200 dark:border-red-700/40 p-4 shadow-sm space-y-3">
+                  <div className="flex items-start gap-3">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0 ${corGrau(mm.meta.grau)}`}>
+                      {mm.meta.grau}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-surface-900 dark:text-white leading-tight">{mm.meta.nome}</p>
+                      <p className="text-xs text-surface-400 dark:text-surface-500">{mm.meta.categoria}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    {alertas.map((a, i) => (
+                      <div key={i} className="flex items-start gap-1.5">
+                        <AlertTriangle size={10} className="text-red-500 mt-0.5 flex-shrink-0" />
+                        <span className="text-xs text-red-600 dark:text-red-400">{a}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-1.5 bg-surface-100 dark:bg-surface-700 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full bg-red-500" style={{ width: `${mm.percentualAtendimento}%` }} />
+                    </div>
+                    <span className="text-xs font-bold text-red-500">{mm.percentualAtendimento}%</span>
+                  </div>
+                  <p className="text-xs text-surface-400 dark:text-surface-500">{mm.totalAcoes} ação(ões) · {mm.acoesConcluidas} concluída(s)</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => navigate('/plano')}
+                      className="flex-1 py-1.5 rounded-lg bg-surface-100 dark:bg-surface-700 text-xs font-semibold text-surface-700 dark:text-surface-200 hover:bg-surface-200 dark:hover:bg-surface-600 transition-colors"
+                    >
+                      Ver ações
+                    </button>
+                    <button
+                      onClick={() => navigate('/metas')}
+                      className="flex-1 py-1.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-xs font-semibold text-white transition-colors"
+                    >
+                      Abrir meta
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── FOCO RECOMENDADO ── */}
+      {foco && (
+        <div className="bg-gradient-to-br from-primary-700 to-primary-600 rounded-2xl p-5 text-white shadow-lg">
+          <div className="flex items-center gap-2 mb-4">
+            <Zap size={16} className="opacity-80" />
+            <h3 className="text-xs font-bold uppercase tracking-widest opacity-75">Foco recomendado para hoje</h3>
+          </div>
+          <div className="flex items-start gap-4 mb-5">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center text-xl font-extrabold flex-shrink-0 bg-white/20 shadow">
+              {foco.meta.grau}
+            </div>
+            <div>
+              <p className="text-xl font-extrabold leading-tight">{foco.meta.nome}</p>
+              <p className="text-sm opacity-70 mt-1">
+                Priorize hoje porque: <span className="font-semibold opacity-90">{foco.motivo}</span>.
+              </p>
+            </div>
+          </div>
+
+          {foco.acoesRecomendadas.length > 0 ? (
+            <div className="space-y-2 mb-5">
+              <p className="text-xs font-bold uppercase tracking-wider opacity-60 mb-2">Ações sugeridas</p>
+              {foco.acoesRecomendadas.map(t => (
+                <div key={t.id} className="flex items-center gap-3 bg-white/10 rounded-xl px-3 py-2.5">
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${corFaixaDash(t.faixa)}`}>
+                    {siglaFaixaDash(t.faixa)}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold leading-tight truncate">{t.titulo}</p>
+                    <p className="text-xs opacity-55 mt-0.5">{t.tempoEstimado} min{t.prazo ? ` · prazo ${t.prazo}` : ''}</p>
+                  </div>
+                  <span className="text-xs opacity-50 capitalize whitespace-nowrap">{t.status}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-white/10 rounded-xl px-4 py-3 mb-5">
+              <p className="text-sm opacity-70">Nenhuma ação pendente para esta meta. Adicione em Plano de Ação.</p>
+            </div>
+          )}
+
+          <button
+            onClick={() => navigate('/plano')}
+            className="inline-flex items-center gap-2 bg-white/20 hover:bg-white/30 transition-colors rounded-xl px-4 py-2.5 text-sm font-bold"
+          >
+            Ir para Plano de Ação <ArrowRight size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* ── TEMPO + FINANÇAS SECUNDÁRIO ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+        <div className="bg-white dark:bg-surface-800 rounded-2xl border border-surface-200 dark:border-surface-700 p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Clock size={16} className="text-primary-500" />
+              <h3 className="text-sm font-bold text-surface-900 dark:text-white">Tempo disponível hoje</h3>
+            </div>
+            <button onClick={() => navigate('/agenda')} className="text-xs text-primary-600 dark:text-primary-400 hover:underline">Ajustar</button>
+          </div>
+          {minutosDisponiveis > 0 ? (
+            <div className="text-center py-2">
+              <p className="text-5xl font-extrabold text-primary-600 dark:text-primary-400">{formatarMinutos(minutosDisponiveis)}</p>
+              <p className="text-xs text-surface-400 dark:text-surface-500 mt-2">disponíveis hoje</p>
+            </div>
+          ) : (
+            <div className="text-center py-2">
+              <p className="text-sm text-surface-400 dark:text-surface-500 mb-3">Nenhum tempo cadastrado para hoje</p>
+              <Button size="sm" onClick={() => navigate('/agenda')}>Cadastrar tempo</Button>
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white dark:bg-surface-800 rounded-2xl border border-surface-200 dark:border-surface-700 p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Wallet size={16} className="text-emerald-500" />
+              <h3 className="text-sm font-bold text-surface-900 dark:text-white">Finanças do mês</h3>
+            </div>
+            <button onClick={() => navigate('/orcamento')} className="text-xs text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-0.5">
+              Ver mais <ChevronRight size={12} />
+            </button>
+          </div>
+          <div className="space-y-3">
+            {[
+              { label: 'Receitas', valor: receitasMes, cor: 'bg-emerald-500', textCor: 'text-emerald-600 dark:text-emerald-400' },
+              { label: 'Despesas', valor: despesasMes, cor: 'bg-red-500', textCor: 'text-red-600 dark:text-red-400' },
+            ].map(row => (
+              <div key={row.label} className="flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <div className={`w-2.5 h-2.5 rounded-full ${row.cor}`} />
+                  <span className="text-sm text-surface-600 dark:text-surface-400">{row.label}</span>
+                </div>
+                <span className={`text-sm font-bold ${row.textCor}`}>{formatarDinheiro(row.valor)}</span>
               </div>
-            </CardBody>
-          </Card>
+            ))}
+            <div className="border-t border-surface-100 dark:border-surface-700 pt-3 flex justify-between items-center">
+              <span className="text-sm font-semibold text-surface-700 dark:text-surface-200">Saldo</span>
+              <div className="flex items-center gap-1.5">
+                {saldoMes >= 0
+                  ? <TrendingUp size={14} className="text-emerald-600" />
+                  : <TrendingDown size={14} className="text-red-600" />
+                }
+                <span className={`text-sm font-extrabold ${saldoMes >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                  {formatarDinheiro(saldoMes)}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
+
     </div>
   );
 }

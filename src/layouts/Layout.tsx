@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { useApp } from '../hooks/useApp';
 
 const navItems = [
-  { to: '/', label: 'Início', icon: LayoutDashboard },
+  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/metas', label: 'Metas', icon: Target },
   { to: '/plano', label: 'Plano de Ação', icon: ListChecks },
   { to: '/agenda', label: 'Agenda e Tempo', icon: Clock },
