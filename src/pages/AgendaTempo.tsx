@@ -1,276 +1,867 @@
-import { useState, useCallback } from 'react';
-import { Clock, Plus, Trash2, Zap, Battery } from 'lucide-react';
+import { useState, useCallback, useRef, useMemo } from 'react';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import {
+  Clock, Plus, Trash2, Calendar, RefreshCw, Link2, Link2Off,
+  Upload, CheckCircle2, XCircle, AlertTriangle, ChevronDown, ChevronUp,
+  Zap, Info,
+} from 'lucide-react';
 import { useApp } from '../hooks/useApp';
-import type { BlocoTempo, DiaSemana, Periodo, NivelEnergia } from '../types';
+import type { EventoAgenda, Meta } from '../types';
 import { Card, CardHeader, CardBody } from '../components/Card';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
-import { Input, Select, Textarea } from '../components/FormFields';
+import { Input } from '../components/FormFields';
 import {
-  calcularMinutosDisponiveis, sugerirTarefas,
-  formatarMinutos, corFaixa, siglaFaixa, hojeISO, gerarId
+  formatarMinutos, hojeISO, gerarId,
 } from '../utils';
-import { format } from 'date-fns';
+import {
+  calcularDisponibilidadeDia,
+  calcularDisponibilidadePeriodo,
+  obterSemanaAtual,
+  nomeDia,
+  eventoOcorreNoFimDeSemana,
+  eventoPodeVirarTarefaAvulsa,
+  gerarTarefaAvulsaDeEvento,
+  formatarIntervaloEvento,
+  labelFonteAgenda,
+  corCargaDia,
+  icsParaEventosAgenda,
+} from '../utils/calendarAvailability';
+import {
+  isGoogleConfigured,
+  isGoogleConectado,
+  getMensagemNaoConfigurado as googleMsg,
+  conectarGoogleCalendar,
+  desconectarGoogleCalendar,
+  sincronizarGoogleCalendar,
+  deduplicarEventos,
+} from '../services/googleCalendar';
+import {
+  isMicrosoftConfigured,
+  isMicrosoftConectado,
+  getMensagemNaoConfigurado as msMsg,
+  conectarMicrosoftCalendar,
+  desconectarMicrosoftCalendar,
+  sincronizarMicrosoftCalendar,
+} from '../services/microsoftCalendar';
 
-const diasSemana: DiaSemana[] = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
-const periodos: Periodo[] = ['manhã', 'tarde', 'noite'];
-const energias: NivelEnergia[] = ['baixa', 'média', 'alta'];
+// ============================================================
+// HELPERS VISUAIS
+// ============================================================
 
-const getDiaSemanaHoje = (): DiaSemana => {
-  const dias: DiaSemana[] = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-  return dias[new Date().getDay()];
-};
-
-const blocoVazio = (): Omit<BlocoTempo, 'id'> => ({
-  data: hojeISO(),
-  diaSemana: getDiaSemanaHoje(),
-  periodo: 'manhã',
-  horasDisponiveis: 1,
-  compromissos: '',
-  nivelEnergia: 'média',
-  observacoes: '',
-});
-
-const corEnergia = (e: string) => {
-  switch (e) {
-    case 'alta': return 'text-success-600 bg-success-50 dark:bg-success-600/20 dark:text-success-400';
-    case 'média': return 'text-warning-600 bg-warning-50 dark:bg-warning-600/20 dark:text-warning-400';
-    default: return 'text-surface-500 bg-surface-100 dark:bg-surface-700';
+const corFonte = (fonte: string): string => {
+  switch (fonte) {
+    case 'google': return 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700/50';
+    case 'microsoft': return 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700/50';
+    case 'ics': return 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-700/50';
+    default: return 'bg-surface-50 dark:bg-surface-700/30 border-surface-200 dark:border-surface-700';
   }
 };
 
-export function AgendaTempoPage() {
-  const { data, setData } = useApp();
-  const [modalAberto, setModalAberto] = useState(false);
-  const [form, setForm] = useState(blocoVazio());
-  const [erros, setErros] = useState<Record<string, string>>({});
+const iconFonte = (fonte: string): React.ReactNode => {
+  switch (fonte) {
+    case 'google': return <span className="text-red-500 font-black text-sm">G</span>;
+    case 'microsoft': return <span className="text-blue-500 font-black text-sm">M</span>;
+    case 'ics': return <Upload size={13} className="text-purple-500" />;
+    default: return <Clock size={13} className="text-surface-500" />;
+  }
+};
 
-  const minutosHoje = calcularMinutosDisponiveis(data.blocosTempo);
-  const sugestoes = sugerirTarefas(data.tarefas, data.metas, minutosHoje || 120);
+// ============================================================
+// MODAL CLASSIFICAR EVENTO DO FIM DE SEMANA
+// ============================================================
 
-  const validar = () => {
-    const e: Record<string, string> = {};
-    if (!form.data) e.data = 'Data obrigatória';
-    if (form.horasDisponiveis <= 0) e.horas = 'Informe as horas disponíveis';
-    setErros(e);
-    return Object.keys(e).length === 0;
-  };
+interface ModalClassificarProps {
+  evento: EventoAgenda;
+  metas: Meta[];
+  onVincular: (metaId: string) => void;
+  onSemClassificacao: () => void;
+  onIgnorar: () => void;
+  onFechar: () => void;
+}
 
-  const salvar = useCallback(() => {
-    if (!validar()) return;
-    setData(d => ({
-      ...d,
-      blocosTempo: [...d.blocosTempo, { id: gerarId(), ...form }],
-    }));
-    setModalAberto(false);
-    setForm(blocoVazio());
-  }, [form, setData]);
-
-  const excluir = (id: string) => {
-    setData(d => ({ ...d, blocosTempo: d.blocosTempo.filter(b => b.id !== id) }));
-  };
-
-  // Blocos de hoje
-  const blocosHoje = data.blocosTempo.filter(b => b.data === hojeISO());
-  // Blocos recentes
-  const blocosRecentes = data.blocosTempo
-    .filter(b => b.data !== hojeISO())
-    .sort((a, b) => b.data.localeCompare(a.data))
-    .slice(0, 10);
+function ModalClassificar({ evento, metas, onVincular, onSemClassificacao, onIgnorar, onFechar }: ModalClassificarProps) {
+  const [metaSelecionada, setMetaSelecionada] = useState('');
+  const metasAtivas = metas.filter(m => m.status === 'ativa').sort((a, b) => b.grau - a.grau);
 
   return (
-    <div className="max-w-4xl mx-auto space-y-5 animate-fade-in">
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+    <Modal isOpen onClose={onFechar} title="Classificar compromisso" size="md">
+      <div className="space-y-4">
+        <div className="bg-surface-50 dark:bg-surface-700/50 rounded-xl p-4">
+          <p className="text-sm font-semibold text-surface-900 dark:text-white">{evento.titulo}</p>
+          <p className="text-xs text-surface-400 dark:text-surface-500 mt-1">
+            {format(new Date(evento.inicio.split('T')[0] + 'T12:00:00'), "EEEE, dd/MM", { locale: ptBR })}
+            {' · '}{formatarIntervaloEvento(evento)}
+            {' · '}{labelFonteAgenda(evento.fonte)}
+          </p>
+        </div>
+
+        <p className="text-sm text-surface-600 dark:text-surface-300">
+          Este compromisso do fim de semana pode ser vinculado a uma meta ou criado como tarefa avulsa.
+        </p>
+
+        <div className="space-y-3">
+          {/* Opção 1 — vincular a meta */}
+          <div className="border border-surface-200 dark:border-surface-600 rounded-xl p-4 space-y-3">
+            <p className="text-sm font-semibold text-surface-900 dark:text-white">Vincular a uma meta</p>
+            <select
+              value={metaSelecionada}
+              onChange={e => setMetaSelecionada(e.target.value)}
+              className="w-full px-3 py-2 text-sm rounded-xl border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+            >
+              <option value="">— Selecione uma meta —</option>
+              {metasAtivas.map(m => (
+                <option key={m.id} value={m.id}>[{m.grau}] {m.nome}</option>
+              ))}
+            </select>
+            <Button
+              className="w-full"
+              disabled={!metaSelecionada}
+              onClick={() => onVincular(metaSelecionada)}
+              icon={<CheckCircle2 size={14} />}
+            >
+              Vincular e criar ação
+            </Button>
+          </div>
+
+          {/* Opção 2 — sem classificação */}
+          <button
+            onClick={onSemClassificacao}
+            className="w-full text-left border border-dashed border-surface-300 dark:border-surface-600 rounded-xl p-4 hover:bg-surface-50 dark:hover:bg-surface-700/30 transition-colors"
+          >
+            <p className="text-sm font-semibold text-surface-700 dark:text-surface-200">Manter sem classificação</p>
+            <p className="text-xs text-surface-400 dark:text-surface-500 mt-0.5">Cria tarefa avulsa sem vínculo com nenhuma meta</p>
+          </button>
+
+          {/* Opção 3 — ignorar */}
+          <button
+            onClick={onIgnorar}
+            className="w-full text-left border border-dashed border-surface-200 dark:border-surface-700 rounded-xl p-3 hover:bg-surface-50 dark:hover:bg-surface-700/30 transition-colors"
+          >
+            <p className="text-sm text-surface-500 dark:text-surface-400">Ignorar este compromisso</p>
+            <p className="text-xs text-surface-400 dark:text-surface-500 mt-0.5">Não criar tarefa e não perguntar novamente</p>
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ============================================================
+// CARD DE INTEGRAÇÃO
+// ============================================================
+
+interface IntegracaoCardProps {
+  nome: string;
+  icone: React.ReactNode;
+  configurado: boolean;
+  conectado: boolean;
+  sincronizadaEm?: string | null;
+  msgNaoConfigurado: string;
+  onConectar: () => void;
+  onDesconectar: () => void;
+  onSincronizar: () => void;
+  carregando: boolean;
+  cor: string;
+}
+
+function IntegracaoCard({
+  nome, icone, configurado, conectado, sincronizadaEm,
+  msgNaoConfigurado, onConectar, onDesconectar, onSincronizar,
+  carregando, cor,
+}: IntegracaoCardProps) {
+  return (
+    <div className={`rounded-2xl border p-5 space-y-3 ${cor}`}>
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-white dark:bg-surface-800 shadow flex items-center justify-center flex-shrink-0">
+          {icone}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-surface-900 dark:text-white">{nome}</p>
+          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+            {!configurado ? (
+              <span className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                <AlertTriangle size={10} /> Não configurado
+              </span>
+            ) : conectado ? (
+              <span className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                <CheckCircle2 size={10} /> Conectado
+              </span>
+            ) : (
+              <span className="text-xs text-surface-400 dark:text-surface-500 flex items-center gap-1">
+                <XCircle size={10} /> Desconectado
+              </span>
+            )}
+            {sincronizadaEm && (
+              <span className="text-xs text-surface-400 dark:text-surface-500">
+                · Sincronizado {format(new Date(sincronizadaEm), 'dd/MM HH:mm')}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {!configurado ? (
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-xl p-3">
+          <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed flex items-start gap-1.5">
+            <Info size={11} className="mt-0.5 flex-shrink-0" />
+            {msgNaoConfigurado}
+          </p>
+        </div>
+      ) : (
+        <div className="flex gap-2">
+          {conectado ? (
+            <>
+              <Button size="sm" variant="secondary" onClick={onSincronizar} icon={<RefreshCw size={12} className={carregando ? 'animate-spin' : ''} />} className="flex-1">
+                {carregando ? 'Sincronizando…' : 'Sincronizar'}
+              </Button>
+              <Button size="sm" variant="secondary" onClick={onDesconectar} icon={<Link2Off size={12} />}>
+                Sair
+              </Button>
+            </>
+          ) : (
+            <Button size="sm" onClick={onConectar} icon={carregando ? <RefreshCw size={12} className="animate-spin" /> : <Link2 size={12} />} className="flex-1">
+              {carregando ? 'Conectando…' : 'Conectar'}
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// LISTA DE EVENTOS (paginada)
+// ============================================================
+
+function EventosLista({
+  eventos, onExcluir, onToggle,
+}: {
+  eventos: EventoAgenda[];
+  onExcluir: (id: string) => void;
+  onToggle: (id: string) => void;
+}) {
+  const [expandido, setExpandido] = useState(false);
+  const sorted = [...eventos].sort((a, b) => b.importadoEm.localeCompare(a.importadoEm));
+  const visivel = expandido ? sorted : sorted.slice(0, 5);
+
+  return (
+    <div className="space-y-2">
+      {visivel.map(ev => (
+        <div key={ev.id} className={`flex items-center gap-3 p-3 rounded-xl border ${corFonte(ev.fonte)} ${ev.ignorado ? 'opacity-40' : ''}`}>
+          <div className="w-6 h-6 rounded-lg bg-white dark:bg-surface-800 flex items-center justify-center flex-shrink-0 shadow-sm">
+            {iconFonte(ev.fonte)}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-surface-900 dark:text-white truncate">{ev.titulo}</p>
+            <p className="text-[10px] text-surface-400 dark:text-surface-500">
+              {ev.inicio.split('T')[0]} · {formatarIntervaloEvento(ev)} · {labelFonteAgenda(ev.fonte)}
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <button
+              onClick={() => onToggle(ev.id)}
+              className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium transition-colors ${
+                ev.bloqueiaTempo
+                  ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                  : 'bg-surface-100 dark:bg-surface-700 text-surface-400'
+              }`}
+            >
+              {ev.bloqueiaTempo ? 'Bloqueia' : 'Livre'}
+            </button>
+            <button onClick={() => onExcluir(ev.id)} className="p-1 rounded hover:bg-white dark:hover:bg-surface-800 text-surface-300 hover:text-danger-500 transition-colors">
+              <Trash2 size={11} />
+            </button>
+          </div>
+        </div>
+      ))}
+      {sorted.length > 5 && (
+        <button
+          onClick={() => setExpandido(v => !v)}
+          className="w-full py-2 text-xs text-surface-400 hover:text-primary-600 flex items-center justify-center gap-1 transition-colors"
+        >
+          {expandido
+            ? <><ChevronUp size={12} /> Mostrar menos</>
+            : <><ChevronDown size={12} /> Ver todos ({sorted.length})</>
+          }
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// PÁGINA PRINCIPAL
+// ============================================================
+
+export function AgendaTempoPage() {
+  const { data, setData } = useApp();
+
+  const hoje = hojeISO();
+  const [abaAtiva, setAbaAtiva] = useState<'hoje' | 'semana' | 'fds' | 'fontes'>('hoje');
+  const [modalManual, setModalManual] = useState(false);
+  const [formManual, setFormManual] = useState({ titulo: '', data: hoje, horaInicio: '09:00', horaFim: '10:00', diaInteiro: false, bloqueiaTempo: true });
+  const [errosManual, setErrosManual] = useState<Record<string, string>>({});
+  const [eventoClassificar, setEventoClassificar] = useState<EventoAgenda | null>(null);
+  const [carregandoGoogle, setCarregandoGoogle] = useState(false);
+  const [carregandoMs, setCarregandoMs] = useState(false);
+  const [erroConexao, setErroConexao] = useState<string | null>(null);
+  const [sincGoogleEm, setSincGoogleEm] = useState<string | null>(null);
+  const [sincMsEm, setSincMsEm] = useState<string | null>(null);
+  const icsInputRef = useRef<HTMLInputElement>(null);
+
+  // Disponibilidade calculada
+  const dispHoje = useMemo(
+    () => calcularDisponibilidadeDia(hoje, data.eventosAgenda),
+    [hoje, data.eventosAgenda]
+  );
+  const semana = useMemo(() => obterSemanaAtual(), []);
+  const dispSemana = useMemo(
+    () => calcularDisponibilidadePeriodo(semana[0], semana[6], data.eventosAgenda),
+    [semana, data.eventosAgenda]
+  );
+
+  const eventosFDS = useMemo(
+    () => data.eventosAgenda.filter(e => eventoOcorreNoFimDeSemana(e) && eventoPodeVirarTarefaAvulsa(e)),
+    [data.eventosAgenda]
+  );
+
+  const eventosHoje = useMemo(
+    () => data.eventosAgenda
+      .filter(e => e.inicio.startsWith(hoje))
+      .sort((a, b) => a.inicio.localeCompare(b.inicio)),
+    [hoje, data.eventosAgenda]
+  );
+
+  const adicionarEventos = useCallback((novos: EventoAgenda[]) => {
+    setData(d => {
+      const dedup = deduplicarEventos(d.eventosAgenda, novos);
+      return { ...d, eventosAgenda: [...d.eventosAgenda, ...dedup] };
+    });
+  }, [setData]);
+
+  // ── Google ──
+  const handleConectarGoogle = async () => {
+    setCarregandoGoogle(true); setErroConexao(null);
+    try {
+      await conectarGoogleCalendar();
+      const eventos = await sincronizarGoogleCalendar(semana[0], semana[6]);
+      adicionarEventos(eventos);
+      setSincGoogleEm(new Date().toISOString());
+    } catch (e) {
+      setErroConexao(e instanceof Error ? e.message : String(e));
+    } finally { setCarregandoGoogle(false); }
+  };
+
+  const handleSincronizarGoogle = async () => {
+    setCarregandoGoogle(true); setErroConexao(null);
+    try {
+      const eventos = await sincronizarGoogleCalendar(semana[0], semana[6]);
+      adicionarEventos(eventos);
+      setSincGoogleEm(new Date().toISOString());
+    } catch (e) {
+      setErroConexao(e instanceof Error ? e.message : String(e));
+    } finally { setCarregandoGoogle(false); }
+  };
+
+  const handleDesconectarGoogle = () => { desconectarGoogleCalendar(); setSincGoogleEm(null); };
+
+  // ── Microsoft ──
+  const handleConectarMs = async () => {
+    setCarregandoMs(true); setErroConexao(null);
+    try {
+      await conectarMicrosoftCalendar();
+      const eventos = await sincronizarMicrosoftCalendar(semana[0], semana[6]);
+      adicionarEventos(eventos);
+      setSincMsEm(new Date().toISOString());
+    } catch (e) {
+      setErroConexao(e instanceof Error ? e.message : String(e));
+    } finally { setCarregandoMs(false); }
+  };
+
+  const handleSincronizarMs = async () => {
+    setCarregandoMs(true); setErroConexao(null);
+    try {
+      const eventos = await sincronizarMicrosoftCalendar(semana[0], semana[6]);
+      adicionarEventos(eventos);
+      setSincMsEm(new Date().toISOString());
+    } catch (e) {
+      setErroConexao(e instanceof Error ? e.message : String(e));
+    } finally { setCarregandoMs(false); }
+  };
+
+  const handleDesconectarMs = () => { desconectarMicrosoftCalendar(); setSincMsEm(null); };
+
+  // ── ICS ──
+  const handleIcsFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const eventos = icsParaEventosAgenda(ev.target?.result as string);
+        adicionarEventos(eventos);
+      } catch {
+        setErroConexao('Erro ao processar arquivo ICS. Verifique se é um arquivo de calendário válido.');
+      }
+    };
+    reader.readAsText(file);
+    if (icsInputRef.current) icsInputRef.current.value = '';
+  };
+
+  // ── Bloqueio manual ──
+  const salvarManual = useCallback(() => {
+    const e: Record<string, string> = {};
+    if (!formManual.titulo.trim()) e.titulo = 'Título é obrigatório';
+    if (!formManual.data) e.data = 'Data é obrigatória';
+    setErrosManual(e);
+    if (Object.keys(e).length > 0) return;
+
+    const inicio = formManual.diaInteiro ? `${formManual.data}T00:00:00` : `${formManual.data}T${formManual.horaInicio}:00`;
+    const fim    = formManual.diaInteiro ? `${formManual.data}T23:59:59` : `${formManual.data}T${formManual.horaFim}:00`;
+
+    const novo: EventoAgenda = {
+      id: `manual-${gerarId()}`,
+      fonte: 'manual',
+      titulo: formManual.titulo,
+      inicio, fim,
+      diaInteiro: formManual.diaInteiro,
+      bloqueiaTempo: formManual.bloqueiaTempo,
+      importadoEm: new Date().toISOString(),
+      tarefaGeradaId: null,
+      ignorado: false,
+    };
+
+    setData(d => ({ ...d, eventosAgenda: [...d.eventosAgenda, novo] }));
+    setModalManual(false);
+    setFormManual({ titulo: '', data: hoje, horaInicio: '09:00', horaFim: '10:00', diaInteiro: false, bloqueiaTempo: true });
+  }, [formManual, setData, hoje]);
+
+  const excluirEvento = (id: string) =>
+    setData(d => ({ ...d, eventosAgenda: d.eventosAgenda.filter(e => e.id !== id) }));
+
+  const toggleBloqueiaTempo = (id: string) =>
+    setData(d => ({ ...d, eventosAgenda: d.eventosAgenda.map(e => e.id === id ? { ...e, bloqueiaTempo: !e.bloqueiaTempo } : e) }));
+
+  // ── Classificação FDS ──
+  const handleVincularMeta = useCallback((metaId: string) => {
+    if (!eventoClassificar) return;
+    const tarefa = gerarTarefaAvulsaDeEvento(eventoClassificar, metaId);
+    setData(d => ({
+      ...d,
+      tarefas: [...d.tarefas, tarefa],
+      eventosAgenda: d.eventosAgenda.map(e => e.id === eventoClassificar.id ? { ...e, tarefaGeradaId: tarefa.id } : e),
+    }));
+    setEventoClassificar(null);
+  }, [eventoClassificar, setData]);
+
+  const handleSemClassificacao = useCallback(() => {
+    if (!eventoClassificar) return;
+    const tarefa = gerarTarefaAvulsaDeEvento(eventoClassificar, null);
+    setData(d => ({
+      ...d,
+      tarefas: [...d.tarefas, tarefa],
+      eventosAgenda: d.eventosAgenda.map(e => e.id === eventoClassificar.id ? { ...e, tarefaGeradaId: tarefa.id } : e),
+    }));
+    setEventoClassificar(null);
+  }, [eventoClassificar, setData]);
+
+  const handleIgnorar = useCallback(() => {
+    if (!eventoClassificar) return;
+    setData(d => ({ ...d, eventosAgenda: d.eventosAgenda.map(e => e.id === eventoClassificar.id ? { ...e, ignorado: true } : e) }));
+    setEventoClassificar(null);
+  }, [eventoClassificar, setData]);
+
+  const abas = [
+    { id: 'hoje' as const, label: 'Hoje' },
+    { id: 'semana' as const, label: 'Semana' },
+    { id: 'fds' as const, label: `Fim de semana${eventosFDS.length > 0 ? ` (${eventosFDS.length})` : ''}` },
+    { id: 'fontes' as const, label: 'Conexões' },
+  ];
+
+  // ── RENDER ──
+  return (
+    <div className="max-w-5xl mx-auto space-y-5 animate-fade-in">
+
+      {/* Cabeçalho */}
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-surface-900 dark:text-white">Agenda e Tempo</h2>
-          <p className="text-sm text-surface-500 dark:text-surface-400">Gerencie seu tempo disponível e receba sugestões inteligentes</p>
+          <p className="text-sm text-surface-500 dark:text-surface-400 mt-0.5">
+            Tempo disponível calculado a partir das suas agendas.
+          </p>
         </div>
-        <Button icon={<Plus size={16} />} onClick={() => { setForm(blocoVazio()); setModalAberto(true); }}>
-          Cadastrar Tempo
+        <Button icon={<Plus size={16} />} variant="secondary" size="sm" onClick={() => setModalManual(true)}>
+          Adicionar bloqueio manual
         </Button>
       </div>
 
-      {/* Resumo do dia */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="sm:col-span-1">
-          <CardBody>
-            <div className="text-center py-2">
-              <Clock size={24} className="mx-auto text-primary-600 dark:text-primary-400 mb-2" />
-              <p className="text-3xl font-bold text-primary-600 dark:text-primary-400">{formatarMinutos(minutosHoje)}</p>
-              <p className="text-xs text-surface-400 dark:text-surface-500 mt-1">disponíveis hoje</p>
+      {/* KPIs */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {[
+          { label: 'Disponível hoje', value: formatarMinutos(dispHoje.minutosDisponiveis), cor: 'from-emerald-700 to-emerald-600', icon: <Clock size={20} /> },
+          { label: 'Ocupado hoje', value: formatarMinutos(dispHoje.minutosOcupados), cor: dispHoje.minutosOcupados > 0 ? 'from-amber-600 to-amber-500' : 'from-slate-700 to-slate-600', icon: <Calendar size={20} /> },
+          { label: 'Eventos hoje', value: String(eventosHoje.length), cor: 'from-blue-700 to-blue-600', icon: <Calendar size={20} /> },
+          { label: 'Pendentes FDS', value: String(eventosFDS.length), cor: eventosFDS.length > 0 ? 'from-violet-700 to-violet-600' : 'from-slate-700 to-slate-600', icon: <Zap size={20} /> },
+        ].map(k => (
+          <div key={k.label} className={`rounded-2xl bg-gradient-to-br ${k.cor} p-4 text-white shadow-lg`}>
+            <div className="flex items-center justify-between mb-2 opacity-70">
+              <p className="text-xs font-semibold uppercase tracking-wide">{k.label}</p>
+              <div className="opacity-50">{k.icon}</div>
             </div>
-          </CardBody>
-        </Card>
-        <Card className="sm:col-span-1">
-          <CardBody>
-            <div className="text-center py-2">
-              <Battery size={24} className="mx-auto text-warning-600 dark:text-warning-400 mb-2" />
-              <p className="text-3xl font-bold text-surface-900 dark:text-white">
-                {blocosHoje.length > 0
-                  ? Math.ceil(sugestoes.reduce((acc, t) => acc + t.tempoEstimado, 0) / 60 * 10) / 10
-                  : 0}h
-              </p>
-              <p className="text-xs text-surface-400 dark:text-surface-500 mt-1">em tarefas sugeridas</p>
-            </div>
-          </CardBody>
-        </Card>
-        <Card className="sm:col-span-1">
-          <CardBody>
-            <div className="text-center py-2">
-              <Zap size={24} className="mx-auto text-success-600 dark:text-success-400 mb-2" />
-              <p className="text-3xl font-bold text-surface-900 dark:text-white">{sugestoes.length}</p>
-              <p className="text-xs text-surface-400 dark:text-surface-500 mt-1">tarefas sugeridas</p>
-            </div>
-          </CardBody>
-        </Card>
+            <p className="text-3xl font-extrabold leading-none">{k.value}</p>
+          </div>
+        ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* Blocos de hoje */}
-        <Card>
-          <CardHeader title="Tempo Cadastrado Hoje" icon={<Clock size={18} />} />
-          <CardBody>
-            {blocosHoje.length === 0 ? (
-              <div className="text-center py-6">
-                <p className="text-sm text-surface-400 dark:text-surface-500">Nenhum bloco cadastrado para hoje</p>
-                <Button variant="primary" size="sm" className="mt-3" icon={<Plus size={14} />} onClick={() => { setForm(blocoVazio()); setModalAberto(true); }}>
-                  Cadastrar agora
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {periodos.map(periodo => {
-                  const bloco = blocosHoje.find(b => b.periodo === periodo);
-                  if (!bloco) return (
-                    <div key={periodo} className="flex items-center justify-between p-3 rounded-xl border border-dashed border-surface-200 dark:border-surface-700">
-                      <span className="text-sm text-surface-400 capitalize">{periodo}</span>
-                      <span className="text-xs text-surface-300 dark:text-surface-600">—</span>
-                    </div>
-                  );
-                  return (
-                    <div key={bloco.id} className="flex items-center justify-between p-3 rounded-xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-700/30">
-                      <div className="flex items-center gap-3">
-                        <div className="text-center">
-                          <p className="text-xs text-surface-400 capitalize">{bloco.periodo}</p>
-                          <p className="font-semibold text-primary-600 dark:text-primary-400">{bloco.horasDisponiveis}h</p>
-                        </div>
-                        <div>
-                          {bloco.compromissos && <p className="text-xs text-surface-500 dark:text-surface-400">{bloco.compromissos}</p>}
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${corEnergia(bloco.nivelEnergia)}`}>
-                            Energia {bloco.nivelEnergia}
-                          </span>
-                        </div>
-                      </div>
-                      <button onClick={() => excluir(bloco.id)} className="p-1.5 rounded text-surface-300 hover:text-danger-600 hover:bg-danger-50 dark:hover:bg-danger-900/20 transition-colors">
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardBody>
-        </Card>
+      {/* Erro */}
+      {erroConexao && (
+        <div className="bg-danger-50 dark:bg-danger-900/20 border border-danger-200 dark:border-danger-700/50 rounded-xl p-4 flex items-start gap-3">
+          <AlertTriangle size={16} className="text-danger-500 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-danger-700 dark:text-danger-300">Erro na integração</p>
+            <p className="text-xs text-danger-600 dark:text-danger-400 mt-0.5">{erroConexao}</p>
+          </div>
+          <button onClick={() => setErroConexao(null)} className="text-danger-400 hover:text-danger-600"><XCircle size={14} /></button>
+        </div>
+      )}
 
-        {/* Sugestão inteligente */}
-        <Card>
-          <CardHeader
-            title="Sugestão Inteligente"
-            subtitle={minutosHoje > 0 ? `Priorizadas para ${formatarMinutos(minutosHoje)} disponíveis` : 'Baseada em 2h disponíveis'}
-            icon={<Zap size={18} />}
-          />
-          <CardBody>
-            {sugestoes.length === 0 ? (
-              <p className="text-sm text-surface-400 dark:text-surface-500 text-center py-4">
-                Nenhuma tarefa pendente para sugerir
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {sugestoes.map((tarefa, idx) => {
-                  const meta = data.metas.find(m => m.id === tarefa.metaId);
-                  return (
-                    <div key={tarefa.id} className="flex items-center gap-3 p-3 rounded-xl bg-primary-50 dark:bg-primary-900/20 border border-primary-100 dark:border-primary-800">
-                      <span className="w-5 h-5 rounded-full bg-primary-600 text-white text-xs flex items-center justify-center font-bold flex-shrink-0">{idx + 1}</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-surface-900 dark:text-white truncate">{tarefa.titulo}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          {meta && <span className="text-xs text-primary-600 dark:text-primary-400 truncate">{meta.nome}</span>}
-                          <span className="text-xs text-surface-400">{formatarMinutos(tarefa.tempoEstimado)}</span>
-                        </div>
-                      </div>
-                      <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${corFaixa(tarefa.faixa)}`}>{siglaFaixa(tarefa.faixa)}</span>
-                    </div>
-                  );
-                })}
-                <p className="text-xs text-center text-surface-400 dark:text-surface-500 pt-2">
-                  Total: {formatarMinutos(sugestoes.reduce((acc, t) => acc + t.tempoEstimado, 0))}
-                </p>
-              </div>
-            )}
-          </CardBody>
-        </Card>
+      {/* Abas */}
+      <div className="flex gap-1 bg-surface-100 dark:bg-surface-800 p-1 rounded-xl">
+        {abas.map(a => (
+          <button
+            key={a.id}
+            onClick={() => setAbaAtiva(a.id)}
+            className={`flex-1 py-2 px-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+              abaAtiva === a.id
+                ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm'
+                : 'text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200'
+            }`}
+          >
+            {a.label}
+          </button>
+        ))}
       </div>
 
-      {/* Histórico */}
-      {blocosRecentes.length > 0 && (
-        <Card>
-          <CardHeader title="Histórico de Tempo" />
-          <CardBody>
-            <div className="space-y-2">
-              {blocosRecentes.map(bloco => (
-                <div key={bloco.id} className="flex items-center justify-between py-2 border-b border-surface-100 dark:border-surface-700 last:border-0">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-surface-400 dark:text-surface-500 w-20 flex-shrink-0">{format(new Date(bloco.data), 'dd/MM')}</span>
-                    <span className="text-xs text-surface-500 dark:text-surface-400 capitalize">{bloco.diaSemana} — {bloco.periodo}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-surface-700 dark:text-surface-300">{bloco.horasDisponiveis}h</span>
-                    <button onClick={() => excluir(bloco.id)} className="p-1 rounded text-surface-300 hover:text-danger-600 transition-colors">
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
+      {/* ── ABA HOJE ── */}
+      {abaAtiva === 'hoje' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <Card>
+            <CardHeader title="Visão do dia" subtitle={`Janela ${dispHoje.inicioJanela} – ${dispHoje.fimJanela}`} icon={<Clock size={18} />} />
+            <CardBody>
+              {/* Mini-barra temporal */}
+              <div className="mb-4 space-y-1.5">
+                <div className="flex justify-between text-xs text-surface-400 dark:text-surface-500">
+                  <span>{dispHoje.inicioJanela}</span>
+                  <span>{dispHoje.fimJanela}</span>
                 </div>
-              ))}
+                <div className="h-4 bg-surface-100 dark:bg-surface-700 rounded-full overflow-hidden relative">
+                  {eventosHoje.filter(e => e.bloqueiaTempo && !e.ignorado).map(e => {
+                    const jIni = parseInt(dispHoje.inicioJanela) * 60 + parseInt(dispHoje.inicioJanela.split(':')[1] ?? '0');
+                    const totalMin = dispHoje.minutosJanela;
+                    if (totalMin === 0) return null;
+                    const mIni = e.diaInteiro ? jIni
+                      : (parseInt(e.inicio.slice(11, 13)) * 60 + parseInt(e.inicio.slice(14, 16)));
+                    const mFim = e.diaInteiro ? jIni + totalMin
+                      : (parseInt(e.fim.slice(11, 13)) * 60 + parseInt(e.fim.slice(14, 16)));
+                    const left = Math.max(0, (mIni - jIni) / totalMin * 100);
+                    const width = Math.min(100 - left, (mFim - mIni) / totalMin * 100);
+                    return (
+                      <div
+                        key={e.id}
+                        title={e.titulo}
+                        className="absolute top-0 h-full bg-red-400 dark:bg-red-500 opacity-80 rounded"
+                        style={{ left: `${left}%`, width: `${Math.max(1, width)}%` }}
+                      />
+                    );
+                  })}
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{formatarMinutos(dispHoje.minutosDisponiveis)} livre</span>
+                  <span className="text-red-500 font-semibold">{formatarMinutos(dispHoje.minutosOcupados)} ocupado</span>
+                </div>
+              </div>
+
+              {/* Eventos */}
+              {eventosHoje.length === 0 ? (
+                <div className="text-center py-8 space-y-2">
+                  <Calendar size={28} className="mx-auto text-surface-300 dark:text-surface-600" />
+                  <p className="text-sm text-surface-400 dark:text-surface-500">Nenhum evento hoje</p>
+                  <p className="text-xs text-surface-300 dark:text-surface-600">Conecte sua agenda ou adicione bloqueios manuais</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {eventosHoje.map(ev => (
+                    <div key={ev.id} className={`flex items-center gap-3 p-3 rounded-xl border ${corFonte(ev.fonte)}`}>
+                      <div className="w-7 h-7 rounded-lg bg-white dark:bg-surface-800 flex items-center justify-center flex-shrink-0 shadow-sm">
+                        {iconFonte(ev.fonte)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-surface-900 dark:text-white truncate">{ev.titulo}</p>
+                        <p className="text-xs text-surface-400 dark:text-surface-500">{formatarIntervaloEvento(ev)}</p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => toggleBloqueiaTempo(ev.id)}
+                          title={ev.bloqueiaTempo ? 'Bloqueia tempo' : 'Não bloqueia'}
+                          className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${ev.bloqueiaTempo ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' : 'bg-surface-100 dark:bg-surface-700 text-surface-400'}`}
+                        >
+                          {ev.bloqueiaTempo ? 'Bloqueia' : 'Livre'}
+                        </button>
+                        <button onClick={() => excluirEvento(ev.id)} className="p-1 rounded hover:bg-white dark:hover:bg-surface-800 text-surface-300 hover:text-danger-500 transition-colors">
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader title="Janela útil de hoje" icon={<Info size={18} />} />
+            <CardBody>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { label: 'Início', value: dispHoje.inicioJanela },
+                    { label: 'Fim', value: dispHoje.fimJanela },
+                  ].map(item => (
+                    <div key={item.label} className="bg-surface-50 dark:bg-surface-700/50 rounded-xl p-3 text-center">
+                      <p className="text-xs text-surface-400 dark:text-surface-500">{item.label}</p>
+                      <p className="text-2xl font-bold text-surface-900 dark:text-white mt-1">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="bg-surface-50 dark:bg-surface-700/50 rounded-xl p-4 space-y-2.5">
+                  {[
+                    { label: 'Janela total', value: formatarMinutos(dispHoje.minutosJanela), color: 'text-surface-800 dark:text-surface-200' },
+                    { label: 'Ocupado (compromissos)', value: formatarMinutos(dispHoje.minutosOcupados), color: 'text-red-600 dark:text-red-400' },
+                    { label: 'Disponível', value: formatarMinutos(dispHoje.minutosDisponiveis), color: 'text-emerald-600 dark:text-emerald-400', bold: true },
+                  ].map(row => (
+                    <div key={row.label} className={`flex justify-between text-sm ${row.bold ? 'border-t border-surface-200 dark:border-surface-600 pt-2.5 font-bold' : ''}`}>
+                      <span className={row.bold ? 'text-surface-700 dark:text-surface-200' : 'text-surface-500 dark:text-surface-400'}>{row.label}</span>
+                      <span className={`font-semibold ${row.color}`}>{row.value}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="bg-primary-50 dark:bg-primary-900/20 border border-primary-100 dark:border-primary-800 rounded-xl p-3">
+                  <p className="text-xs text-primary-700 dark:text-primary-300 leading-relaxed">
+                    <strong>Regra de janela útil</strong><br />
+                    Seg–Sex: 07:30 às 22:00<br />
+                    Sáb–Dom: 08:00 às 20:00<br />
+                    Eventos fora da janela não reduzem disponibilidade.
+                  </p>
+                </div>
+              </div>
+            </CardBody>
+          </Card>
+        </div>
+      )}
+
+      {/* ── ABA SEMANA ── */}
+      {abaAtiva === 'semana' && (
+        <Card>
+          <CardHeader title="Disponibilidade da semana" icon={<Calendar size={18} />} />
+          <CardBody>
+            <div className="grid grid-cols-1 sm:grid-cols-7 gap-3">
+              {dispSemana.map(dia => {
+                const isHoje = dia.data === hoje;
+                const pctOcup = dia.minutosJanela > 0 ? dia.minutosOcupados / dia.minutosJanela : 0;
+                const diaNum = new Date(dia.data + 'T12:00:00').getDay();
+                const fimDeSemana = diaNum === 0 || diaNum === 6;
+
+                return (
+                  <div
+                    key={dia.data}
+                    className={`rounded-2xl border p-3 space-y-2.5 transition-all ${
+                      isHoje
+                        ? 'border-primary-400 dark:border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                        : fimDeSemana
+                        ? 'border-amber-200 dark:border-amber-700/40 bg-amber-50/50 dark:bg-amber-900/10'
+                        : 'border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800'
+                    }`}
+                  >
+                    <div>
+                      <p className={`text-[10px] font-bold uppercase tracking-wider ${isHoje ? 'text-primary-600 dark:text-primary-400' : 'text-surface-500 dark:text-surface-400'}`}>
+                        {nomeDia(dia.data)}
+                      </p>
+                      <p className="text-xs text-surface-400 dark:text-surface-500">{format(new Date(dia.data + 'T12:00:00'), 'dd/MM')}</p>
+                    </div>
+                    <div className="h-2 bg-surface-200 dark:bg-surface-700 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${corCargaDia(dia.minutosOcupados, dia.minutosJanela)}`}
+                        style={{ width: `${Math.min(100, Math.round(pctOcup * 100))}%` }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px]">
+                        <span className="text-surface-400">Livre</span>
+                        <span className="font-bold text-emerald-600 dark:text-emerald-400">{formatarMinutos(dia.minutosDisponiveis)}</span>
+                      </div>
+                      <div className="flex justify-between text-[10px]">
+                        <span className="text-surface-400">Eventos</span>
+                        <span className="font-bold text-surface-700 dark:text-surface-300">{dia.eventos.length}</span>
+                      </div>
+                    </div>
+                    {isHoje && <div className="text-[9px] bg-primary-600 text-white rounded-full px-2 py-0.5 text-center font-bold">HOJE</div>}
+                    {fimDeSemana && !isHoje && <div className="text-[9px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-full px-2 py-0.5 text-center">FDS</div>}
+                  </div>
+                );
+              })}
             </div>
           </CardBody>
         </Card>
       )}
 
-      {/* Modal */}
-      <Modal isOpen={modalAberto} onClose={() => setModalAberto(false)} title="Cadastrar Tempo Disponível" size="md">
+      {/* ── ABA FIM DE SEMANA ── */}
+      {abaAtiva === 'fds' && (
+        <Card>
+          <CardHeader title="Eventos de fim de semana" subtitle="Classifique como tarefas ou ignore" icon={<Zap size={18} />} />
+          <CardBody>
+            {eventosFDS.length === 0 ? (
+              <div className="text-center py-10 space-y-2">
+                <CheckCircle2 size={32} className="mx-auto text-emerald-400" />
+                <p className="text-sm font-medium text-surface-600 dark:text-surface-300">Nenhum evento de FDS pendente</p>
+                <p className="text-xs text-surface-400 dark:text-surface-500">Quando houver eventos de sábado/domingo não classificados, eles aparecerão aqui.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {eventosFDS.map(ev => (
+                  <div key={ev.id} className={`flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-xl border ${corFonte(ev.fonte)}`}>
+                    <div className="w-10 h-10 rounded-xl bg-white dark:bg-surface-800 flex items-center justify-center shadow-sm flex-shrink-0">
+                      {iconFonte(ev.fonte)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-surface-900 dark:text-white">{ev.titulo}</p>
+                      <p className="text-xs text-surface-400 dark:text-surface-500 mt-0.5">
+                        {format(new Date(ev.inicio.split('T')[0] + 'T12:00:00'), "EEEE, dd/MM", { locale: ptBR })}
+                        {' · '}{formatarIntervaloEvento(ev)}
+                        {' · '}{labelFonteAgenda(ev.fonte)}
+                      </p>
+                    </div>
+                    <div className="flex gap-2 flex-shrink-0">
+                      <Button size="sm" onClick={() => setEventoClassificar(ev)}>Classificar</Button>
+                      <button
+                        onClick={() => setData(d => ({ ...d, eventosAgenda: d.eventosAgenda.map(e => e.id === ev.id ? { ...e, ignorado: true } : e) }))}
+                        className="p-2 rounded-lg border border-surface-200 dark:border-surface-600 hover:bg-white dark:hover:bg-surface-800 text-surface-400 hover:text-danger-500 transition-colors"
+                        title="Ignorar"
+                      >
+                        <XCircle size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardBody>
+        </Card>
+      )}
+
+      {/* ── ABA CONEXÕES ── */}
+      {abaAtiva === 'fontes' && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <Input id="bloco-data" label="Data" required type="date" value={form.data} onChange={e => setForm(f => ({ ...f, data: e.target.value }))} error={erros.data} />
-            <Select id="bloco-dia" label="Dia da semana" value={form.diaSemana} onChange={e => setForm(f => ({ ...f, diaSemana: e.target.value as DiaSemana }))}>
-              {diasSemana.map(d => <option key={d} value={d}>{d}</option>)}
-            </Select>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <IntegracaoCard
+              nome="Google Calendar"
+              icone={<span className="text-red-500 font-black text-lg">G</span>}
+              configurado={isGoogleConfigured()}
+              conectado={isGoogleConectado()}
+              sincronizadaEm={sincGoogleEm}
+              msgNaoConfigurado={googleMsg()}
+              onConectar={handleConectarGoogle}
+              onDesconectar={handleDesconectarGoogle}
+              onSincronizar={handleSincronizarGoogle}
+              carregando={carregandoGoogle}
+              cor="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-700/40"
+            />
+            <IntegracaoCard
+              nome="Microsoft Outlook"
+              icone={<span className="text-blue-500 font-black text-lg">M</span>}
+              configurado={isMicrosoftConfigured()}
+              conectado={isMicrosoftConectado()}
+              sincronizadaEm={sincMsEm}
+              msgNaoConfigurado={msMsg()}
+              onConectar={handleConectarMs}
+              onDesconectar={handleDesconectarMs}
+              onSincronizar={handleSincronizarMs}
+              carregando={carregandoMs}
+              cor="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-700/40"
+            />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Select id="bloco-periodo" label="Período" value={form.periodo} onChange={e => setForm(f => ({ ...f, periodo: e.target.value as Periodo }))}>
-              {periodos.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
-            </Select>
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium text-surface-700 dark:text-surface-300">
-                Horas disponíveis: {form.horasDisponiveis}h
-              </label>
-              <input
-                type="range" min={0.5} max={8} step={0.5} value={form.horasDisponiveis}
-                onChange={e => setForm(f => ({ ...f, horasDisponiveis: Number(e.target.value) }))}
-                className="w-full accent-primary-600"
-              />
+
+          {/* ICS */}
+          <div className="bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-700/40 rounded-2xl p-5 space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white dark:bg-surface-800 flex items-center justify-center shadow-sm">
+                <Upload size={18} className="text-purple-600 dark:text-purple-400" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-surface-900 dark:text-white">Importar arquivo .ics</p>
+                <p className="text-xs text-surface-400 dark:text-surface-500">Arquivo de calendário iCalendar — compatível com qualquer app</p>
+              </div>
             </div>
+            <p className="text-xs text-surface-500 dark:text-surface-400 leading-relaxed">
+              Exporte o arquivo .ics do seu calendário (Apple Calendar, Outlook, Thunderbird, Google Calendar, etc.)
+              e importe aqui. Os eventos serão adicionados automaticamente.
+            </p>
+            <input ref={icsInputRef} type="file" accept=".ics,.ical" onChange={handleIcsFile} className="hidden" />
+            <Button size="sm" variant="secondary" onClick={() => icsInputRef.current?.click()} icon={<Upload size={14} />}>
+              Selecionar arquivo .ics
+            </Button>
           </div>
-          <Select id="bloco-energia" label="Nível de energia" value={form.nivelEnergia} onChange={e => setForm(f => ({ ...f, nivelEnergia: e.target.value as NivelEnergia }))}>
-            {energias.map(e => <option key={e} value={e}>{e.charAt(0).toUpperCase() + e.slice(1)}</option>)}
-          </Select>
-          <Input id="bloco-compromissos" label="Compromissos fixos" value={form.compromissos} onChange={e => setForm(f => ({ ...f, compromissos: e.target.value }))} placeholder="Ex: Reunião às 14h, buscar filho na escola..." />
-          <Textarea id="bloco-obs" label="Observações" value={form.observacoes} onChange={e => setForm(f => ({ ...f, observacoes: e.target.value }))} placeholder="Observações sobre o dia..." />
+
+          {/* Lista de eventos importados */}
+          {data.eventosAgenda.length > 0 && (
+            <Card>
+              <CardHeader title={`Eventos importados (${data.eventosAgenda.length})`} subtitle="Clique em 'Bloqueia' para alterar se o evento ocupa seu tempo" icon={<Calendar size={18} />} />
+              <CardBody>
+                <EventosLista eventos={data.eventosAgenda} onExcluir={excluirEvento} onToggle={toggleBloqueiaTempo} />
+              </CardBody>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* Modal bloqueio manual */}
+      <Modal isOpen={modalManual} onClose={() => setModalManual(false)} title="Adicionar bloqueio manual" size="md">
+        <div className="space-y-4">
+          <Input id="m-titulo" label="Título" required value={formManual.titulo} onChange={e => setFormManual(f => ({ ...f, titulo: e.target.value }))} error={errosManual.titulo} placeholder="Ex: Reunião, Consulta médica…" />
+          <Input id="m-data" label="Data" required type="date" value={formManual.data} onChange={e => setFormManual(f => ({ ...f, data: e.target.value }))} error={errosManual.data} />
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" checked={formManual.diaInteiro} onChange={e => setFormManual(f => ({ ...f, diaInteiro: e.target.checked }))} className="accent-primary-600 w-4 h-4" />
+            <span className="text-sm text-surface-700 dark:text-surface-300">Dia inteiro</span>
+          </label>
+          {!formManual.diaInteiro && (
+            <div className="grid grid-cols-2 gap-3">
+              <Input id="m-ini" label="Início" required type="time" value={formManual.horaInicio} onChange={e => setFormManual(f => ({ ...f, horaInicio: e.target.value }))} error={errosManual.horaInicio} />
+              <Input id="m-fim" label="Fim" required type="time" value={formManual.horaFim} onChange={e => setFormManual(f => ({ ...f, horaFim: e.target.value }))} error={errosManual.horaFim} />
+            </div>
+          )}
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" checked={formManual.bloqueiaTempo} onChange={e => setFormManual(f => ({ ...f, bloqueiaTempo: e.target.checked }))} className="accent-primary-600 w-4 h-4" />
+            <span className="text-sm text-surface-700 dark:text-surface-300">Bloqueia tempo disponível</span>
+          </label>
           <div className="flex gap-3 pt-2">
-            <Button variant="secondary" className="flex-1" onClick={() => setModalAberto(false)}>Cancelar</Button>
-            <Button className="flex-1" onClick={salvar}>Salvar</Button>
+            <Button variant="secondary" className="flex-1" onClick={() => setModalManual(false)}>Cancelar</Button>
+            <Button className="flex-1" onClick={salvarManual}>Salvar</Button>
           </div>
         </div>
       </Modal>
+
+      {/* Modal classificar FDS */}
+      {eventoClassificar && (
+        <ModalClassificar
+          evento={eventoClassificar}
+          metas={data.metas}
+          onVincular={handleVincularMeta}
+          onSemClassificacao={handleSemClassificacao}
+          onIgnorar={handleIgnorar}
+          onFechar={() => setEventoClassificar(null)}
+        />
+      )}
     </div>
   );
 }
