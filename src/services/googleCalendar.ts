@@ -18,9 +18,10 @@ const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 const SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
 const GSI_URL = 'https://accounts.google.com/gsi/client';
 const CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
+const SESSION_KEY = 'google_access_token';
 
-// Token em memória — não persiste no LocalStorage
-let tokenEmMemoria: string | null = null;
+// Token em memória + sessionStorage (limpo ao fechar o navegador, não persiste indefinidamente)
+let tokenEmMemoria: string | null = sessionStorage.getItem(SESSION_KEY);
 
 // ============================================================
 // VERIFICAÇÃO DE CONFIGURAÇÃO
@@ -109,6 +110,7 @@ export async function conectarGoogleCalendar(): Promise<string> {
           return;
         }
         tokenEmMemoria = resp.access_token;
+        sessionStorage.setItem(SESSION_KEY, resp.access_token);
         resolve(resp.access_token);
       },
     });
@@ -124,9 +126,11 @@ export function desconectarGoogleCalendar(): void {
   if (tokenEmMemoria && win.google?.accounts?.oauth2) {
     win.google.accounts.oauth2.revoke(tokenEmMemoria, () => {
       tokenEmMemoria = null;
+      sessionStorage.removeItem(SESSION_KEY);
     });
   } else {
     tokenEmMemoria = null;
+    sessionStorage.removeItem(SESSION_KEY);
   }
 }
 

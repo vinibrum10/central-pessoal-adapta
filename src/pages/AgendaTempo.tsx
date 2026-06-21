@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek, isSameMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
@@ -588,6 +588,39 @@ export function AgendaTempoPage() {
   const adicionarEventos = useCallback((novos: EventoAgenda[]) => {
     setData(d => ({ ...d, eventosAgenda: [...d.eventosAgenda, ...deduplicarEventos(d.eventosAgenda, novos)] }));
   }, [setData]);
+
+  // ── Auto-sync ao montar: revalida token e sincroniza fontes conectadas ──
+  useEffect(() => {
+    let cancelado = false;
+    const autoSync = async () => {
+      if (isGoogleConfigured() && isGoogleConectado()) {
+        try {
+          const eventos = await sincronizarGoogleCalendar(range30.ini, range30.fim);
+          if (!cancelado) {
+            setData(d => ({ ...d, eventosAgenda: [...d.eventosAgenda.filter(e => e.fonte !== 'google'), ...eventos] }));
+            setSincGoogleEm(new Date().toISOString());
+          }
+        } catch {
+          // Token expirado ou erro de rede — limpa silenciosamente para forçar reconexão
+          if (!cancelado) desconectarGoogleCalendar();
+        }
+      }
+      if (isMicrosoftConfigured() && isMicrosoftConectado()) {
+        try {
+          const eventos = await sincronizarMicrosoftCalendar(range30.ini, range30.fim);
+          if (!cancelado) {
+            setData(d => ({ ...d, eventosAgenda: [...d.eventosAgenda.filter(e => e.fonte !== 'microsoft'), ...eventos] }));
+            setSincMsEm(new Date().toISOString());
+          }
+        } catch {
+          if (!cancelado) desconectarMicrosoftCalendar();
+        }
+      }
+    };
+    autoSync();
+    return () => { cancelado = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // roda só no mount
 
   // ── Google ──
   const handleConectarGoogle = async () => {
