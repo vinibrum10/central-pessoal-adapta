@@ -666,6 +666,16 @@ export function OrcamentoPage() {
               </Button>
             )}
           </div>
+          {despesasFiltradas.length > 0 && (
+            <div className="flex items-center justify-between px-1">
+              <span className="text-sm text-surface-500 dark:text-surface-400">
+                {despesasFiltradas.length} {despesasFiltradas.length === 1 ? 'despesa' : 'despesas'} em {MESES[mesFiltro.mes]} {mesFiltro.ano}
+              </span>
+              <span className="text-base font-bold text-danger-600 dark:text-danger-400">
+                Total: {formatarDinheiro(despesasFiltradas.reduce((acc, d) => acc + d.valor, 0))}
+              </span>
+            </div>
+          )}
           <Card>
             <CardBody className="!px-4 !pb-4">
               {despesasFiltradas.length === 0 ? (
@@ -776,7 +786,7 @@ export function OrcamentoPage() {
                         </div>
                         {usarLimite && <ProgressBar value={(valorEfetivo / c.limite) * 100} color={valorEfetivo / c.limite > 0.8 ? 'danger' : valorEfetivo / c.limite > 0.5 ? 'warning' : 'success'} showLabel height="md" />}
                         <button
-                          onClick={() => abrirModalFatura(c.id, competenciaAtual)}
+                          onClick={() => abrirModalFatura(c.id, competenciaMesFiltro)}
                           className="w-full mt-1 text-xs text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-1 justify-center"
                         >
                           <Info size={12} /> Informar valor da fatura
@@ -1225,13 +1235,40 @@ export function OrcamentoPage() {
           const faturas = data.faturas ?? [];
           const fatura = faturas.find(f => f.cartaoId === modalFatura.cartaoId && f.competencia === modalFatura.competencia);
           const [anoStr, mesStr] = modalFatura.competencia.split('-');
-          const mesIdx = Number(mesStr) - 1;
           const cartao = data.cartoes.find(c => c.id === modalFatura.cartaoId);
+
+          const handleCompetenciaChange = (novaCompetencia: string) => {
+            const faturaExistente = (data.faturas ?? []).find(f => f.cartaoId === modalFatura.cartaoId && f.competencia === novaCompetencia);
+            setModalFatura({ ...modalFatura, competencia: novaCompetencia });
+            setFormFatura({ valorInformado: faturaExistente?.valorInformado ?? 0, observacoes: faturaExistente?.observacoes ?? '' });
+            setFormFaturaValorStr(faturaExistente?.valorInformado ? moneyToInputBR(faturaExistente.valorInformado) : '');
+          };
 
           return (
             <div className="space-y-4">
-              <div className="text-sm text-surface-500 dark:text-surface-400">
-                Cartão: <strong className="text-surface-800 dark:text-white">{cartao?.nome ?? '—'}</strong> · {MESES[mesIdx]} {anoStr}
+              <div className="space-y-1">
+                <p className="text-sm text-surface-500 dark:text-surface-400">
+                  Cartão: <strong className="text-surface-800 dark:text-white">{cartao?.nome ?? '—'}</strong>
+                </p>
+                <div>
+                  <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Mês de referência</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={mesStr}
+                      onChange={e => handleCompetenciaChange(`${anoStr}-${e.target.value}`)}
+                      className="flex-1 px-3 py-2 rounded-xl border text-sm bg-white dark:bg-surface-700 border-surface-200 dark:border-surface-600 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    >
+                      {MESES.map((m, i) => <option key={i} value={String(i + 1).padStart(2, '0')}>{m}</option>)}
+                    </select>
+                    <select
+                      value={anoStr}
+                      onChange={e => handleCompetenciaChange(`${e.target.value}-${mesStr}`)}
+                      className="w-24 px-3 py-2 rounded-xl border text-sm bg-white dark:bg-surface-700 border-surface-200 dark:border-surface-600 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    >
+                      {[-1, 0, 1, 2].map(offset => { const y = new Date().getFullYear() + offset; return <option key={y} value={y}>{y}</option>; })}
+                    </select>
+                  </div>
+                </div>
               </div>
               <Input
                 id="fat-valor"
