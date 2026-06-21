@@ -129,6 +129,14 @@ export interface Despesa {
   recorrente: boolean;
   essencial: boolean;
   dataCriacao: string;
+  cartaoId?: string;
+  faturaId?: string;
+  tipoCobrancaCartao?: 'avista' | 'parcelado' | null;
+  quantidadeParcelas?: number;
+  parcelaAtual?: number;
+  grupoParcelamentoId?: string;
+  mesInicioCobranca?: string; // "YYYY-MM"
+  origemAjuste?: boolean;
 }
 
 export type StatusCartao = 'ativo' | 'bloqueado' | 'cancelado';
@@ -141,6 +149,23 @@ export interface Cartao {
   vencimento: number;
   status: StatusCartao;
   dataCriacao: string;
+  diaFechamento?: number;
+}
+
+export interface FaturaCartao {
+  id: string;
+  cartaoId: string;
+  competencia: string; // "YYYY-MM"
+  mes: number;
+  ano: number;
+  valorInformado: number | null;
+  valorDetalhado: number; // calculado
+  diferenca: number; // valorInformado - valorDetalhado (null se não informado)
+  valorEfetivo: number; // valorInformado ?? valorDetalhado
+  status: 'aberta' | 'fechada' | 'paga';
+  observacoes?: string;
+  dataCriacao: string;
+  dataAtualizacao: string;
 }
 
 export type PrioridadeQuitacao = 'baixa' | 'média' | 'alta' | 'urgente';
@@ -339,4 +364,5 @@ export interface AppData {
   configuracoesAgenda: ConfiguracaoAgenda[];
   leiturasDiarias: LeituraDiaria[];
   fontesLeitura: FonteLeitura[];
+  faturas: FaturaCartao[];
 }

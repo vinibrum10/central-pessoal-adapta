@@ -188,6 +188,9 @@ function migrarDados(raw: Record<string, unknown>): AppData {
     fontesLeitura: Array.isArray(raw.fontesLeitura)
       ? (raw.fontesLeitura as AppData['fontesLeitura'])
       : [],
+    faturas: Array.isArray(raw.faturas)
+      ? (raw.faturas as AppData['faturas'])
+      : [],
   };
 }
 
@@ -276,6 +279,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       configuracoesAgenda: [],
       leiturasDiarias: [],
       fontesLeitura: [],
+      faturas: [],
     };
     setDataState(empty);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(empty));

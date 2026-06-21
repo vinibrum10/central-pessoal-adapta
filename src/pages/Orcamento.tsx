@@ -1,8 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   Plus, Trash2, Pencil, TrendingUp, TrendingDown,
   CreditCard, AlertTriangle, PiggyBank, Package,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, Info
 } from 'lucide-react';
 
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -12,8 +12,14 @@ import { canCreateExpense, canEditExpense, canDeleteExpense } from '../utils/per
 import type {
   Receita, Despesa, Cartao, Divida, Reserva, Bem,
   CategoriaFinanceira, FormaPagamento, StatusCartao,
-  PrioridadeQuitacao, StatusBem, TipoBem
+  PrioridadeQuitacao, StatusBem, TipoBem, FaturaCartao
 } from '../types';
+import {
+  obterCompetenciaFatura,
+  obterOuCriarFatura,
+  recalcularFatura,
+  calcularValorEfetivo,
+} from '../utils/faturaCartao';
 import { Card, CardHeader, CardBody } from '../components/Card';
 import { ProgressBar } from '../components/Badge';
 import { Button } from '../components/Button';
@@ -87,12 +93,14 @@ export function OrcamentoPage() {
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [mesFiltro, setMesFiltro] = useState(() => { const h = new Date(); return { mes: h.getMonth(), ano: h.getFullYear() }; });
   const [cartaoSelecionadoId, setCartaoSelecionadoId] = useState<string>('');
+  const [modalFatura, setModalFatura] = useState<{ cartaoId: string; competencia: string } | null>(null);
+  const [formFatura, setFormFatura] = useState<{ valorInformado: number; observacoes: string }>({ valorInformado: 0, observacoes: '' });
 
   // Forms
   const [formReceita, setFormReceita] = useState<Omit<Receita, 'id' | 'dataCriacao'>>({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Salário', recorrente: false });
   const [formDespesa, setFormDespesa] = useState<Omit<Despesa, 'id' | 'dataCriacao'>>({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Alimentação', formaPagamento: 'PIX', recorrente: false, essencial: true });
   const [formDespesaExtra, setFormDespesaExtra] = useState<FormDespesaExtra>({ tipoCobrancaCartao: 'avista', quantidadeParcelas: 2, mesInicioParcelas: hojeISO().slice(0, 7) });
-  const [formCartao, setFormCartao] = useState<Omit<Cartao, 'id' | 'dataCriacao'>>({ nome: '', limite: 0, faturaAtual: 0, vencimento: 10, status: 'ativo' });
+  const [formCartao, setFormCartao] = useState<Omit<Cartao, 'id' | 'dataCriacao'>>({ nome: '', limite: 0, faturaAtual: 0, vencimento: 10, status: 'ativo', diaFechamento: undefined });
   const [formDivida, setFormDivida] = useState<Omit<Divida, 'id' | 'dataCriacao'>>({ nome: '', valorTotal: 0, valorParcela: 0, totalParcelas: 1, parcelasPagas: 0, taxaJuros: 0, prioridadeQuitacao: 'média', dataInicio: hojeISO(), diaVencimento: 10, status: 'ativa' });
   const [formReserva, setFormReserva] = useState<Omit<Reserva, 'id' | 'dataCriacao'>>({ nome: '', metaReserva: 0, valorAtual: 0, prazoDesejado: '' });
   const [formBem, setFormBem] = useState<Omit<Bem, 'id' | 'dataCriacao'>>({ nome: '', tipo: 'Carro', valorEstimado: 0, status: 'manter', observacoes: '' });
@@ -101,16 +109,93 @@ export function OrcamentoPage() {
   const receitasFiltradas = data.receitas.filter(r => new Date(r.data).getMonth() === mesFiltro.mes && new Date(r.data).getFullYear() === mesFiltro.ano);
   const despesasFiltradas = data.despesas.filter(d => new Date(d.data).getMonth() === mesFiltro.mes && new Date(d.data).getFullYear() === mesFiltro.ano);
   const receitasMes = receitasFiltradas.reduce((a, r) => a + r.valor, 0);
-  const despesasMes = despesasFiltradas.reduce((a, d) => a + d.valor, 0);
+
+  // Despesas que NÃO são cartão de crédito (evita duplicação com faturas)
+  const despesasSemCartao = despesasFiltradas.filter(d => d.formaPagamento !== 'Cartão de crédito');
+  // Faturas com competência no mês filtrado
+  const faturasMes = (data.faturas ?? []).filter(f => {
+    const [anoStr, mesStr] = f.competencia.split('-');
+    return Number(mesStr) === mesFiltro.mes + 1 && Number(anoStr) === mesFiltro.ano;
+  });
+  // Total do mês = despesas sem cartão + valor efetivo das faturas
+  const despesasMes = despesasSemCartao.reduce((a, d) => a + d.valor, 0)
+    + faturasMes.reduce((a, f) => a + calcularValorEfetivo(f), 0);
   const saldoMes = receitasMes - despesasMes;
   const totalDividas = data.dividas.reduce((a, d) => a + Math.max(0, d.valorTotal - calcularParcelasPagasAuto(d) * d.valorParcela), 0);
   const totalReservas = data.reservas.reduce((a, r) => a + r.valorAtual, 0);
   const totalMetaReservas = data.reservas.reduce((a, r) => a + r.metaReserva, 0);
 
+  // Competência atual no formato YYYY-MM
+  const competenciaAtual = useMemo(() => {
+    const h = new Date();
+    return `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}`;
+  }, []);
+
   const abrirModal = (tipo: string, item?: { id: string }) => {
     setEditandoId(item?.id ?? null);
     setModal(tipo);
   };
+
+  const abrirModalFatura = (cartaoId: string, competencia: string) => {
+    const faturas = data.faturas ?? [];
+    const fatura = faturas.find(f => f.cartaoId === cartaoId && f.competencia === competencia);
+    setModalFatura({ cartaoId, competencia });
+    setFormFatura({
+      valorInformado: fatura?.valorInformado ?? 0,
+      observacoes: fatura?.observacoes ?? '',
+    });
+  };
+
+  const salvarFatura = useCallback(() => {
+    if (!modalFatura) return;
+    const { cartaoId, competencia } = modalFatura;
+    setData(d => {
+      const faturasAtual = [...(d.faturas ?? [])];
+      const { fatura, isNova } = obterOuCriarFatura(cartaoId, competencia, faturasAtual);
+      const faturaAtualizada: FaturaCartao = {
+        ...fatura,
+        valorInformado: formFatura.valorInformado > 0 ? formFatura.valorInformado : null,
+        observacoes: formFatura.observacoes || undefined,
+      };
+      const faturaRecalculada = recalcularFatura(faturaAtualizada, d.despesas);
+      if (isNova) {
+        return { ...d, faturas: [...faturasAtual, faturaRecalculada] };
+      }
+      return { ...d, faturas: faturasAtual.map(f => f.id === faturaRecalculada.id ? faturaRecalculada : f) };
+    });
+  }, [modalFatura, formFatura, setData]);
+
+  const criarAjusteDiferenca = useCallback((fatura: FaturaCartao) => {
+    setData(d => {
+      const ajusteExistente = d.despesas.find(dep => dep.origemAjuste === true && dep.faturaId === fatura.id);
+      let novasDespesas: Despesa[];
+      if (ajusteExistente) {
+        novasDespesas = d.despesas.map(dep =>
+          dep.id === ajusteExistente.id ? { ...dep, valor: fatura.diferenca } : dep
+        );
+      } else {
+        const novaDespesa: Despesa = {
+          id: gerarId(),
+          descricao: 'Ajuste de fatura não detalhado',
+          valor: fatura.diferenca,
+          data: hojeISO(),
+          categoria: 'Outros',
+          formaPagamento: 'Cartão de crédito',
+          recorrente: false,
+          essencial: false,
+          dataCriacao: hojeISO(),
+          cartaoId: fatura.cartaoId,
+          faturaId: fatura.id,
+          origemAjuste: true,
+        };
+        novasDespesas = [...d.despesas, novaDespesa];
+      }
+      const faturasAtual = (d.faturas ?? []).map(f =>
+        f.id === fatura.id ? recalcularFatura(f, novasDespesas) : f
+      );
+      return { ...d, despesas: novasDespesas, faturas: faturasAtual };
+    });
+  }, [setData]);
 
   const salvarReceita = useCallback(() => {
     setData(d => ({
@@ -133,24 +218,50 @@ export function OrcamentoPage() {
       const valorParcela = formDespesa.valor / qtd;
       const grupoId = crypto.randomUUID();
       const [ano, mes] = formDespesaExtra.mesInicioParcelas.split('-').map(Number);
-      const novasDespesas: Despesa[] = Array.from({ length: qtd }, (_, i) => {
-        const d = new Date(ano, mes - 1 + i, 1);
-        return {
-          id: gerarId(),
-          descricao: `${formDespesa.descricao} — Parcela ${i + 1}/${qtd}`,
-          valor: valorParcela,
-          data: d.toISOString().slice(0, 10),
-          categoria: formDespesa.categoria,
-          formaPagamento: formDespesa.formaPagamento,
-          recorrente: false,
-          essencial: formDespesa.essencial,
-          dataCriacao: hojeISO(),
-          grupoParcelamentoId: grupoId,
-          parcelaAtual: i + 1,
-          quantidadeParcelas: qtd,
-        } as Despesa & { grupoParcelamentoId: string; parcelaAtual: number; quantidadeParcelas: number };
+      const cartaoId = cartaoSelecionadoId || undefined;
+      const cartao = cartaoId ? data.cartoes.find(c => c.id === cartaoId) : undefined;
+
+      setData(d => {
+        let faturasAtual = [...(d.faturas ?? [])];
+        const novasDespesas: Despesa[] = Array.from({ length: qtd }, (_, i) => {
+          const dt = new Date(ano, mes - 1 + i, 1);
+          const dataStr = dt.toISOString().slice(0, 10);
+
+          // Calcular competência de cada parcela
+          let faturaId: string | undefined;
+          if (cartaoId) {
+            const competencia = obterCompetenciaFatura(dataStr, cartao?.diaFechamento);
+            const { fatura, isNova } = obterOuCriarFatura(cartaoId, competencia, faturasAtual);
+            if (isNova) faturasAtual = [...faturasAtual, fatura];
+            faturaId = fatura.id;
+          }
+
+          return {
+            id: gerarId(),
+            descricao: `${formDespesa.descricao} — Parcela ${i + 1}/${qtd}`,
+            valor: valorParcela,
+            data: dataStr,
+            categoria: formDespesa.categoria,
+            formaPagamento: formDespesa.formaPagamento,
+            recorrente: false,
+            essencial: formDespesa.essencial,
+            dataCriacao: hojeISO(),
+            grupoParcelamentoId: grupoId,
+            parcelaAtual: i + 1,
+            quantidadeParcelas: qtd,
+            tipoCobrancaCartao: 'parcelado' as const,
+            cartaoId,
+            faturaId,
+            mesInicioCobranca: formDespesaExtra.mesInicioParcelas,
+          };
+        });
+
+        // Recalcular todas as faturas afetadas
+        const todasDespesas = [...d.despesas, ...novasDespesas];
+        faturasAtual = faturasAtual.map(f => recalcularFatura(f, todasDespesas));
+
+        return { ...d, despesas: todasDespesas, faturas: faturasAtual };
       });
-      setData(d => ({ ...d, despesas: [...d.despesas, ...novasDespesas] }));
     } else if (!editandoId && formDespesa.recorrente) {
       // Gera despesa do mês atual + próximos 11 meses (total 12)
       setData(d => {
@@ -181,12 +292,40 @@ export function OrcamentoPage() {
         return { ...d, despesas: [...d.despesas, ...novasDespesas] };
       });
     } else {
-      setData(d => ({
-        ...d,
-        despesas: editandoId
-          ? d.despesas.map(dep => dep.id === editandoId ? { ...dep, ...formDespesa } : dep)
-          : [...d.despesas, { id: gerarId(), ...formDespesa, dataCriacao: hojeISO() }],
-      }));
+      setData(d => {
+        if (editandoId) {
+          return {
+            ...d,
+            despesas: d.despesas.map(dep => dep.id === editandoId ? { ...dep, ...formDespesa } : dep),
+          };
+        }
+        // Nova despesa à vista com cartão
+        const cartaoId = isCartao && cartaoSelecionadoId ? cartaoSelecionadoId : undefined;
+        const cartao = cartaoId ? d.cartoes.find(c => c.id === cartaoId) : undefined;
+        let faturasAtual = [...(d.faturas ?? [])];
+        let faturaId: string | undefined;
+
+        if (cartaoId) {
+          const competencia = obterCompetenciaFatura(formDespesa.data, cartao?.diaFechamento);
+          const { fatura, isNova } = obterOuCriarFatura(cartaoId, competencia, faturasAtual);
+          if (isNova) faturasAtual = [...faturasAtual, fatura];
+          faturaId = fatura.id;
+        }
+
+        const novaDespesa: Despesa = {
+          id: gerarId(),
+          ...formDespesa,
+          dataCriacao: hojeISO(),
+          cartaoId,
+          faturaId,
+          tipoCobrancaCartao: isCartao ? 'avista' : undefined,
+        };
+
+        const todasDespesas = [...d.despesas, novaDespesa];
+        faturasAtual = faturasAtual.map(f => recalcularFatura(f, todasDespesas));
+
+        return { ...d, despesas: todasDespesas, faturas: faturasAtual };
+      });
     }
     setModal(null);
     setEditandoId(null);
@@ -409,6 +548,7 @@ export function OrcamentoPage() {
                             {formatarData(d.data)} · {d.categoria} · {d.formaPagamento}
                             {!d.essencial && ' · ⚠ Não essencial'}
                             {d.recorrente && ' · Recorrente'}
+                            {d.faturaId && <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 text-[10px] font-medium">Compõe fatura do cartão</span>}
                           </p>
                         </div>
                       </div>
@@ -434,7 +574,7 @@ export function OrcamentoPage() {
       {aba === 'cartoes' && (
         <div className="space-y-4 animate-fade-in">
           <div className="flex justify-end">
-            <Button icon={<Plus size={16} />} onClick={() => { setFormCartao({ nome: '', limite: 0, faturaAtual: 0, vencimento: 10, status: 'ativo' }); abrirModal('cartao'); }}>
+            <Button icon={<Plus size={16} />} onClick={() => { setFormCartao({ nome: '', limite: 0, faturaAtual: 0, vencimento: 10, status: 'ativo', diaFechamento: undefined }); abrirModal('cartao'); }}>
               Novo Cartão
             </Button>
           </div>
@@ -453,21 +593,49 @@ export function OrcamentoPage() {
                       </div>
                     </div>
                     <div className="flex gap-1">
-                      <button onClick={() => { setFormCartao({ nome: c.nome, limite: c.limite, faturaAtual: c.faturaAtual, vencimento: c.vencimento, status: c.status }); abrirModal('cartao', c); }} className="p-1 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
+                      <button onClick={() => { setFormCartao({ nome: c.nome, limite: c.limite, faturaAtual: c.faturaAtual, vencimento: c.vencimento, status: c.status, diaFechamento: c.diaFechamento }); abrirModal('cartao', c); }} className="p-1 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
                       <button onClick={() => setData(d => ({ ...d, cartoes: d.cartoes.filter(x => x.id !== c.id) }))} className="p-1 rounded text-surface-400 hover:text-danger-600 transition-colors"><Trash2 size={13} /></button>
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-surface-500">Fatura atual</span>
-                      <span className="font-semibold text-danger-600 dark:text-danger-400">{formatarDinheiro(c.faturaAtual)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-surface-500">Limite</span>
-                      <span className="text-surface-700 dark:text-surface-300">{formatarDinheiro(c.limite)}</span>
-                    </div>
-                    <ProgressBar value={c.limite > 0 ? (c.faturaAtual / c.limite) * 100 : 0} color={c.faturaAtual / c.limite > 0.8 ? 'danger' : c.faturaAtual / c.limite > 0.5 ? 'warning' : 'success'} showLabel height="md" />
-                  </div>
+                  {(() => {
+                    const faturasMesAtual = (data.faturas ?? []).filter(f => f.cartaoId === c.id && f.competencia === competenciaAtual);
+                    const faturaAtualMes = faturasMesAtual[0];
+                    const valorEfetivo = faturaAtualMes ? calcularValorEfetivo(faturaAtualMes) : c.faturaAtual;
+                    const usarLimite = c.limite > 0;
+                    return (
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-surface-500">Fatura {MESES[mesFiltro.mes]}</span>
+                          <span className="font-semibold text-danger-600 dark:text-danger-400">{formatarDinheiro(valorEfetivo)}</span>
+                        </div>
+                        {faturaAtualMes && (
+                          <>
+                            <div className="flex justify-between text-xs text-surface-400">
+                              <span>Já detalhado</span>
+                              <span>{formatarDinheiro(faturaAtualMes.valorDetalhado)}</span>
+                            </div>
+                            {faturaAtualMes.valorInformado !== null && faturaAtualMes.diferenca !== 0 && (
+                              <div className={`flex justify-between text-xs ${faturaAtualMes.diferenca > 0 ? 'text-warning-500' : 'text-danger-500'}`}>
+                                <span>Diferença</span>
+                                <span>{formatarDinheiro(Math.abs(faturaAtualMes.diferenca))}{faturaAtualMes.diferenca < 0 ? ' (excede!)' : ''}</span>
+                              </div>
+                            )}
+                          </>
+                        )}
+                        <div className="flex justify-between text-sm">
+                          <span className="text-surface-500">Limite</span>
+                          <span className="text-surface-700 dark:text-surface-300">{formatarDinheiro(c.limite)}</span>
+                        </div>
+                        {usarLimite && <ProgressBar value={(valorEfetivo / c.limite) * 100} color={valorEfetivo / c.limite > 0.8 ? 'danger' : valorEfetivo / c.limite > 0.5 ? 'warning' : 'success'} showLabel height="md" />}
+                        <button
+                          onClick={() => abrirModalFatura(c.id, competenciaAtual)}
+                          className="w-full mt-1 text-xs text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-1 justify-center"
+                        >
+                          <Info size={12} /> Informar valor da fatura
+                        </button>
+                      </div>
+                    );
+                  })()}
                 </CardBody>
               </Card>
             ))}
@@ -731,6 +899,34 @@ export function OrcamentoPage() {
             </div>
           )}
 
+          {/* Previsão de fatura */}
+          {formDespesa.formaPagamento === 'Cartão de crédito' && cartaoSelecionadoId && (() => {
+            const cartao = data.cartoes.find(c => c.id === cartaoSelecionadoId);
+            const isParc = formDespesaExtra.tipoCobrancaCartao === 'parcelado';
+            if (isParc && formDespesaExtra.quantidadeParcelas >= 2) {
+              const qtd = formDespesaExtra.quantidadeParcelas;
+              const valorParcela = formDespesa.valor / qtd;
+              const [ano, mes] = formDespesaExtra.mesInicioParcelas.split('-').map(Number);
+              const primeiraData = new Date(ano, mes - 1, 1).toISOString().slice(0, 10);
+              const competencia = obterCompetenciaFatura(primeiraData, cartao?.diaFechamento);
+              const [cAno, cMes] = competencia.split('-').map(Number);
+              return (
+                <div className="text-xs text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/10 rounded-lg px-3 py-2">
+                  Serão criadas <strong>{qtd}</strong> parcelas de <strong>{formatarDinheiro(valorParcela)}</strong>. Primeira fatura: <strong>{MESES[(cMes ?? 1) - 1]} {cAno}</strong>.
+                </div>
+              );
+            } else if (!isParc && formDespesa.data) {
+              const competencia = obterCompetenciaFatura(formDespesa.data, cartao?.diaFechamento);
+              const [cAno, cMes] = competencia.split('-').map(Number);
+              return (
+                <div className="text-xs text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/10 rounded-lg px-3 py-2">
+                  Esta compra entrará na fatura de <strong>{MESES[(cMes ?? 1) - 1]} {cAno}</strong>.
+                </div>
+              );
+            }
+            return null;
+          })()}
+
           {(() => {
             const isParcelado = formDespesa.formaPagamento === 'Cartão de crédito' && formDespesaExtra.tipoCobrancaCartao === 'parcelado';
             return (
@@ -775,12 +971,13 @@ export function OrcamentoPage() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Input id="cart-venc" label="Dia vencimento" type="number" min="1" max="31" value={formCartao.vencimento} onChange={e => setFormCartao(f => ({ ...f, vencimento: Number(e.target.value) }))} />
-            <Select id="cart-status" label="Status" value={formCartao.status} onChange={e => setFormCartao(f => ({ ...f, status: e.target.value as StatusCartao }))}>
-              <option value="ativo">Ativo</option>
-              <option value="bloqueado">Bloqueado</option>
-              <option value="cancelado">Cancelado</option>
-            </Select>
+            <Input id="cart-fechamento" label="Dia fechamento (opcional)" type="number" min="1" max="31" value={formCartao.diaFechamento ?? ''} onChange={e => setFormCartao(f => ({ ...f, diaFechamento: e.target.value ? Number(e.target.value) : undefined }))} placeholder="Ex: 5" />
           </div>
+          <Select id="cart-status" label="Status" value={formCartao.status} onChange={e => setFormCartao(f => ({ ...f, status: e.target.value as StatusCartao }))}>
+            <option value="ativo">Ativo</option>
+            <option value="bloqueado">Bloqueado</option>
+            <option value="cancelado">Cancelado</option>
+          </Select>
           <div className="flex gap-3 pt-2">
             <Button variant="secondary" className="flex-1" onClick={() => setModal(null)}>Cancelar</Button>
             <Button className="flex-1" onClick={salvarCartao}>Salvar</Button>
@@ -835,6 +1032,86 @@ export function OrcamentoPage() {
             <Button className="flex-1" onClick={salvarReserva}>Salvar</Button>
           </div>
         </div>
+      </Modal>
+
+      {/* MODAL INFORMAR FATURA */}
+      <Modal
+        isOpen={modalFatura !== null}
+        onClose={() => setModalFatura(null)}
+        title="Informar valor da fatura"
+      >
+        {modalFatura && (() => {
+          const faturas = data.faturas ?? [];
+          const fatura = faturas.find(f => f.cartaoId === modalFatura.cartaoId && f.competencia === modalFatura.competencia);
+          const [anoStr, mesStr] = modalFatura.competencia.split('-');
+          const mesIdx = Number(mesStr) - 1;
+          const cartao = data.cartoes.find(c => c.id === modalFatura.cartaoId);
+
+          return (
+            <div className="space-y-4">
+              <div className="text-sm text-surface-500 dark:text-surface-400">
+                Cartão: <strong className="text-surface-800 dark:text-white">{cartao?.nome ?? '—'}</strong> · {MESES[mesIdx]} {anoStr}
+              </div>
+              <Input
+                id="fat-valor"
+                label="Valor total da fatura (R$)"
+                type="number"
+                min="0"
+                step="0.01"
+                value={formFatura.valorInformado || ''}
+                onChange={e => setFormFatura(f => ({ ...f, valorInformado: Number(e.target.value) }))}
+                placeholder="Digite o valor da fatura"
+              />
+              <Textarea
+                id="fat-obs"
+                label="Observações (opcional)"
+                value={formFatura.observacoes}
+                onChange={e => setFormFatura(f => ({ ...f, observacoes: e.target.value }))}
+                placeholder="Notas sobre esta fatura..."
+              />
+              <div className="flex gap-3 pt-2">
+                <Button variant="secondary" className="flex-1" onClick={() => setModalFatura(null)}>Cancelar</Button>
+                <Button className="flex-1" onClick={() => { salvarFatura(); }}>Salvar</Button>
+              </div>
+              {fatura && (
+                <div className="border-t border-surface-200 dark:border-surface-700 pt-4 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-surface-500">Valor informado</span>
+                    <span className="font-semibold">{fatura.valorInformado !== null ? formatarDinheiro(fatura.valorInformado) : '—'}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-surface-500">Já detalhado</span>
+                    <span>{formatarDinheiro(fatura.valorDetalhado)}</span>
+                  </div>
+                  {fatura.valorInformado !== null && (
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-surface-500">Diferença</span>
+                        <span className={fatura.diferenca < 0 ? 'text-danger-600 dark:text-danger-400 font-semibold' : fatura.diferenca > 0 ? 'text-warning-600 dark:text-warning-400 font-semibold' : 'text-success-600 dark:text-success-400'}>
+                          {fatura.diferenca === 0 ? '✓ Fatura totalmente detalhada' : formatarDinheiro(Math.abs(fatura.diferenca))}
+                        </span>
+                      </div>
+                      {fatura.diferenca < 0 && (
+                        <div className="text-xs text-danger-600 dark:text-danger-400 bg-danger-50 dark:bg-danger-900/10 rounded-lg px-3 py-2">
+                          Despesas detalhadas ultrapassam o valor da fatura informado.
+                        </div>
+                      )}
+                      {fatura.diferenca > 0 && (
+                        <Button
+                          variant="secondary"
+                          className="w-full text-sm"
+                          onClick={() => { criarAjusteDiferenca(fatura); setModalFatura(null); }}
+                        >
+                          Criar ajuste da diferença ({formatarDinheiro(fatura.diferenca)})
+                        </Button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </Modal>
 
       <Modal isOpen={modal === 'bem'} onClose={() => setModal(null)} title={editandoId ? 'Editar Bem' : 'Novo Bem'}>
