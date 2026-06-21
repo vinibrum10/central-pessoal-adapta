@@ -101,6 +101,7 @@ export function OrcamentoPage() {
   const [cartaoSelecionadoId, setCartaoSelecionadoId] = useState<string>('');
   const [modalFatura, setModalFatura] = useState<{ cartaoId: string; competencia: string } | null>(null);
   const [formFatura, setFormFatura] = useState<{ valorInformado: number; observacoes: string }>({ valorInformado: 0, observacoes: '' });
+  const [modalEscopoParcela, setModalEscopoParcela] = useState<null | { despesaId: string; grupoId: string }>(null);
 
   // Forms
   const [formReceita, setFormReceita] = useState<Omit<Receita, 'id' | 'dataCriacao'>>({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Salário', recorrente: false });
@@ -309,9 +310,12 @@ export function OrcamentoPage() {
     } else {
       setData(d => {
         if (editandoId) {
+          const depAtual = d.despesas.find(dep => dep.id === editandoId);
+          // Se tem grupo de parcelamento, a pergunta sobre escopo já foi feita antes de chegar aqui
+          // (via aplicarEdicaoParcela). Aqui edita só esta.
           return {
             ...d,
-            despesas: d.despesas.map(dep => dep.id === editandoId ? { ...dep, ...formDespesa } : dep),
+            despesas: d.despesas.map(dep => dep.id === editandoId ? { ...dep, ...formDespesa, grupoParcelamentoId: depAtual?.grupoParcelamentoId, parcelaAtual: depAtual?.parcelaAtual, quantidadeParcelas: depAtual?.quantidadeParcelas } : dep),
           };
         }
         // Nova despesa à vista com cartão
@@ -348,6 +352,53 @@ export function OrcamentoPage() {
     setFormDespesa({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Alimentação', formaPagamento: 'PIX', recorrente: false, essencial: true });
     setFormDespesaExtra({ tipoCobrancaCartao: 'avista', quantidadeParcelas: 2, mesInicioParcelas: hojeISO().slice(0, 7) });
   }, [formDespesa, formDespesaExtra, editandoId, setData]);
+
+  // Chamado pelo botão Salvar do modal de despesa
+  const handleSalvarDespesa = useCallback(() => {
+    if (editandoId) {
+      const depAtual = data.despesas.find(d => d.id === editandoId);
+      if (depAtual?.grupoParcelamentoId) {
+        // Tem grupo: perguntar escopo antes de salvar
+        setModalEscopoParcela({ despesaId: editandoId, grupoId: depAtual.grupoParcelamentoId });
+        return;
+      }
+    }
+    salvarDespesa();
+  }, [editandoId, data.despesas, salvarDespesa]);
+
+  // Aplicar edição a parcelas futuras do mesmo grupo
+  const aplicarEdicaoFuturas = useCallback((escopo: 'esta' | 'futuras') => {
+    setModalEscopoParcela(null);
+    if (escopo === 'esta') {
+      salvarDespesa();
+      return;
+    }
+    // Atualiza esta parcela + todas as futuras do mesmo grupo
+    setData(d => {
+      const depAtual = d.despesas.find(dep => dep.id === editandoId);
+      if (!depAtual || !depAtual.grupoParcelamentoId) return d;
+      const parcelaAtual = depAtual.parcelaAtual ?? 0;
+      return {
+        ...d,
+        despesas: d.despesas.map(dep => {
+          if (dep.grupoParcelamentoId !== depAtual.grupoParcelamentoId) return dep;
+          if ((dep.parcelaAtual ?? 0) < parcelaAtual) return dep; // anteriores: não muda
+          // Esta e futuras: atualiza valor, categoria, essencial (mantém descrição com número da parcela)
+          return {
+            ...dep,
+            valor: formDespesa.valor / (depAtual.quantidadeParcelas ?? 1),
+            categoria: formDespesa.categoria,
+            essencial: formDespesa.essencial,
+          };
+        }),
+      };
+    });
+    setModal(null);
+    setEditandoId(null);
+    setCartaoSelecionadoId('');
+    setFormDespesa({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Alimentação', formaPagamento: 'PIX', recorrente: false, essencial: true });
+    setFormDespesaExtra({ tipoCobrancaCartao: 'avista', quantidadeParcelas: 2, mesInicioParcelas: hojeISO().slice(0, 7) });
+  }, [editandoId, formDespesa, salvarDespesa, setData]);
 
   const salvarCartao = useCallback(() => {
     setData(d => ({
@@ -972,7 +1023,7 @@ export function OrcamentoPage() {
 
           <div className="flex gap-3 pt-2">
             <Button variant="secondary" className="flex-1" onClick={() => setModal(null)}>Cancelar</Button>
-            <Button className="flex-1" onClick={salvarDespesa}>Salvar</Button>
+            <Button className="flex-1" onClick={handleSalvarDespesa}>Salvar</Button>
           </div>
         </div>
       </Modal>
@@ -1127,6 +1178,32 @@ export function OrcamentoPage() {
             </div>
           );
         })()}
+      </Modal>
+
+      {/* Modal escopo de edição de parcela */}
+      <Modal isOpen={modalEscopoParcela !== null} onClose={() => setModalEscopoParcela(null)} title="Editar parcela" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-surface-600 dark:text-surface-300">
+            Esta despesa faz parte de um parcelamento. O que deseja alterar?
+          </p>
+          <div className="space-y-3">
+            <button
+              onClick={() => aplicarEdicaoFuturas('esta')}
+              className="w-full text-left border border-surface-200 dark:border-surface-600 rounded-xl p-4 hover:bg-surface-50 dark:hover:bg-surface-700/30 transition-colors"
+            >
+              <p className="text-sm font-semibold text-surface-900 dark:text-white">Somente esta parcela</p>
+              <p className="text-xs text-surface-400 dark:text-surface-500 mt-0.5">Altera apenas a parcela selecionada</p>
+            </button>
+            <button
+              onClick={() => aplicarEdicaoFuturas('futuras')}
+              className="w-full text-left border border-primary-300 dark:border-primary-600 bg-primary-50 dark:bg-primary-900/20 rounded-xl p-4 hover:bg-primary-100 dark:hover:bg-primary-900/30 transition-colors"
+            >
+              <p className="text-sm font-semibold text-primary-700 dark:text-primary-300">Esta e todas as parcelas futuras</p>
+              <p className="text-xs text-primary-500 dark:text-primary-400 mt-0.5">Atualiza valor, categoria e essencial de todas as parcelas a partir desta</p>
+            </button>
+          </div>
+          <Button variant="secondary" className="w-full" onClick={() => setModalEscopoParcela(null)}>Cancelar</Button>
+        </div>
       </Modal>
 
       <Modal isOpen={modal === 'bem'} onClose={() => setModal(null)} title={editandoId ? 'Editar Bem' : 'Novo Bem'}>
