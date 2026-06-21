@@ -403,9 +403,10 @@ export function OrcamentoPage() {
           if (dep.grupoParcelamentoId !== depAtual.grupoParcelamentoId) return dep;
           if ((dep.parcelaAtual ?? 0) < parcelaAtual) return dep; // anteriores: não muda
           // Esta e futuras: atualiza valor, categoria, essencial (mantém descrição com número da parcela)
+          // formDespesaValorStr já contém o valor da parcela (não o total), não dividir novamente
           return {
             ...dep,
-            valor: parseBRLMoney(formDespesaValorStr) / (depAtual.quantidadeParcelas ?? 1),
+            valor: parseBRLMoney(formDespesaValorStr),
             categoria: formDespesa.categoria,
             essencial: formDespesa.essencial,
           };
