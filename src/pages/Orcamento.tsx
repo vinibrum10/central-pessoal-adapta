@@ -1,8 +1,11 @@
 import { useState, useCallback } from 'react';
 import {
   Plus, Trash2, Pencil, TrendingUp, TrendingDown,
-  CreditCard, AlertTriangle, PiggyBank, Package
+  CreditCard, AlertTriangle, PiggyBank, Package,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
+
+const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 import { useApp } from '../hooks/useApp';
 import { useAuth } from '../contexts/AuthContext';
 import { canCreateExpense, canEditExpense, canDeleteExpense } from '../utils/permissions';
@@ -58,6 +61,8 @@ export function OrcamentoPage() {
   const [aba, setAba] = useState<Aba>('resumo');
   const [modal, setModal] = useState<string | null>(null);
   const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [mesFiltro, setMesFiltro] = useState(() => { const h = new Date(); return { mes: h.getMonth(), ano: h.getFullYear() }; });
+  const [cartaoSelecionadoId, setCartaoSelecionadoId] = useState<string>('');
 
   // Forms
   const [formReceita, setFormReceita] = useState<Omit<Receita, 'id' | 'dataCriacao'>>({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Salário', recorrente: false });
@@ -68,11 +73,11 @@ export function OrcamentoPage() {
   const [formReserva, setFormReserva] = useState<Omit<Reserva, 'id' | 'dataCriacao'>>({ nome: '', metaReserva: 0, valorAtual: 0, prazoDesejado: '' });
   const [formBem, setFormBem] = useState<Omit<Bem, 'id' | 'dataCriacao'>>({ nome: '', tipo: 'Carro', valorEstimado: 0, status: 'manter', observacoes: '' });
 
-  // Resumo financeiro do mês
-  const mesAtual = new Date().getMonth();
-  const anoAtual = new Date().getFullYear();
-  const receitasMes = data.receitas.filter(r => new Date(r.data).getMonth() === mesAtual && new Date(r.data).getFullYear() === anoAtual).reduce((a, r) => a + r.valor, 0);
-  const despesasMes = data.despesas.filter(d => new Date(d.data).getMonth() === mesAtual && new Date(d.data).getFullYear() === anoAtual).reduce((a, d) => a + d.valor, 0);
+  // Resumo financeiro do mês filtrado
+  const receitasFiltradas = data.receitas.filter(r => new Date(r.data).getMonth() === mesFiltro.mes && new Date(r.data).getFullYear() === mesFiltro.ano);
+  const despesasFiltradas = data.despesas.filter(d => new Date(d.data).getMonth() === mesFiltro.mes && new Date(d.data).getFullYear() === mesFiltro.ano);
+  const receitasMes = receitasFiltradas.reduce((a, r) => a + r.valor, 0);
+  const despesasMes = despesasFiltradas.reduce((a, d) => a + d.valor, 0);
   const saldoMes = receitasMes - despesasMes;
   const totalDividas = data.dividas.reduce((a, d) => a + Math.max(0, d.valorTotal - calcularParcelasPagasAuto(d) * d.valorParcela), 0);
   const totalReservas = data.reservas.reduce((a, r) => a + r.valorAtual, 0);
@@ -122,6 +127,35 @@ export function OrcamentoPage() {
         } as Despesa & { grupoParcelamentoId: string; parcelaAtual: number; quantidadeParcelas: number };
       });
       setData(d => ({ ...d, despesas: [...d.despesas, ...novasDespesas] }));
+    } else if (!editandoId && formDespesa.recorrente) {
+      // Gera despesa do mês atual + próximos 11 meses (total 12)
+      setData(d => {
+        const dataBase = new Date(formDespesa.data + 'T12:00:00');
+        const novasDespesas: Despesa[] = [];
+        for (let i = 0; i < 12; i++) {
+          const dt = new Date(dataBase);
+          dt.setMonth(dt.getMonth() + i);
+          const dataStr = dt.toISOString().slice(0, 10);
+          const mesDt = dt.getMonth();
+          const anoDt = dt.getFullYear();
+          // Verificar duplicata: mesma descrição, recorrente, mesmo mês/ano
+          const jaExiste = d.despesas.some(dep =>
+            dep.recorrente === true &&
+            dep.descricao === formDespesa.descricao &&
+            new Date(dep.data).getMonth() === mesDt &&
+            new Date(dep.data).getFullYear() === anoDt
+          );
+          if (!jaExiste) {
+            novasDespesas.push({
+              id: gerarId(),
+              ...formDespesa,
+              data: dataStr,
+              dataCriacao: hojeISO(),
+            });
+          }
+        }
+        return { ...d, despesas: [...d.despesas, ...novasDespesas] };
+      });
     } else {
       setData(d => ({
         ...d,
@@ -132,6 +166,7 @@ export function OrcamentoPage() {
     }
     setModal(null);
     setEditandoId(null);
+    setCartaoSelecionadoId('');
     setFormDespesa({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Alimentação', formaPagamento: 'PIX', recorrente: false, essencial: true });
     setFormDespesaExtra({ tipoCobrancaCartao: 'avista', quantidadeParcelas: 2, mesInicioParcelas: hojeISO().slice(0, 7) });
   }, [formDespesa, formDespesaExtra, editandoId, setData]);
@@ -191,6 +226,31 @@ export function OrcamentoPage() {
       <div>
         <h2 className="text-xl font-bold text-surface-900 dark:text-white">Orçamento</h2>
         <p className="text-sm text-surface-500 dark:text-surface-400">Seu dinheiro está te aproximando ou afastando das suas metas?</p>
+      </div>
+
+      {/* Seletor de mês */}
+      <div className="flex items-center justify-center gap-3">
+        <button
+          onClick={() => setMesFiltro(m => {
+            if (m.mes === 0) return { mes: 11, ano: m.ano - 1 };
+            return { mes: m.mes - 1, ano: m.ano };
+          })}
+          className="p-1.5 rounded-lg text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors"
+        >
+          <ChevronLeft size={18} />
+        </button>
+        <span className="text-sm font-semibold text-surface-700 dark:text-surface-300 min-w-[140px] text-center">
+          {MESES[mesFiltro.mes]} {mesFiltro.ano}
+        </span>
+        <button
+          onClick={() => setMesFiltro(m => {
+            if (m.mes === 11) return { mes: 0, ano: m.ano + 1 };
+            return { mes: m.mes + 1, ano: m.ano };
+          })}
+          className="p-1.5 rounded-lg text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors"
+        >
+          <ChevronRight size={18} />
+        </button>
       </div>
 
       {/* Tabs */}
@@ -268,11 +328,11 @@ export function OrcamentoPage() {
           </div>
           <Card>
             <CardBody className="!px-4 !pb-4">
-              {data.receitas.length === 0 ? (
-                <p className="text-center py-8 text-surface-400">Nenhuma receita cadastrada</p>
+              {receitasFiltradas.length === 0 ? (
+                <p className="text-center py-8 text-surface-400">Nenhuma receita em {MESES[mesFiltro.mes]} {mesFiltro.ano}</p>
               ) : (
                 <div className="space-y-2">
-                  {data.receitas.map(r => (
+                  {receitasFiltradas.map(r => (
                     <div key={r.id} className="flex items-center justify-between p-3 rounded-xl border border-surface-200 dark:border-surface-700">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-lg bg-success-50 dark:bg-success-900/20 flex items-center justify-center">
@@ -309,11 +369,11 @@ export function OrcamentoPage() {
           </div>
           <Card>
             <CardBody className="!px-4 !pb-4">
-              {data.despesas.length === 0 ? (
-                <p className="text-center py-8 text-surface-400">Nenhuma despesa cadastrada</p>
+              {despesasFiltradas.length === 0 ? (
+                <p className="text-center py-8 text-surface-400">Nenhuma despesa em {MESES[mesFiltro.mes]} {mesFiltro.ano}</p>
               ) : (
                 <div className="space-y-2">
-                  {data.despesas.map(d => (
+                  {despesasFiltradas.map(d => (
                     <div key={d.id} className="flex items-center justify-between p-3 rounded-xl border border-surface-200 dark:border-surface-700">
                       <div className="flex items-center gap-3">
                         <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${d.essencial ? 'bg-surface-100 dark:bg-surface-700' : 'bg-warning-50 dark:bg-warning-900/20'}`}>
@@ -561,6 +621,29 @@ export function OrcamentoPage() {
             </Select>
           </div>
 
+          {/* Seletor de cartão — apenas quando cartão de crédito */}
+          {formDespesa.formaPagamento === 'Cartão de crédito' && (() => {
+            const cartoes = data.cartoes ?? [];
+            if (cartoes.length === 0) {
+              return (
+                <p className="text-xs text-surface-400 dark:text-surface-500 bg-warning-50 dark:bg-warning-900/10 rounded-lg px-3 py-2">
+                  Nenhum cartão cadastrado. Adicione um cartão na aba Cartões.
+                </p>
+              );
+            }
+            return (
+              <Select
+                id="desp-cartao"
+                label="Cartão"
+                value={cartaoSelecionadoId}
+                onChange={e => setCartaoSelecionadoId(e.target.value)}
+              >
+                <option value="">Selecione o cartão</option>
+                {cartoes.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+              </Select>
+            );
+          })()}
+
           {/* Parcelamento — apenas cartão de crédito */}
           {formDespesa.formaPagamento === 'Cartão de crédito' && !editandoId && (
             <div className="bg-surface-50 dark:bg-surface-700/30 rounded-xl p-3 space-y-3">
@@ -571,7 +654,7 @@ export function OrcamentoPage() {
                 onChange={e => setFormDespesaExtra(f => ({ ...f, tipoCobrancaCartao: e.target.value as TipoCobrancaCartao }))}
               >
                 <option value="avista">À vista</option>
-                <option value="parcelado">Parcelado</option>
+                {!formDespesa.recorrente && <option value="parcelado">Parcelado</option>}
               </Select>
 
               {formDespesaExtra.tipoCobrancaCartao === 'parcelado' && (
@@ -627,16 +710,33 @@ export function OrcamentoPage() {
             </div>
           )}
 
-          <div className="flex gap-4">
-            <Checkbox id="desp-rec" label="Recorrente" checked={formDespesa.recorrente} onChange={e => setFormDespesa(f => ({ ...f, recorrente: e.target.checked }))} />
-            <Checkbox id="desp-ess" label="Essencial" checked={formDespesa.essencial} onChange={e => setFormDespesa(f => ({ ...f, essencial: e.target.checked }))} />
-          </div>
-
-          {formDespesa.recorrente && (
-            <div className="text-xs text-surface-400 dark:text-surface-500 bg-blue-50 dark:bg-blue-900/10 rounded-lg px-3 py-2">
-              <strong>Recorrente:</strong> repete-se automaticamente todo mês (ex: aluguel, internet). Diferente de parcelado, não tem data de fim obrigatória.
-            </div>
-          )}
+          {(() => {
+            const isParcelado = formDespesa.formaPagamento === 'Cartão de crédito' && formDespesaExtra.tipoCobrancaCartao === 'parcelado';
+            return (
+              <div className="space-y-2">
+                <div className="flex gap-4">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="desp-rec"
+                      label="Recorrente"
+                      checked={isParcelado ? false : formDespesa.recorrente}
+                      onChange={e => setFormDespesa(f => ({ ...f, recorrente: e.target.checked }))}
+                      disabled={isParcelado}
+                    />
+                    {isParcelado && (
+                      <span className="text-xs text-surface-400 dark:text-surface-500">Parcelado não pode ser recorrente</span>
+                    )}
+                  </div>
+                  <Checkbox id="desp-ess" label="Essencial" checked={formDespesa.essencial} onChange={e => setFormDespesa(f => ({ ...f, essencial: e.target.checked }))} />
+                </div>
+                {formDespesa.recorrente && !isParcelado && (
+                  <div className="text-xs text-surface-400 dark:text-surface-500 bg-blue-50 dark:bg-blue-900/10 rounded-lg px-3 py-2">
+                    <strong>Recorrente:</strong> repete-se automaticamente todo mês (ex: aluguel, internet). Diferente de parcelado, não tem data de fim obrigatória.
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           <div className="flex gap-3 pt-2">
             <Button variant="secondary" className="flex-1" onClick={() => setModal(null)}>Cancelar</Button>
