@@ -35,16 +35,21 @@ export function canView(_modulo: string, perfil: PerfilUsuario | null): boolean 
   return true;
 }
 
+function isAdminOrTotal(perfil: PerfilUsuario): boolean {
+  // Aceita role antigo 'visualizador'/'editor' enquanto migration não foi aplicada
+  return perfil.role === 'admin' || perfil.tipoAcesso === 'total';
+}
+
 export function canCreate(modulo: string, perfil: PerfilUsuario | null): boolean {
   if (!perfil || perfil.status === 'bloqueado') return false;
-  if (perfil.role === 'admin' || perfil.tipoAcesso === 'total') return true;
+  if (isAdminOrTotal(perfil)) return true;
   if (perfil.tipoAcesso === 'financas' && modulo === 'despesas') return true;
   return false;
 }
 
 export function canEdit(modulo: string, perfil: PerfilUsuario | null, itemCreatedBy?: string): boolean {
   if (!perfil || perfil.status === 'bloqueado') return false;
-  if (perfil.role === 'admin' || perfil.tipoAcesso === 'total') return true;
+  if (isAdminOrTotal(perfil)) return true;
   if (perfil.tipoAcesso === 'financas' && modulo === 'despesas') {
     return !itemCreatedBy || itemCreatedBy === perfil.id;
   }
