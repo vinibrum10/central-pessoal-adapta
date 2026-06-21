@@ -145,6 +145,8 @@ export interface Cartao {
 
 export type PrioridadeQuitacao = 'baixa' | 'média' | 'alta' | 'urgente';
 
+export type StatusDivida = 'ativa' | 'quitada' | 'pausada';
+
 export interface Divida {
   id: string;
   nome: string;
@@ -154,7 +156,44 @@ export interface Divida {
   parcelasPagas: number;
   taxaJuros: number;
   prioridadeQuitacao: PrioridadeQuitacao;
+  dataInicio?: string;
+  diaVencimento?: number;
+  status?: StatusDivida;
   dataCriacao: string;
+  dataAtualizacao?: string;
+}
+
+// ---- PERMISSÕES ----
+export type RoleUsuario = 'admin' | 'editor' | 'visualizador';
+export type StatusUsuario = 'pendente' | 'aprovado' | 'bloqueado';
+
+export interface PerfilUsuario {
+  id: string;
+  email: string;
+  nome: string;
+  role: RoleUsuario;
+  status: StatusUsuario;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ---- INTEGRAÇÃO (Agenda / Drive / ICS) ----
+export type TipoIntegracao =
+  | 'google_calendar'
+  | 'microsoft_calendar'
+  | 'preply_ics'
+  | 'google_drive'
+  | 'onedrive';
+
+export type StatusIntegracao = 'conectado' | 'desconectado' | 'pendente' | 'em_breve' | 'erro';
+
+export interface ConfiguracaoIntegracao {
+  id: string;
+  tipo: TipoIntegracao;
+  nome: string;
+  status: StatusIntegracao;
+  configJson?: Record<string, string>;
+  ultimaSincronizacao?: string | null;
 }
 
 export interface Reserva {

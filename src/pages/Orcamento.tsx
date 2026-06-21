@@ -14,7 +14,27 @@ import { ProgressBar } from '../components/Badge';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { Input, Select, Textarea, Checkbox } from '../components/FormFields';
-import { formatarDinheiro, formatarData, gerarId, hojeISO } from '../utils';
+import { formatarDinheiro, formatarData, isoParaDataBR, gerarId, hojeISO } from '../utils';
+
+function calcularParcelasPagasAuto(divida: { dataInicio?: string; diaVencimento?: number; totalParcelas: number; parcelasPagas: number }): number {
+  if (!divida.dataInicio) return divida.parcelasPagas;
+  const inicio = new Date(divida.dataInicio + 'T12:00:00');
+  const hoje = new Date();
+  const mesesDecorridos = (hoje.getFullYear() - inicio.getFullYear()) * 12 + (hoje.getMonth() - inicio.getMonth());
+  const calculado = Math.max(0, Math.min(mesesDecorridos, divida.totalParcelas));
+  // Usa o maior entre calculado e o informado manualmente
+  return Math.max(calculado, divida.parcelasPagas);
+}
+
+function proximoVencimento(divida: { dataInicio?: string; diaVencimento?: number; parcelasPagas: number }): string | null {
+  if (!divida.dataInicio) return null;
+  const inicio = new Date(divida.dataInicio + 'T12:00:00');
+  const dia = divida.diaVencimento ?? inicio.getDate();
+  const hoje = new Date();
+  const d = new Date(hoje.getFullYear(), hoje.getMonth(), dia);
+  if (d < hoje) d.setMonth(d.getMonth() + 1);
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+}
 
 type Aba = 'resumo' | 'receitas' | 'despesas' | 'cartoes' | 'dividas' | 'reserva' | 'bens';
 
@@ -32,7 +52,7 @@ export function OrcamentoPage() {
   const [formReceita, setFormReceita] = useState<Omit<Receita, 'id' | 'dataCriacao'>>({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Salário', recorrente: false });
   const [formDespesa, setFormDespesa] = useState<Omit<Despesa, 'id' | 'dataCriacao'>>({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Alimentação', formaPagamento: 'PIX', recorrente: false, essencial: true });
   const [formCartao, setFormCartao] = useState<Omit<Cartao, 'id' | 'dataCriacao'>>({ nome: '', limite: 0, faturaAtual: 0, vencimento: 10, status: 'ativo' });
-  const [formDivida, setFormDivida] = useState<Omit<Divida, 'id' | 'dataCriacao'>>({ nome: '', valorTotal: 0, valorParcela: 0, totalParcelas: 1, parcelasPagas: 0, taxaJuros: 0, prioridadeQuitacao: 'média' });
+  const [formDivida, setFormDivida] = useState<Omit<Divida, 'id' | 'dataCriacao'>>({ nome: '', valorTotal: 0, valorParcela: 0, totalParcelas: 1, parcelasPagas: 0, taxaJuros: 0, prioridadeQuitacao: 'média', dataInicio: hojeISO(), diaVencimento: 10, status: 'ativa' });
   const [formReserva, setFormReserva] = useState<Omit<Reserva, 'id' | 'dataCriacao'>>({ nome: '', metaReserva: 0, valorAtual: 0, prazoDesejado: '' });
   const [formBem, setFormBem] = useState<Omit<Bem, 'id' | 'dataCriacao'>>({ nome: '', tipo: 'Carro', valorEstimado: 0, status: 'manter', observacoes: '' });
 
@@ -42,7 +62,7 @@ export function OrcamentoPage() {
   const receitasMes = data.receitas.filter(r => new Date(r.data).getMonth() === mesAtual && new Date(r.data).getFullYear() === anoAtual).reduce((a, r) => a + r.valor, 0);
   const despesasMes = data.despesas.filter(d => new Date(d.data).getMonth() === mesAtual && new Date(d.data).getFullYear() === anoAtual).reduce((a, d) => a + d.valor, 0);
   const saldoMes = receitasMes - despesasMes;
-  const totalDividas = data.dividas.reduce((a, d) => a + (d.valorTotal - d.parcelasPagas * d.valorParcela), 0);
+  const totalDividas = data.dividas.reduce((a, d) => a + Math.max(0, d.valorTotal - calcularParcelasPagasAuto(d) * d.valorParcela), 0);
   const totalReservas = data.reservas.reduce((a, r) => a + r.valorAtual, 0);
   const totalMetaReservas = data.reservas.reduce((a, r) => a + r.metaReserva, 0);
 
@@ -337,29 +357,40 @@ export function OrcamentoPage() {
           </div>
           <div className="space-y-3">
             {data.dividas.map(d => {
-              const saldo = d.valorTotal - d.parcelasPagas * d.valorParcela;
-              const progresso = (d.parcelasPagas / d.totalParcelas) * 100;
+              const parcelasPagasAuto = calcularParcelasPagasAuto(d);
+              const saldo = Math.max(0, d.valorTotal - parcelasPagasAuto * d.valorParcela);
+              const progresso = (parcelasPagasAuto / d.totalParcelas) * 100;
+              const statusD = parcelasPagasAuto >= d.totalParcelas ? 'quitada' : (d.status ?? 'ativa');
+              const proximo = statusD !== 'quitada' ? proximoVencimento(d) : null;
               return (
-                <Card key={d.id}>
+                <Card key={d.id} className={statusD === 'quitada' ? 'opacity-60' : ''}>
                   <CardBody>
                     <div className="flex items-start justify-between mb-3">
                       <div>
-                        <p className="font-semibold text-surface-900 dark:text-white">{d.nome}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-surface-900 dark:text-white">{d.nome}</p>
+                          {statusD === 'quitada' && <span className="text-[10px] px-2 py-0.5 rounded-full bg-success-100 text-success-700 dark:bg-success-900/30 dark:text-success-400 font-medium">Quitada</span>}
+                          {statusD === 'pausada' && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 font-medium">Pausada</span>}
+                        </div>
                         <p className="text-xs text-surface-400 dark:text-surface-500">
-                          {d.parcelasPagas}/{d.totalParcelas} parcelas · {d.taxaJuros > 0 ? `${d.taxaJuros}% a.a.` : 'Sem juros'}
+                          {parcelasPagasAuto}/{d.totalParcelas} parcelas · {d.taxaJuros > 0 ? `${d.taxaJuros}% a.a.` : 'Sem juros'}
+                          {d.dataInicio && ` · Início: ${isoParaDataBR(d.dataInicio)}`}
                         </p>
                       </div>
                       <div className="flex gap-1">
-                        <button onClick={() => { setFormDivida({ nome: d.nome, valorTotal: d.valorTotal, valorParcela: d.valorParcela, totalParcelas: d.totalParcelas, parcelasPagas: d.parcelasPagas, taxaJuros: d.taxaJuros, prioridadeQuitacao: d.prioridadeQuitacao }); abrirModal('divida', d); }} className="p-1 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
+                        <button onClick={() => { setFormDivida({ nome: d.nome, valorTotal: d.valorTotal, valorParcela: d.valorParcela, totalParcelas: d.totalParcelas, parcelasPagas: d.parcelasPagas, taxaJuros: d.taxaJuros, prioridadeQuitacao: d.prioridadeQuitacao, dataInicio: d.dataInicio ?? hojeISO(), diaVencimento: d.diaVencimento ?? 10, status: d.status ?? 'ativa' }); abrirModal('divida', d); }} className="p-1 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
                         <button onClick={() => setData(prev => ({ ...prev, dividas: prev.dividas.filter(x => x.id !== d.id) }))} className="p-1 rounded text-surface-400 hover:text-danger-600 transition-colors"><Trash2 size={13} /></button>
                       </div>
                     </div>
                     <div className="flex justify-between text-sm mb-2">
                       <span className="text-surface-500">Saldo devedor</span>
-                      <span className="font-bold text-danger-600 dark:text-danger-400">{formatarDinheiro(saldo)}</span>
+                      <span className={`font-bold ${saldo > 0 ? 'text-danger-600 dark:text-danger-400' : 'text-success-600 dark:text-success-400'}`}>{formatarDinheiro(saldo)}</span>
                     </div>
                     <ProgressBar value={progresso} showLabel color="success" height="md" />
-                    <p className="text-xs text-surface-400 mt-1">Parcela: {formatarDinheiro(d.valorParcela)}/mês</p>
+                    <div className="flex justify-between text-xs text-surface-400 mt-1">
+                      <span>Parcela: {formatarDinheiro(d.valorParcela)}/mês</span>
+                      {proximo && <span>Próximo vencimento: {proximo}</span>}
+                    </div>
                   </CardBody>
                 </Card>
               );
@@ -524,6 +555,10 @@ export function OrcamentoPage() {
             <Input id="div-pagas" label="Parcelas pagas" type="number" min="0" value={formDivida.parcelasPagas} onChange={e => setFormDivida(f => ({ ...f, parcelasPagas: Number(e.target.value) }))} />
           </div>
           <div className="grid grid-cols-2 gap-3">
+            <Input id="div-inicio" label="Data início" type="date" value={formDivida.dataInicio ?? ''} onChange={e => setFormDivida(f => ({ ...f, dataInicio: e.target.value }))} />
+            <Input id="div-diavenc" label="Dia vencimento" type="number" min="1" max="31" value={formDivida.diaVencimento ?? 10} onChange={e => setFormDivida(f => ({ ...f, diaVencimento: Number(e.target.value) }))} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             <Input id="div-juros" label="Taxa de juros (% a.a.)" type="number" min="0" step="0.1" value={formDivida.taxaJuros || ''} onChange={e => setFormDivida(f => ({ ...f, taxaJuros: Number(e.target.value) }))} />
             <Select id="div-prio" label="Prioridade quitação" value={formDivida.prioridadeQuitacao} onChange={e => setFormDivida(f => ({ ...f, prioridadeQuitacao: e.target.value as PrioridadeQuitacao }))}>
               <option value="baixa">Baixa</option>
@@ -531,6 +566,9 @@ export function OrcamentoPage() {
               <option value="alta">Alta</option>
               <option value="urgente">Urgente</option>
             </Select>
+          </div>
+          <div className="text-xs text-surface-400 dark:text-surface-500 bg-surface-50 dark:bg-surface-700/30 rounded-lg p-3">
+            O sistema calcula automaticamente as parcelas pagas com base na data de início. Você pode ajustar manualmente no campo "Parcelas pagas" se necessário.
           </div>
           <div className="flex gap-3 pt-2">
             <Button variant="secondary" className="flex-1" onClick={() => setModal(null)}>Cancelar</Button>

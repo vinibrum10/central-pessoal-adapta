@@ -663,10 +663,13 @@ export function PlanoAcaoPage() {
               ))}
             </div>
             {ugAtrasadas > 0 && (
-              <div className="flex items-center gap-2 text-xs text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2">
+              <button
+                onClick={() => setFiltro('atrasadas')}
+                className="flex items-center gap-2 text-xs text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2 w-full text-left hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+              >
                 <AlertTriangle size={13} className="flex-shrink-0" />
-                <span className="font-semibold">Existem {ugAtrasadas} tarefa{ugAtrasadas > 1 ? 's' : ''} urgente{ugAtrasadas > 1 ? 's' : ''} atrasada{ugAtrasadas > 1 ? 's' : ''}.</span>
-              </div>
+                <span className="font-semibold">Existem {ugAtrasadas} tarefa{ugAtrasadas > 1 ? 's' : ''} urgente{ugAtrasadas > 1 ? 's' : ''} atrasada{ugAtrasadas > 1 ? 's' : ''}. Clique para ver.</span>
+              </button>
             )}
           </div>
         );

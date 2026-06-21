@@ -2,10 +2,13 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Target, ListChecks, Clock,
   Wallet, Settings, Menu, X, Moon, Sun, Zap, BookOpen, LogOut,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useApp } from '../hooks/useApp';
 import { useAuth } from '../contexts/AuthContext';
+
+const SIDEBAR_KEY = 'adapta-sidebar-collapsed';
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -19,9 +22,16 @@ const navItems = [
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    try { return localStorage.getItem(SIDEBAR_KEY) === 'true'; } catch { return false; }
+  });
   const { data, tema, toggleTema } = useApp();
   const { user, signOut, supabaseAtivo } = useAuth();
   const location = useLocation();
+
+  useEffect(() => {
+    try { localStorage.setItem(SIDEBAR_KEY, String(collapsed)); } catch { /* noop */ }
+  }, [collapsed]);
 
   const currentPage = navItems.find(n =>
     n.to === '/' ? location.pathname === '/' : location.pathname.startsWith(n.to)
@@ -30,67 +40,99 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen bg-surface-50 dark:bg-surface-900 overflow-hidden">
       {/* === SIDEBAR DESKTOP === */}
-      <aside className="hidden lg:flex flex-col w-64 bg-white dark:bg-surface-800 border-r border-surface-200 dark:border-surface-700 flex-shrink-0">
+      <aside
+        className={`hidden lg:flex flex-col bg-white dark:bg-surface-800 border-r border-surface-200 dark:border-surface-700 flex-shrink-0 transition-all duration-200 ${collapsed ? 'w-16' : 'w-64'}`}
+      >
         {/* Logo */}
-        <div className="p-5 border-b border-surface-200 dark:border-surface-700">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-primary-600 rounded-xl flex items-center justify-center shadow-lg shadow-primary-600/30">
+        <div className={`border-b border-surface-200 dark:border-surface-700 flex items-center ${collapsed ? 'justify-center p-3' : 'justify-between p-5'}`}>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 bg-primary-600 rounded-xl flex items-center justify-center shadow-lg shadow-primary-600/30 flex-shrink-0">
               <Zap size={18} className="text-white" />
             </div>
-            <div>
-              <p className="font-bold text-sm text-surface-900 dark:text-white leading-tight">ADAPTA</p>
-              <p className="text-xs text-surface-400 dark:text-surface-500">Central Pessoal</p>
-            </div>
+            {!collapsed && (
+              <div className="min-w-0">
+                <p className="font-bold text-sm text-surface-900 dark:text-white leading-tight">ADAPTA</p>
+                <p className="text-xs text-surface-400 dark:text-surface-500">Central Pessoal</p>
+              </div>
+            )}
           </div>
-        </div>
-
-        {/* User */}
-        <div className="px-4 py-3 border-b border-surface-200 dark:border-surface-700">
-          <p className="text-xs text-surface-400 dark:text-surface-500">Bem-vindo,</p>
-          <p className="font-semibold text-sm text-surface-900 dark:text-white">{data.configuracoes.nomeUsuario}</p>
-          {supabaseAtivo && user && (
-            <p className="text-[10px] text-surface-400 dark:text-surface-500 truncate">{user.email}</p>
+          {!collapsed && (
+            <button
+              onClick={() => setCollapsed(true)}
+              className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-400 flex-shrink-0"
+              title="Recolher menu"
+            >
+              <ChevronLeft size={16} />
+            </button>
           )}
         </div>
 
+        {/* Collapse button when collapsed */}
+        {collapsed && (
+          <div className="flex justify-center py-2 border-b border-surface-200 dark:border-surface-700">
+            <button
+              onClick={() => setCollapsed(false)}
+              className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-400"
+              title="Expandir menu"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        )}
+
+        {/* User info */}
+        {!collapsed && (
+          <div className="px-4 py-3 border-b border-surface-200 dark:border-surface-700">
+            <p className="text-xs text-surface-400 dark:text-surface-500">Bem-vindo,</p>
+            <p className="font-semibold text-sm text-surface-900 dark:text-white">{data.configuracoes.nomeUsuario}</p>
+            {supabaseAtivo && user && (
+              <p className="text-[10px] text-surface-400 dark:text-surface-500 truncate">{user.email}</p>
+            )}
+          </div>
+        )}
+
         {/* Nav */}
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+        <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
           {navItems.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
               end={to === '/'}
+              title={collapsed ? label : undefined}
               className={({ isActive }) => `
                 flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
                 transition-all duration-150
+                ${collapsed ? 'justify-center' : ''}
                 ${isActive
                   ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/30'
                   : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-surface-900 dark:hover:text-white'
                 }
               `}
             >
-              <Icon size={18} />
-              {label}
+              <Icon size={18} className="flex-shrink-0" />
+              {!collapsed && label}
             </NavLink>
           ))}
         </nav>
 
-        {/* Theme toggle + logout */}
-        <div className="p-4 border-t border-surface-200 dark:border-surface-700 space-y-1">
+        {/* Footer */}
+        <div className="p-3 border-t border-surface-200 dark:border-surface-700 space-y-0.5">
           <button
             onClick={toggleTema}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors"
+            title={collapsed ? (tema === 'escuro' ? 'Modo Claro' : 'Modo Escuro') : undefined}
+            className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors ${collapsed ? 'justify-center' : ''}`}
           >
             {tema === 'escuro' ? <Sun size={16} /> : <Moon size={16} />}
-            {tema === 'escuro' ? 'Modo Claro' : 'Modo Escuro'}
+            {!collapsed && (tema === 'escuro' ? 'Modo Claro' : 'Modo Escuro')}
           </button>
           {supabaseAtivo && user && (
             <button
               onClick={signOut}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-danger-500 dark:text-danger-400 hover:bg-danger-50 dark:hover:bg-danger-900/20 transition-colors"
+              title={collapsed ? 'Sair' : undefined}
+              className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-danger-500 dark:text-danger-400 hover:bg-danger-50 dark:hover:bg-danger-900/20 transition-colors ${collapsed ? 'justify-center' : ''}`}
             >
               <LogOut size={16} />
-              Sair
+              {!collapsed && 'Sair'}
             </button>
           )}
         </div>
@@ -115,6 +157,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <X size={18} className="text-surface-500" />
               </button>
             </div>
+            {supabaseAtivo && user && (
+              <div className="px-4 py-3 border-b border-surface-200 dark:border-surface-700">
+                <p className="text-xs text-surface-400">Logado como</p>
+                <p className="text-sm font-medium text-surface-800 dark:text-white truncate">{user.email}</p>
+              </div>
+            )}
             <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
               {navItems.map(({ to, label, icon: Icon }) => (
                 <NavLink
@@ -132,18 +180,24 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </NavLink>
               ))}
             </nav>
-            <div className="p-4 border-t border-surface-200 dark:border-surface-700">
+            <div className="p-4 border-t border-surface-200 dark:border-surface-700 space-y-1">
               <button onClick={toggleTema} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors">
                 {tema === 'escuro' ? <Sun size={16} /> : <Moon size={16} />}
                 {tema === 'escuro' ? 'Modo Claro' : 'Modo Escuro'}
               </button>
+              {supabaseAtivo && user && (
+                <button onClick={signOut} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-danger-500 hover:bg-danger-50 dark:hover:bg-danger-900/20 transition-colors">
+                  <LogOut size={16} />
+                  Sair
+                </button>
+              )}
             </div>
           </aside>
         </div>
       )}
 
       {/* === MAIN CONTENT === */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Top bar mobile */}
         <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-white dark:bg-surface-800 border-b border-surface-200 dark:border-surface-700 flex-shrink-0">
           <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700">
@@ -170,7 +224,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           {children}
         </main>
 
-        {/* Bottom nav mobile — todos os 6 itens */}
+        {/* Bottom nav mobile */}
         <nav className="lg:hidden flex bg-white dark:bg-surface-800 border-t border-surface-200 dark:border-surface-700 flex-shrink-0">
           {navItems.map(({ to, label, icon: Icon }) => (
             <NavLink

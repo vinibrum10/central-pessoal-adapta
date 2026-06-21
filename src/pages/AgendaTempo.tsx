@@ -294,6 +294,99 @@ function EventosLista({
 // ============================================================
 // PÁGINA PRINCIPAL
 // ============================================================
+// PREPLY CARD
+// ============================================================
+
+const PREPLY_KEY = 'adapta-preply-ics-url';
+
+function PreplyCard() {
+  const [icsUrl, setIcsUrl] = useState<string>(() => localStorage.getItem(PREPLY_KEY) ?? '');
+  const [editando, setEditando] = useState(false);
+  const [draft, setDraft] = useState(icsUrl);
+  const [status, setStatus] = useState<'idle' | 'ok' | 'erro'>('idle');
+  const { setData } = useApp();
+
+  const salvar = () => {
+    const url = draft.trim();
+    localStorage.setItem(PREPLY_KEY, url);
+    setIcsUrl(url);
+    setEditando(false);
+  };
+
+  const sincronizar = async () => {
+    if (!icsUrl) return;
+    try {
+      const { importarICSDeUrl } = await import('../services/icsParser');
+      const eventos = await importarICSDeUrl(icsUrl);
+      setData(d => ({
+        ...d,
+        eventosAgenda: [
+          ...d.eventosAgenda.filter(e => e.fonte !== 'ics' || !e.id.startsWith('ics-preply-')),
+          ...eventos.map(e => ({ ...e, id: `ics-preply-${e.id}`, fonte: 'ics' as const })),
+        ],
+      }));
+      setStatus('ok');
+      setTimeout(() => setStatus('idle'), 3000);
+    } catch {
+      setStatus('erro');
+    }
+  };
+
+  return (
+    <div className="bg-orange-50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-700/40 rounded-2xl p-5 space-y-3">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-white dark:bg-surface-800 flex items-center justify-center shadow-sm flex-shrink-0">
+          <span className="text-orange-500 font-black text-sm">P</span>
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-bold text-surface-900 dark:text-white">Preply</p>
+          <p className="text-xs text-surface-400 dark:text-surface-500">
+            {icsUrl ? 'Calendário ICS configurado' : 'Aguardando link de calendário ICS'}
+          </p>
+        </div>
+        {icsUrl && (
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-success-100 text-success-700 dark:bg-success-900/30 dark:text-success-400 font-medium">Configurado</span>
+        )}
+      </div>
+
+      {editando ? (
+        <div className="space-y-2">
+          <input
+            type="url"
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            placeholder="https://... (link ICS do Preply)"
+            className="w-full px-3 py-2 text-sm rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+          />
+          <div className="flex gap-2">
+            <Button size="sm" onClick={salvar} className="flex-1">Salvar</Button>
+            <Button size="sm" variant="secondary" onClick={() => setEditando(false)}>Cancelar</Button>
+          </div>
+        </div>
+      ) : icsUrl ? (
+        <div className="flex gap-2">
+          <Button size="sm" variant="secondary" onClick={sincronizar} icon={<RefreshCw size={12} />} className="flex-1">
+            {status === 'ok' ? 'Sincronizado!' : status === 'erro' ? 'Erro — tente novamente' : 'Sincronizar'}
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => { setDraft(icsUrl); setEditando(true); }}>
+            Editar URL
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-xs text-surface-500 dark:text-surface-400 leading-relaxed">
+            Cole aqui o link de calendário ICS da Preply, se disponível. Você pode encontrá-lo nas configurações do perfil na Preply → "Exportar calendário".
+          </p>
+          <Button size="sm" variant="secondary" onClick={() => { setDraft(''); setEditando(true); }} icon={<Link2 size={12} />}>
+            Configurar link ICS
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
 
 export function AgendaTempoPage() {
   const { data, setData } = useApp();
@@ -790,6 +883,19 @@ export function AgendaTempoPage() {
               carregando={carregandoMs}
               cor="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-700/40"
             />
+          </div>
+
+          {/* Preply + OneDrive */}
+          <PreplyCard />
+          <div className="bg-surface-50 dark:bg-surface-700/20 border border-surface-200 dark:border-surface-700 rounded-2xl p-5 flex items-start gap-4">
+            <div className="w-10 h-10 rounded-xl bg-white dark:bg-surface-800 flex items-center justify-center flex-shrink-0 shadow-sm">
+              <span className="text-blue-400 font-black text-sm">OD</span>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-surface-900 dark:text-white">OneDrive</p>
+              <p className="text-xs text-surface-400 dark:text-surface-500 mt-1">Sincronização com Microsoft OneDrive — em breve</p>
+              <span className="inline-block mt-2 text-[10px] px-2 py-0.5 rounded-full bg-surface-200 dark:bg-surface-600 text-surface-500 dark:text-surface-400 font-medium">Em breve</span>
+            </div>
           </div>
 
           {/* ICS */}

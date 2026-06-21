@@ -1,4 +1,4 @@
-import { format, isToday, isBefore, differenceInDays, startOfWeek, endOfWeek, isWithinInterval, parseISO, addDays, addMonths, isValid } from 'date-fns';
+import { format, differenceInDays, startOfWeek, endOfWeek, isWithinInterval, parseISO, addDays, addMonths, isValid } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { Meta, Tarefa, BlocoTempo, NivelEnergia, FaixaTarefa, FrequenciaRevisao, ClassificacaoPrazoMeta, PeriodicidadeAcao } from '../types';
 
@@ -50,10 +50,29 @@ export const formatarMinutos = (min: number) => {
 // ---- Datas ----
 export const hojeISO = () => format(new Date(), 'yyyy-MM-dd');
 
-export const eHoje = (dateStr: string) => isToday(parseISO(dateStr));
+/** Retorna data de hoje como string ISO yyyy-MM-dd sem risco de UTC shift */
+export const hojeISOLocal = (): string => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
 
-export const eAtrasada = (dateStr: string) =>
-  isBefore(parseISO(dateStr), new Date()) && !isToday(parseISO(dateStr));
+/** Compara apenas a parte de data (yyyy-MM-dd) sem conversão UTC */
+export const eHoje = (dateStr: string): boolean => {
+  if (!dateStr) return false;
+  return dateStr.slice(0, 10) === hojeISOLocal();
+};
+
+/**
+ * Tarefa está atrasada apenas se prazo < hoje (string comparison).
+ * Prazo == hoje NÃO é atrasado.
+ */
+export const eAtrasada = (dateStr: string): boolean => {
+  if (!dateStr) return false;
+  return dateStr.slice(0, 10) < hojeISOLocal();
+};
 
 export const diasRestantes = (dateStr: string) =>
   differenceInDays(parseISO(dateStr), new Date());
