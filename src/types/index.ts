@@ -14,6 +14,7 @@ export type Prioridade = 'baixa' | 'média' | 'alta' | 'crítica';
 // ---- META ----
 export type StatusMeta = 'ativa' | 'planejar futuro' | 'pausada' | 'concluída' | 'cancelada';
 export type FrequenciaRevisao = 'semanal' | 'quinzenal' | 'mensal' | 'sob demanda';
+export type ClassificacaoPrazoMeta = 'curto prazo' | 'médio prazo' | 'longo prazo';
 
 export interface Meta {
   id: string;
@@ -24,7 +25,9 @@ export interface Meta {
   status: StatusMeta;
   motivo: string;
   resultadoEsperado: string;
+  dataInicio?: string;
   prazoFinal: string;
+  classificacaoPrazo?: ClassificacaoPrazoMeta;
   frequenciaRevisao: FrequenciaRevisao;
   dataCriacao: string;
   dataUltimaRevisao: string | null;
@@ -48,6 +51,7 @@ export interface Tarefa {
   prazo: string;
   tempoEstimado: number;
   faixa: FaixaTarefa;
+  faixaManual?: boolean;
   status: StatusTarefa;
   energiaNecessaria: NivelEnergia;
   observacoes: string;

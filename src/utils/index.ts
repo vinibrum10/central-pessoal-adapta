@@ -1,6 +1,6 @@
 import { format, isToday, isBefore, differenceInDays, startOfWeek, endOfWeek, isWithinInterval, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import type { Meta, Tarefa, BlocoTempo, NivelEnergia, FaixaTarefa, FrequenciaRevisao } from '../types';
+import type { Meta, Tarefa, BlocoTempo, NivelEnergia, FaixaTarefa, FrequenciaRevisao, ClassificacaoPrazoMeta } from '../types';
 
 // ---- Formatação ----
 export const formatarData = (dateStr: string) =>
@@ -260,3 +260,74 @@ export const corCategoria = (c: string) => {
 // ---- ID gerador ----
 export const gerarId = () =>
   `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+// ---- Classificação de prazo da meta ----
+export const calcularClassificacaoPrazo = (dataInicio: string, prazoFinal: string): ClassificacaoPrazoMeta => {
+  try {
+    const ini = parseISO(dataInicio);
+    const fim = parseISO(prazoFinal);
+    const meses = differenceInDays(fim, ini) / 30.4;
+    if (meses <= 12) return 'curto prazo';
+    if (meses <= 36) return 'médio prazo';
+    return 'longo prazo';
+  } catch {
+    return 'médio prazo';
+  }
+};
+
+export const labelClassificacaoPrazo = (c: ClassificacaoPrazoMeta): string => {
+  switch (c) {
+    case 'curto prazo': return 'Curto prazo';
+    case 'médio prazo': return 'Médio prazo';
+    case 'longo prazo': return 'Longo prazo';
+  }
+};
+
+export const corClassificacaoPrazo = (c: ClassificacaoPrazoMeta): string => {
+  switch (c) {
+    case 'curto prazo': return 'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400';
+    case 'médio prazo': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400';
+    case 'longo prazo': return 'bg-violet-100 text-violet-700 dark:bg-violet-900/20 dark:text-violet-400';
+  }
+};
+
+// ---- Cálculo automático de faixa da tarefa ----
+export const calcularFaixaAutomaticaTarefa = (
+  tarefa: Tarefa,
+  meta: Meta | null,
+  percentualAtendimento = 100,
+  revisaoAtrasadaMeta = false,
+): FaixaTarefa => {
+  if (tarefa.status === 'concluído') return tarefa.faixa;
+
+  const hoje = hojeISO();
+  const prazo = tarefa.prazo ?? '';
+  if (!prazo) return meta ? 'médio impacto' : 'baixo impacto';
+
+  const atrasada = prazo < hoje;
+  const ehHoje = prazo === hoje;
+  let diasN = 999;
+  try { diasN = differenceInDays(parseISO(prazo), new Date()); } catch { diasN = 999; }
+
+  const grauMeta = meta?.grau ?? 0;
+
+  // URGENTE
+  if (atrasada) return 'urgente';
+  if (ehHoje) return 'urgente';
+  if (grauMeta >= 8 && diasN <= 2) return 'urgente';
+  if (grauMeta >= 9 && percentualAtendimento < 30) return 'urgente';
+
+  // ALTO IMPACTO
+  if (grauMeta >= 7) return 'alto impacto';
+  if (diasN <= 7) return 'alto impacto';
+  if (revisaoAtrasadaMeta && meta) return 'alto impacto';
+
+  // Sem meta ou meta futura → baixo impacto
+  if (!meta || meta.status === 'planejar futuro') return 'baixo impacto';
+
+  // MÉDIO IMPACTO
+  if (diasN <= 30) return 'médio impacto';
+  if (meta.status === 'ativa') return 'médio impacto';
+
+  return 'baixo impacto';
+};

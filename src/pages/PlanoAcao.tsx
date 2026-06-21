@@ -20,7 +20,7 @@ import { Input, Textarea, Select } from '../components/FormFields';
 import {
   corFaixa, siglaFaixa, labelFaixa, corCategoria,
   formatarData, formatarMinutos, eAtrasada, eHoje,
-  eSemanaAtual, gerarId, hojeISO
+  eSemanaAtual, gerarId, hojeISO, calcularFaixaAutomaticaTarefa,
 } from '../utils';
 import { addDays, format } from 'date-fns';
 import { useLocation } from 'react-router-dom';
@@ -39,6 +39,7 @@ const tarefaVazia = (): Omit<Tarefa, 'id' | 'dataCriacao' | 'dataConclusao'> => 
   prazo: format(addDays(new Date(), 1), 'yyyy-MM-dd'),
   tempoEstimado: 30,
   faixa: 'médio impacto',
+  faixaManual: false,
   status: 'não iniciado',
   energiaNecessaria: 'média',
   observacoes: '',
@@ -70,9 +71,10 @@ function TarefaCard({
       {/* Faixa + drag handle */}
       <div className="flex items-center gap-2">
         <GripVertical size={14} className="text-surface-300 dark:text-surface-600 flex-shrink-0 cursor-grab active:cursor-grabbing" />
-        <Badge className={`text-[10px] px-1.5 py-0.5 ${corFaixa(tarefa.faixa)}`}>
-          {siglaFaixa(tarefa.faixa)}
-        </Badge>
+        <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full ${corFaixa(tarefa.faixa)}`}>
+          <span className="font-bold">{siglaFaixa(tarefa.faixa)}</span>
+          <span className="opacity-60 font-normal text-[9px]">· {tarefa.faixaManual ? 'manual' : 'auto'}</span>
+        </span>
         {atrasada && (
           <Badge className="text-[10px] px-1.5 py-0.5 bg-danger-100 text-danger-700 dark:bg-danger-600/20 dark:text-danger-400">
             Atrasada
@@ -279,6 +281,11 @@ export function PlanoAcaoPage() {
   const salvar = useCallback(() => {
     if (!validar()) return;
     setData(d => {
+      const metaVinc = d.metas.find(m => m.id === form.metaId) ?? null;
+      const faixaFinal: FaixaTarefa = form.faixaManual
+        ? form.faixa
+        : calcularFaixaAutomaticaTarefa(form as Tarefa, metaVinc);
+
       if (tarefaEditando) {
         const novoStatus = form.status;
         const antiga = d.tarefas.find(t => t.id === tarefaEditando.id);
@@ -289,7 +296,7 @@ export function PlanoAcaoPage() {
         return {
           ...d,
           tarefas: d.tarefas.map(t =>
-            t.id === tarefaEditando.id ? { ...t, ...form, dataConclusao } : t
+            t.id === tarefaEditando.id ? { ...t, ...form, faixa: faixaFinal, dataConclusao } : t
           ),
           metas: novoStatus === 'concluído'
             ? d.metas.map(m => form.metaId === m.id ? { ...m, dataUltimaAcao: hojeISO() } : m)
@@ -299,6 +306,7 @@ export function PlanoAcaoPage() {
       const nova: Tarefa = {
         id: gerarId(),
         ...form,
+        faixa: faixaFinal,
         dataCriacao: hojeISO(),
         dataConclusao: form.status === 'concluído' ? hojeISO() : null,
       };
@@ -485,6 +493,49 @@ export function PlanoAcaoPage() {
         </div>
       </div>
 
+      {/* Resumo de faixas + alerta UG */}
+      {(() => {
+        const pendentesAll = data.tarefas.filter(t => t.status !== 'concluído');
+        const contagemFaixa = (f: FaixaTarefa) => pendentesAll.filter(t => {
+          const meta = data.metas.find(m => m.id === t.metaId) ?? null;
+          const faixaEfetiva = t.faixaManual ? t.faixa : calcularFaixaAutomaticaTarefa(t, meta);
+          return faixaEfetiva === f;
+        }).length;
+        const ug = contagemFaixa('urgente');
+        const ai = contagemFaixa('alto impacto');
+        const mi = contagemFaixa('médio impacto');
+        const bi = contagemFaixa('baixo impacto');
+        const ugAtrasadas = pendentesAll.filter(t => {
+          const meta = data.metas.find(m => m.id === t.metaId) ?? null;
+          const faixaEfetiva = t.faixaManual ? t.faixa : calcularFaixaAutomaticaTarefa(t, meta);
+          return faixaEfetiva === 'urgente' && t.prazo && eAtrasada(t.prazo);
+        }).length;
+        return (
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-2">
+              {[
+                { sigla: 'UG', label: 'Urgente', count: ug, cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 font-bold' },
+                { sigla: 'AI', label: 'Alto Impacto', count: ai, cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 font-semibold' },
+                { sigla: 'MI', label: 'Médio Impacto', count: mi, cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' },
+                { sigla: 'BI', label: 'Baixo Impacto', count: bi, cls: 'bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-400' },
+              ].map(({ sigla, label, count, cls }) => (
+                <div key={sigla} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs ${cls}`}>
+                  <span className="font-bold">{sigla}</span>
+                  <span className="opacity-70">{label}</span>
+                  <span className="ml-1 font-bold text-sm">{count}</span>
+                </div>
+              ))}
+            </div>
+            {ugAtrasadas > 0 && (
+              <div className="flex items-center gap-2 text-xs text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2">
+                <AlertTriangle size={13} className="flex-shrink-0" />
+                <span className="font-semibold">Existem {ugAtrasadas} tarefa{ugAtrasadas > 1 ? 's' : ''} urgente{ugAtrasadas > 1 ? 's' : ''} atrasada{ugAtrasadas > 1 ? 's' : ''}.</span>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Filtros */}
       <div className="flex items-center gap-2 flex-wrap">
         {filtroBotoes.map(fb => (
@@ -581,26 +632,57 @@ export function PlanoAcaoPage() {
             ))}
           </Select>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Select
-              id="tarefa-categoria"
-              label="Categoria"
-              value={form.categoria}
-              onChange={e => setForm(f => ({ ...f, categoria: e.target.value as Categoria }))}
-            >
-              {categorias.map(c => <option key={c} value={c}>{c}</option>)}
-            </Select>
+          <Select
+            id="tarefa-categoria"
+            label="Categoria"
+            value={form.categoria}
+            onChange={e => setForm(f => ({ ...f, categoria: e.target.value as Categoria }))}
+          >
+            {categorias.map(c => <option key={c} value={c}>{c}</option>)}
+          </Select>
 
-            <Select
-              id="tarefa-faixa"
-              label="Faixa de impacto"
-              value={form.faixa}
-              onChange={e => setForm(f => ({ ...f, faixa: e.target.value as FaixaTarefa }))}
-            >
-              {faixaList.map(f => (
-                <option key={f} value={f}>{labelFaixa(f)}</option>
-              ))}
-            </Select>
+          {/* Faixa — auto ou manual */}
+          <div className="space-y-2">
+            {(() => {
+              const metaVinc = data.metas.find(m => m.id === form.metaId) ?? null;
+              const faixaAuto = calcularFaixaAutomaticaTarefa(form as Tarefa, metaVinc);
+              return (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-surface-600 dark:text-surface-300">
+                      Faixa de impacto
+                    </span>
+                    <label className="flex items-center gap-1.5 cursor-pointer text-xs text-surface-500 dark:text-surface-400 select-none">
+                      <input
+                        type="checkbox"
+                        checked={!!form.faixaManual}
+                        onChange={e => setForm(f => ({ ...f, faixaManual: e.target.checked }))}
+                        className="rounded"
+                      />
+                      Definir manualmente
+                    </label>
+                  </div>
+                  {form.faixaManual ? (
+                    <Select
+                      id="tarefa-faixa"
+                      label=""
+                      value={form.faixa}
+                      onChange={e => setForm(f => ({ ...f, faixa: e.target.value as FaixaTarefa }))}
+                    >
+                      {faixaList.map(f => (
+                        <option key={f} value={f}>{labelFaixa(f)}</option>
+                      ))}
+                    </Select>
+                  ) : (
+                    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs ${corFaixa(faixaAuto)}`}>
+                      <span className="font-bold">{siglaFaixa(faixaAuto)}</span>
+                      <span>{labelFaixa(faixaAuto)}</span>
+                      <span className="opacity-50 ml-1">· automático</span>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
 
           <div className="grid grid-cols-2 gap-3">

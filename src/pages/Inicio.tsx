@@ -9,10 +9,13 @@ import {
 import {
   Target, ListChecks, Zap, AlertTriangle, CheckCircle2,
   TrendingUp, TrendingDown, ArrowRight, ChevronRight,
-  Clock, Wallet, RefreshCw, Lightbulb,
+  Clock, RefreshCw, Lightbulb, Wallet,
 } from 'lucide-react';
 import { useApp } from '../hooks/useApp';
-import { formatarDinheiro, calcularMinutosDisponiveis, formatarMinutos } from '../utils';
+import {
+  formatarDinheiro, calcularMinutosDisponiveis, formatarMinutos,
+  eAtrasada, revisaoAtrasada, corClassificacaoPrazo, labelClassificacaoPrazo,
+} from '../utils';
 import {
   obterResumoDashboard, obterRankingMetas, obterMetasEmAtencao,
   obterAcoesPorStatus, obterAcoesPorFaixa, obterMetasPorCategoria,
@@ -50,14 +53,14 @@ function KpiCard({
   const grad = paleta[cor ?? 'blue'];
 
   return (
-    <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${grad} p-5 text-white shadow-lg`}>
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider opacity-75 leading-tight">{label}</p>
-          <p className="mt-2 text-4xl font-extrabold leading-none">{value}</p>
-          {sub && <p className="mt-1.5 text-xs opacity-60 leading-tight">{sub}</p>}
+    <div className={`relative overflow-hidden rounded-xl bg-gradient-to-br ${grad} px-4 py-3 text-white shadow-md`}>
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-wider opacity-70 leading-tight truncate">{label}</p>
+          <p className="mt-1 text-2xl font-extrabold leading-none">{value}</p>
+          {sub && <p className="mt-0.5 text-[10px] opacity-55 leading-tight truncate">{sub}</p>}
         </div>
-        {icon && <div className="opacity-15 -mt-1 -mr-2 w-16 h-16 flex items-end justify-end">{icon}</div>}
+        {icon && <div className="opacity-15 flex-shrink-0">{icon}</div>}
       </div>
     </div>
   );
@@ -77,40 +80,36 @@ function EficienciaCard({ eficiencia, qtd }: { eficiencia: number; qtd: number }
     '#fca5a5';
   const label =
     eficiencia >= 85 ? 'Foco saudável' :
-    eficiencia >= 60 ? 'Atenção à dispersão' :
-    'Risco alto de dispersão';
+    eficiencia >= 60 ? 'Atenção' :
+    'Risco de dispersão';
 
-  const r = 38;
+  const r = 26;
   const circ = 2 * Math.PI * r;
   const offset = circ * (1 - eficiencia / 100);
 
   return (
-    <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${bg} p-5 text-white shadow-lg h-full`}>
-      <p className="text-xs font-semibold uppercase tracking-wider opacity-75">Eficiência de Foco</p>
-      <div className="flex items-center gap-4 mt-3">
-        <div className="relative flex-shrink-0 w-24 h-24">
-          <svg width="96" height="96" viewBox="0 0 96 96" className="-rotate-90">
-            <circle cx="48" cy="48" r={r} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="10" />
+    <div className={`relative overflow-hidden rounded-xl bg-gradient-to-br ${bg} px-4 py-3 text-white shadow-md`}>
+      <p className="text-[10px] font-semibold uppercase tracking-wider opacity-70">Eficiência de Foco</p>
+      <div className="flex items-center gap-3 mt-1">
+        <div className="relative flex-shrink-0 w-14 h-14">
+          <svg width="56" height="56" viewBox="0 0 56 56" className="-rotate-90">
+            <circle cx="28" cy="28" r={r} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="7" />
             <circle
-              cx="48" cy="48" r={r} fill="none"
+              cx="28" cy="28" r={r} fill="none"
               stroke={strokeColor}
-              strokeWidth="10"
+              strokeWidth="7"
               strokeDasharray={circ}
               strokeDashoffset={offset}
               strokeLinecap="round"
             />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-2xl font-extrabold">{eficiencia}%</span>
+            <span className="text-base font-extrabold">{eficiencia}%</span>
           </div>
         </div>
-        <div>
-          <p className="text-base font-bold leading-tight">{label}</p>
-          <p className="text-xs opacity-60 mt-1">{qtd} meta{qtd !== 1 ? 's' : ''} ativa{qtd !== 1 ? 's' : ''}</p>
-          <p className="text-xs opacity-50 mt-0.5">Ideal: ≤ 3 metas ativas</p>
-          {qtd > 3 && (
-            <p className="text-xs opacity-50 mt-1">Mova metas para futuro para melhorar.</p>
-          )}
+        <div className="min-w-0">
+          <p className="text-sm font-bold leading-tight">{label}</p>
+          <p className="text-[10px] opacity-60 mt-0.5">{qtd} ativa{qtd !== 1 ? 's' : ''} · ideal ≤3</p>
         </div>
       </div>
     </div>
@@ -181,6 +180,14 @@ export function InicioPage() {
   // Métricas
   const resumo = useMemo(() => obterResumoDashboard(data.metas, data.tarefas), [data.metas, data.tarefas]);
   const rankingCompleto = useMemo(() => obterRankingMetas(data.metas, data.tarefas), [data.metas, data.tarefas]);
+  const tarefasAtrasadas = useMemo(() =>
+    data.tarefas.filter(t => t.status !== 'concluído' && t.prazo && eAtrasada(t.prazo)).length,
+    [data.tarefas]
+  );
+  const revisoesAtrasadas = useMemo(() =>
+    data.metas.filter(m => revisaoAtrasada(m)).length,
+    [data.metas]
+  );
   const metasAtencao = useMemo(() => obterMetasEmAtencao(data.metas, data.tarefas), [data.metas, data.tarefas]);
   const foco = useMemo(() => obterFocoRecomendado(data.metas, data.tarefas), [data.metas, data.tarefas]);
   const acoesPorStatus = useMemo(() => obterAcoesPorStatus(data.metas, data.tarefas), [data.metas, data.tarefas]);
@@ -244,86 +251,68 @@ export function InicioPage() {
         </div>
       </div>
 
-      {/* ── KPIs LINHA 1 ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-        <div className="col-span-2 xl:col-span-1">
-          <EficienciaCard eficiencia={resumo.eficienciaFoco} qtd={resumo.metasAtivas} />
+      {/* ── KPIs — 4 GRUPOS ── */}
+      <div className="space-y-3">
+        {/* Grupo 1: Foco e Metas */}
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-surface-400 dark:text-surface-500 mb-2 px-0.5">Foco e Metas</p>
+          <div className="grid grid-cols-3 gap-3">
+            <EficienciaCard eficiencia={resumo.eficienciaFoco} qtd={resumo.metasAtivas} />
+            <KpiCard label="Metas Ativas" value={resumo.metasAtivas} sub={`${resumo.metasFuturo} no futuro`} cor="blue" icon={<Target size={36} />} />
+            <KpiCard label="Planejar Futuro" value={resumo.metasFuturo} sub="Fora do foco atual" cor="purple" icon={<Lightbulb size={36} />} />
+          </div>
         </div>
-        <KpiCard
-          label="Metas Ativas"
-          value={resumo.metasAtivas}
-          sub={`${resumo.metasFuturo} no futuro`}
-          cor="blue"
-          icon={<Target size={56} />}
-        />
-        <KpiCard
-          label="Ações Totais"
-          value={resumo.acoesvinculas}
-          sub="Vinculadas a metas ativas"
-          cor="gray"
-          icon={<ListChecks size={56} />}
-        />
-        <KpiCard
-          label="Ações Concluídas"
-          value={resumo.acoesConcluidas}
-          sub={resumo.acoesvinculas > 0
-            ? `${Math.round((resumo.acoesConcluidas / resumo.acoesvinculas) * 100)}% do total`
-            : '—'}
-          cor="green"
-          icon={<CheckCircle2 size={56} />}
-        />
-        <KpiCard
-          label="Atendimento Médio"
-          value={`${resumo.atendimentoMedio}%`}
-          sub="Média de conclusão das metas"
-          cor={resumo.atendimentoMedio >= 70 ? 'green' : resumo.atendimentoMedio >= 30 ? 'yellow' : 'red'}
-          icon={<TrendingUp size={56} />}
-        />
-      </div>
 
-      {/* ── KPIs LINHA 2 ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <KpiCard
-          label="Metas em Atenção"
-          value={resumo.metasEmAtencao}
-          sub="Sem ações ou situação crítica"
-          cor={resumo.metasEmAtencao > 0 ? 'red' : 'green'}
-          icon={<AlertTriangle size={56} />}
-        />
-        <KpiCard
-          label="Planejar Futuro"
-          value={resumo.metasFuturo}
-          sub="Fora da eficiência de foco"
-          cor="purple"
-          icon={<Lightbulb size={56} />}
-        />
-        <KpiCard
-          label="Saldo do Mês"
-          value={formatarDinheiro(saldoMes)}
-          sub={`R${receitasMes.toLocaleString('pt-BR', { minimumFractionDigits: 0 })} rec · R${despesasMes.toLocaleString('pt-BR', { minimumFractionDigits: 0 })} desp`}
-          cor={saldoMes >= 0 ? 'green' : 'red'}
-          icon={saldoMes >= 0 ? <TrendingUp size={56} /> : <TrendingDown size={56} />}
-        />
-        <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-700 to-slate-600 p-5 text-white shadow-lg`}>
-          <p className="text-xs font-semibold uppercase tracking-wider opacity-75">Tempo hoje</p>
-          {minutosDisponiveis > 0 ? (
-            <>
-              <p className="mt-2 text-4xl font-extrabold leading-none">{formatarMinutos(minutosDisponiveis)}</p>
-              <p className="mt-1.5 text-xs opacity-60">disponíveis hoje</p>
-            </>
-          ) : (
-            <>
-              <p className="mt-2 text-lg font-bold leading-none opacity-70">Não cadastrado</p>
-              <button
-                onClick={() => navigate('/agenda')}
-                className="mt-2 text-xs opacity-70 hover:opacity-100 underline"
-              >
-                Cadastrar →
-              </button>
-            </>
-          )}
-          <div className="opacity-15 absolute -right-2 -bottom-2">
-            <Clock size={64} />
+        {/* Grupo 2: Execução */}
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-surface-400 dark:text-surface-500 mb-2 px-0.5">Execução</p>
+          <div className="grid grid-cols-3 gap-3">
+            <KpiCard label="Ações Totais" value={resumo.acoesvinculas} sub="Vinculadas a metas ativas" cor="gray" icon={<ListChecks size={36} />} />
+            <KpiCard label="Ações Concluídas" value={resumo.acoesConcluidas} sub={resumo.acoesvinculas > 0 ? `${Math.round((resumo.acoesConcluidas / resumo.acoesvinculas) * 100)}% do total` : '—'} cor="green" icon={<CheckCircle2 size={36} />} />
+            <KpiCard label="Atendimento Médio" value={`${resumo.atendimentoMedio}%`} sub="Média de conclusão" cor={resumo.atendimentoMedio >= 70 ? 'green' : resumo.atendimentoMedio >= 30 ? 'yellow' : 'red'} icon={<TrendingUp size={36} />} />
+          </div>
+        </div>
+
+        {/* Grupo 3: Alertas */}
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-surface-400 dark:text-surface-500 mb-2 px-0.5">Alertas</p>
+          <div className="grid grid-cols-3 gap-3">
+            <KpiCard label="Metas em Atenção" value={resumo.metasEmAtencao} sub="Crítica ou sem ações" cor={resumo.metasEmAtencao > 0 ? 'red' : 'green'} icon={<AlertTriangle size={36} />} />
+            <KpiCard label="Tarefas Atrasadas" value={tarefasAtrasadas} sub="Prazo já passou" cor={tarefasAtrasadas > 0 ? 'red' : 'green'} icon={<Zap size={36} />} />
+            <KpiCard label="Revisões Atrasadas" value={revisoesAtrasadas} sub="Metas sem revisão" cor={revisoesAtrasadas > 0 ? 'yellow' : 'green'} icon={<RefreshCw size={36} />} />
+          </div>
+        </div>
+
+        {/* Grupo 4: Apoio */}
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-surface-400 dark:text-surface-500 mb-2 px-0.5">Apoio</p>
+          <div className="grid grid-cols-2 gap-3">
+            <KpiCard
+              label="Saldo do Mês"
+              value={formatarDinheiro(saldoMes)}
+              sub={`R${receitasMes.toLocaleString('pt-BR', { minimumFractionDigits: 0 })} rec · R${despesasMes.toLocaleString('pt-BR', { minimumFractionDigits: 0 })} desp`}
+              cor={saldoMes >= 0 ? 'green' : 'red'}
+              icon={saldoMes >= 0 ? <TrendingUp size={36} /> : <TrendingDown size={36} />}
+            />
+            <div className={`relative overflow-hidden rounded-xl bg-gradient-to-br from-slate-700 to-slate-600 px-4 py-3 text-white shadow-md`}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider opacity-70">Tempo hoje</p>
+              {minutosDisponiveis > 0 ? (
+                <>
+                  <p className="mt-1 text-2xl font-extrabold leading-none">{formatarMinutos(minutosDisponiveis)}</p>
+                  <p className="mt-0.5 text-[10px] opacity-55">disponíveis hoje</p>
+                </>
+              ) : (
+                <>
+                  <p className="mt-1 text-base font-bold leading-none opacity-70">Não cadastrado</p>
+                  <button onClick={() => navigate('/agenda')} className="mt-1 text-[10px] opacity-70 hover:opacity-100 underline">
+                    Cadastrar →
+                  </button>
+                </>
+              )}
+              <div className="opacity-15 absolute right-2 bottom-1">
+                <Clock size={36} />
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -456,7 +445,7 @@ export function InicioPage() {
             </div>
           </div>
           <div>
-            <p className="text-xs font-semibold text-surface-400 dark:text-surface-500 uppercase tracking-wide mb-2">Saúde</p>
+            <p className="text-xs font-semibold text-surface-400 dark:text-surface-500 uppercase tracking-wide mb-2">Saúde da Meta</p>
             <div className="flex flex-wrap gap-1.5">
               {opcoesSaude.map(o => (
                 <button
@@ -506,7 +495,7 @@ export function InicioPage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-surface-100 dark:border-surface-700 bg-surface-50 dark:bg-surface-700/30">
-                    {['Grau', 'Meta', 'Categoria', 'Ações', 'Concl.', 'Atendimento', 'Atrasadas', 'Revisão', 'Saúde'].map(h => (
+                    {['Grau', 'Meta', 'Categoria', 'Prazo', 'Ações', 'Concl.', 'Atendimento', 'Atrasadas', 'Revisão', 'Saúde'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-surface-400 dark:text-surface-500 uppercase tracking-wide whitespace-nowrap">
                         {h}
                       </th>
@@ -528,6 +517,13 @@ export function InicioPage() {
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <span className="text-xs text-surface-500 dark:text-surface-400">{mm.meta.categoria}</span>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {mm.meta.classificacaoPrazo ? (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${corClassificacaoPrazo(mm.meta.classificacaoPrazo)}`}>
+                            {labelClassificacaoPrazo(mm.meta.classificacaoPrazo)}
+                          </span>
+                        ) : <span className="text-xs text-surface-300 dark:text-surface-600">—</span>}
                       </td>
                       <td className="px-4 py-3 text-center">
                         <span className="text-sm font-bold text-surface-700 dark:text-surface-200">{mm.totalAcoes}</span>

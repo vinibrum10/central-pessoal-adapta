@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
-import type { AppData, Tarefa, FaixaTarefa, StatusTarefa, Meta, FrequenciaRevisao, StatusMeta, EventoAgenda, ConfiguracaoAgenda } from '../types';
+import type { AppData, Tarefa, FaixaTarefa, StatusTarefa, Meta, FrequenciaRevisao, StatusMeta, EventoAgenda, ConfiguracaoAgenda, ClassificacaoPrazoMeta } from '../types';
+import { calcularClassificacaoPrazo } from '../utils';
 import { dadosDemonstracaoInicial } from '../data/dadosDemonstracao';
 
 const STORAGE_KEY = 'adapta-central-pessoal-v1';
@@ -21,6 +22,11 @@ function migrarMetas(raw: Record<string, unknown>[]): Meta[] {
         ? (m.frequenciaRevisao as FrequenciaRevisao)
         : 'semanal';
 
+    const prazoFinal = (m.prazoFinal as string) || '';
+    const dataInicio = (m.dataInicio as string) || (m.dataCriacao as string) || new Date().toISOString().split('T')[0];
+    const classificacaoPrazo: ClassificacaoPrazoMeta | undefined =
+      dataInicio && prazoFinal ? calcularClassificacaoPrazo(dataInicio, prazoFinal) : undefined;
+
     return {
       id: (m.id as string) || '',
       nome: (m.nome as string) || '',
@@ -29,7 +35,9 @@ function migrarMetas(raw: Record<string, unknown>[]): Meta[] {
       status,
       motivo: (m.motivo as string) || '',
       resultadoEsperado: (m.resultadoEsperado as string) || '',
-      prazoFinal: (m.prazoFinal as string) || '',
+      dataInicio,
+      prazoFinal,
+      classificacaoPrazo,
       frequenciaRevisao: freq,
       dataCriacao: (m.dataCriacao as string) || '',
       dataUltimaRevisao: (m.dataUltimaRevisao as string | null) ?? null,
@@ -113,6 +121,7 @@ function migrarTarefas(raw: Record<string, unknown>[]): Tarefa[] {
       prazo: (t.prazo as string) || '',
       tempoEstimado: (t.tempoEstimado as number) || 30,
       faixa,
+      faixaManual: Boolean(t.faixaManual),
       status,
       energiaNecessaria: (t.energiaNecessaria as Tarefa['energiaNecessaria']) || 'média',
       observacoes: (t.observacoes as string) || '',

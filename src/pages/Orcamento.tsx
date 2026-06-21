@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import {
-  Wallet, Plus, Trash2, Pencil, TrendingUp, TrendingDown,
+  Plus, Trash2, Pencil, TrendingUp, TrendingDown,
   CreditCard, AlertTriangle, PiggyBank, Package
 } from 'lucide-react';
 import { useApp } from '../hooks/useApp';

@@ -2,10 +2,10 @@ import { useState, useCallback } from 'react';
 import {
   Target, Plus, Pencil, Trash2, CheckCircle, XCircle,
   ChevronDown, ChevronUp, RefreshCw, Lightbulb,
-  AlertTriangle, ArrowRight, Calendar, Zap, RotateCcw
+  AlertTriangle, ArrowRight, Calendar, Zap, RotateCcw, Clock,
 } from 'lucide-react';
 import { useApp } from '../hooks/useApp';
-import type { Meta, Categoria, StatusMeta, FrequenciaRevisao } from '../types';
+import type { Meta, Categoria, StatusMeta, FrequenciaRevisao, ClassificacaoPrazoMeta } from '../types';
 import { Card, CardBody } from '../components/Card';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
@@ -15,6 +15,7 @@ import {
   corCategoria, formatarData, gerarId, hojeISO,
   revisaoAtrasada, proximaRevisaoISO, labelFrequencia,
   calcularEficienciaFoco, mensagemEficiencia, corEficiencia, corBarraEficiencia,
+  calcularClassificacaoPrazo, labelClassificacaoPrazo, corClassificacaoPrazo,
 } from '../utils';
 
 const categorias: Categoria[] = ['Profissão', 'Estudos', 'Finanças', 'Projetos', 'Desenvolvimento Pessoal'];
@@ -25,6 +26,7 @@ type FormAtiva = {
   nome: string;
   grau: number | '';
   categoria: Categoria;
+  dataInicio: string;
   prazoFinal: string;
   motivo: string;
   resultadoEsperado: string;
@@ -50,6 +52,7 @@ const formAtivaVazio = (): FormAtiva => ({
   nome: '',
   grau: '',
   categoria: 'Projetos',
+  dataInicio: hojeISO(),
   prazoFinal: '',
   motivo: '',
   resultadoEsperado: '',
@@ -113,6 +116,12 @@ function EficienciaFoco({ qtd }: { qtd: number }) {
 export function MetasPage() {
   const { data, setData } = useApp();
   const [aba, setAba] = useState<'ativas' | 'futuro'>('ativas');
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  const mostrarToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 3000);
+  };
   const [expandidaId, setExpandidaId] = useState<string | null>(null);
 
   // Modal meta ativa (criar/editar)
@@ -178,6 +187,7 @@ export function MetasPage() {
       nome: meta.nome,
       grau: meta.grau,
       categoria: meta.categoria,
+      dataInicio: meta.dataInicio || meta.dataCriacao || hojeISO(),
       prazoFinal: meta.prazoFinal,
       motivo: meta.motivo,
       resultadoEsperado: meta.resultadoEsperado,
@@ -192,13 +202,19 @@ export function MetasPage() {
   const salvarAtiva = useCallback(() => {
     const e = validarAtiva(formAtiva, metaEditando?.id);
     if (Object.keys(e).length > 0) { setErrosAtiva(e); return; }
+    const dataInicio = formAtiva.dataInicio || hojeISO();
+    const classificacaoPrazo: ClassificacaoPrazoMeta | undefined =
+      dataInicio && formAtiva.prazoFinal
+        ? calcularClassificacaoPrazo(dataInicio, formAtiva.prazoFinal)
+        : undefined;
+
     setData(d => {
       if (metaEditando) {
         return {
           ...d,
           metas: d.metas.map(m =>
             m.id === metaEditando.id
-              ? { ...m, ...formAtiva, grau: Number(formAtiva.grau) || 0, dataUltimaAcao: hojeISO() }
+              ? { ...m, ...formAtiva, grau: Number(formAtiva.grau) || 0, dataInicio, classificacaoPrazo, dataUltimaAcao: hojeISO() }
               : m
           ),
         };
@@ -211,7 +227,9 @@ export function MetasPage() {
         status: formAtiva.status,
         motivo: formAtiva.motivo,
         resultadoEsperado: formAtiva.resultadoEsperado,
+        dataInicio,
         prazoFinal: formAtiva.prazoFinal,
+        classificacaoPrazo,
         frequenciaRevisao: formAtiva.frequenciaRevisao,
         dataCriacao: hojeISO(),
         dataUltimaRevisao: null,
@@ -231,6 +249,7 @@ export function MetasPage() {
 
   const confirmarMoverParaFuturo = useCallback(() => {
     if (!metaMoverFuturo) return;
+    const nomeMeta = metaMoverFuturo.nome;
     setData(d => ({
       ...d,
       metas: d.metas.map(m =>
@@ -240,7 +259,8 @@ export function MetasPage() {
       ),
     }));
     setModalMoverFuturo(false);
-    setAba('futuro');
+    // Permanece na aba Ativas — não redireciona para Futuro
+    mostrarToast(`"${nomeMeta}" movida para Planejar para o Futuro.`);
   }, [metaMoverFuturo, setData]);
 
   // ---- CRUD Ideia Futura ----
@@ -394,6 +414,12 @@ export function MetasPage() {
                   </Badge>
                 )}
                 <Badge className={`text-[10px] ${corCategoria(meta.categoria)}`}>{meta.categoria}</Badge>
+                {meta.classificacaoPrazo && (
+                  <span className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${corClassificacaoPrazo(meta.classificacaoPrazo)}`}>
+                    <Clock size={9} />
+                    {labelClassificacaoPrazo(meta.classificacaoPrazo)}
+                  </span>
+                )}
               </div>
               <h3 className="font-semibold text-surface-900 dark:text-white leading-tight">{meta.nome}</h3>
               <div className="flex flex-wrap items-center gap-3 mt-1.5 text-xs text-surface-400 dark:text-surface-500">
@@ -500,7 +526,19 @@ export function MetasPage() {
           <Lightbulb size={15} className="text-amber-500" />
         </div>
         <div className="flex-1 min-w-0">
-          <Badge className={`text-[10px] mb-1 ${corCategoria(meta.categoria)}`}>{meta.categoria}</Badge>
+          <div className="flex flex-wrap gap-1 mb-1">
+            <Badge className={`text-[10px] ${corCategoria(meta.categoria)}`}>{meta.categoria}</Badge>
+            {meta.grau > 0 && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-300">
+                Rank {meta.grau}
+              </span>
+            )}
+            {meta.classificacaoPrazo && (
+              <Badge className={`text-[10px] ${corClassificacaoPrazo(meta.classificacaoPrazo)}`}>
+                {labelClassificacaoPrazo(meta.classificacaoPrazo)}
+              </Badge>
+            )}
+          </div>
           <h3 className="font-semibold text-surface-900 dark:text-white text-sm leading-tight">{meta.nome}</h3>
           {meta.motivo && (
             <p className="text-xs text-surface-400 dark:text-surface-500 mt-1 line-clamp-2">{meta.motivo}</p>
@@ -587,17 +625,29 @@ export function MetasPage() {
       </div>
       <div className="grid grid-cols-2 gap-3">
         <Input
+          id="meta-ini" label="Data de início" type="date"
+          value={form.dataInicio} onChange={e => setForm({ ...form, dataInicio: e.target.value })}
+        />
+        <Input
           id="meta-prazo" label="Prazo final" required type="date"
           value={form.prazoFinal} onChange={e => setForm({ ...form, prazoFinal: e.target.value })}
           error={erros.prazoFinal}
         />
-        <Select
-          id="meta-freq" label="Frequência de revisão"
-          value={form.frequenciaRevisao} onChange={e => setForm({ ...form, frequenciaRevisao: e.target.value as FrequenciaRevisao })}
-        >
-          {frequencias.map(f => <option key={f} value={f}>{labelFrequencia(f)}</option>)}
-        </Select>
       </div>
+      {form.dataInicio && form.prazoFinal && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-surface-400 dark:text-surface-500">Classificação calculada:</span>
+          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${corClassificacaoPrazo(calcularClassificacaoPrazo(form.dataInicio, form.prazoFinal))}`}>
+            {labelClassificacaoPrazo(calcularClassificacaoPrazo(form.dataInicio, form.prazoFinal))}
+          </span>
+        </div>
+      )}
+      <Select
+        id="meta-freq" label="Frequência de revisão"
+        value={form.frequenciaRevisao} onChange={e => setForm({ ...form, frequenciaRevisao: e.target.value as FrequenciaRevisao })}
+      >
+        {frequencias.map(f => <option key={f} value={f}>{labelFrequencia(f)}</option>)}
+      </Select>
       <Textarea
         id="meta-motivo" label="Por que esta meta é importante?"
         value={form.motivo} onChange={e => setForm({ ...form, motivo: e.target.value })}
@@ -621,6 +671,13 @@ export function MetasPage() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-5 animate-fade-in">
+      {/* Toast de feedback */}
+      {toastMsg && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-surface-900 dark:bg-surface-700 text-white text-sm px-5 py-3 rounded-2xl shadow-xl animate-fade-in flex items-center gap-2">
+          <CheckCircle size={14} className="text-emerald-400 flex-shrink-0" />
+          {toastMsg}
+        </div>
+      )}
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
         <div>
