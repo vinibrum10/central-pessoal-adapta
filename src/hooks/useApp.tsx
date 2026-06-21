@@ -182,6 +182,12 @@ function migrarDados(raw: Record<string, unknown>): AppData {
     configuracoesAgenda: Array.isArray(raw.configuracoesAgenda)
       ? (raw.configuracoesAgenda as ConfiguracaoAgenda[])
       : [],
+    leiturasDiarias: Array.isArray(raw.leiturasDiarias)
+      ? (raw.leiturasDiarias as AppData['leiturasDiarias'])
+      : [],
+    fontesLeitura: Array.isArray(raw.fontesLeitura)
+      ? (raw.fontesLeitura as AppData['fontesLeitura'])
+      : [],
   };
 }
 
@@ -268,6 +274,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       bens: [],
       eventosAgenda: [],
       configuracoesAgenda: [],
+      leiturasDiarias: [],
+      fontesLeitura: [],
     };
     setDataState(empty);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(empty));

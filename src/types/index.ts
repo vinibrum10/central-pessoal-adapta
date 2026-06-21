@@ -250,6 +250,35 @@ export interface DisponibilidadeDia {
   eventos: EventoAgenda[];
 }
 
+// ---- LEITURA DIÁRIA ----
+export type TipoLeitura = 'vaga' | 'tecnologia' | 'artigo' | 'documento' | 'link' | 'geral';
+export type StatusLeitura = 'pendente' | 'lido' | 'arquivado';
+export type PrioridadeLeitura = 'normal' | 'importante';
+
+export interface LeituraDiaria {
+  id: string;
+  origem: string;
+  titulo: string;
+  resumo?: string;
+  tipo: TipoLeitura;
+  url?: string;
+  driveFileId?: string;
+  categoria: string;
+  prioridade: PrioridadeLeitura;
+  status: StatusLeitura;
+  dataLeitura?: string | null;
+  dataCriacao: string;
+}
+
+export interface FonteLeitura {
+  id: string;
+  nome: string;
+  tipo: string;
+  driveFolderId?: string;
+  ativa: boolean;
+  ultimaSincronizacao?: string | null;
+}
+
 // ---- STORE GLOBAL (LocalStorage) ----
 export interface AppData {
   metas: Meta[];
@@ -265,4 +294,6 @@ export interface AppData {
   configuracoes: Configuracoes;
   eventosAgenda: EventoAgenda[];
   configuracoesAgenda: ConfiguracaoAgenda[];
+  leiturasDiarias: LeituraDiaria[];
+  fontesLeitura: FonteLeitura[];
 }

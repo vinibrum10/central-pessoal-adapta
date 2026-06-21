@@ -1,6 +1,97 @@
-# Central Pessoal ADAPTA 🚀
+# Central Pessoal ADAPTA
 
-> Sua central de comando pessoal: **Meta → Plano → Tarefa → Tempo → Finanças**
+> Sua central de comando pessoal: **Meta → Plano → Tarefa → Tempo → Finanças → Leitura**
+
+Stack: React 18 + TypeScript + Vite + Tailwind · Supabase · Google Calendar + Drive · Deploy: Vercel
+
+---
+
+## Setup rápido
+
+```bash
+cp .env.example .env   # preencha as variáveis
+npm install
+npm run dev            # http://localhost:5173
+```
+
+---
+
+## Supabase (banco de dados + auth)
+
+1. Crie projeto em [app.supabase.com](https://app.supabase.com).
+2. Copie **Project URL** e **anon key** para o `.env`.
+3. No **SQL Editor**, execute `supabase/migrations/001_initial_schema.sql`.
+4. Todas as tabelas têm Row Level Security ativado.
+
+Tabelas criadas: `profiles`, `metas`, `tarefas`, `receitas`, `despesas`,
+`cartoes`, `dividas`, `reservas`, `bens`, `eventos_agenda`,
+`configuracoes_agenda`, `leituras_diarias`, `fontes_leitura`.
+
+---
+
+## Google Calendar
+
+1. Crie projeto em [console.cloud.google.com](https://console.cloud.google.com).
+2. Habilite **Google Calendar API** e **Google Drive API**.
+3. Crie credencial OAuth 2.0 → tipo Aplicativo Web.
+4. Adicione as origens: `http://localhost:5173` e `https://seu-app.vercel.app`.
+5. Copie **Client ID** para `VITE_GOOGLE_CLIENT_ID`.
+6. No app: **Agenda e Tempo** → conectar Google Calendar.
+
+**Nunca** coloque o `client_secret` no frontend.
+
+---
+
+## Google Drive (Leitura Diária)
+
+1. Crie uma pasta no Drive onde o Claude Code vai depositar arquivos.
+2. Copie o ID da pasta da URL → `VITE_GOOGLE_DRIVE_FOLDER_ID`.
+3. No app: **Leitura Diária** → Sincronizar Drive.
+
+Classificação automática por palavra-chave no nome:
+- `vaga / emprego / job` → Vagas de emprego
+- `tecnologia / tech / IA / AI` → Atualização de tecnologia
+- Demais → Geral
+
+---
+
+## Deploy na Vercel
+
+1. Importe o repo em [vercel.com](https://vercel.com).
+2. Configure as variáveis de ambiente (mesmas do `.env`).
+3. O `vercel.json` já garante que rotas como `/metas` e `/plano` funcionem ao recarregar.
+
+---
+
+## Acesso pelo celular (PWA)
+
+- **Android (Chrome):** Menu → "Adicionar à tela inicial".
+- **iPhone (Safari):** Compartilhar → "Adicionar à Tela de Início".
+- App abre em modo tela cheia, sem barra de navegador.
+
+---
+
+## Testes manuais
+
+### Banco
+- [ ] Criar meta → recarregar → meta persiste
+- [ ] Acessar de outro dispositivo com a mesma conta
+
+### Deploy
+- [ ] Abrir `/metas` direto → não dá 404
+- [ ] Recarregar qualquer rota → funciona
+
+### Calendário
+- [ ] Conectar Google Calendar em Agenda e Tempo
+- [ ] Ver painel de disponibilidade no Plano de Ação
+- [ ] Transformar evento de fim de semana em tarefa
+
+### Leitura Diária
+- [ ] Sincronizar Drive → itens aparecem
+- [ ] Marcar como lido
+- [ ] Transformar em tarefa
+
+---
 
 ## Como rodar
 

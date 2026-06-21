@@ -1,10 +1,11 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Target, ListChecks, Clock,
-  Wallet, Settings, Menu, X, Moon, Sun, Zap
+  Wallet, Settings, Menu, X, Moon, Sun, Zap, BookOpen, LogOut,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../hooks/useApp';
+import { useAuth } from '../contexts/AuthContext';
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -12,12 +13,14 @@ const navItems = [
   { to: '/plano', label: 'Plano de Ação', icon: ListChecks },
   { to: '/agenda', label: 'Agenda e Tempo', icon: Clock },
   { to: '/orcamento', label: 'Orçamento', icon: Wallet },
+  { to: '/leitura', label: 'Leitura Diária', icon: BookOpen },
   { to: '/configuracoes', label: 'Configurações', icon: Settings },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { data, tema, toggleTema } = useApp();
+  const { user, signOut, supabaseAtivo } = useAuth();
   const location = useLocation();
 
   const currentPage = navItems.find(n =>
@@ -45,6 +48,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div className="px-4 py-3 border-b border-surface-200 dark:border-surface-700">
           <p className="text-xs text-surface-400 dark:text-surface-500">Bem-vindo,</p>
           <p className="font-semibold text-sm text-surface-900 dark:text-white">{data.configuracoes.nomeUsuario}</p>
+          {supabaseAtivo && user && (
+            <p className="text-[10px] text-surface-400 dark:text-surface-500 truncate">{user.email}</p>
+          )}
         </div>
 
         {/* Nav */}
@@ -69,8 +75,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
 
-        {/* Theme toggle */}
-        <div className="p-4 border-t border-surface-200 dark:border-surface-700">
+        {/* Theme toggle + logout */}
+        <div className="p-4 border-t border-surface-200 dark:border-surface-700 space-y-1">
           <button
             onClick={toggleTema}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors"
@@ -78,6 +84,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {tema === 'escuro' ? <Sun size={16} /> : <Moon size={16} />}
             {tema === 'escuro' ? 'Modo Claro' : 'Modo Escuro'}
           </button>
+          {supabaseAtivo && user && (
+            <button
+              onClick={signOut}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-danger-500 dark:text-danger-400 hover:bg-danger-50 dark:hover:bg-danger-900/20 transition-colors"
+            >
+              <LogOut size={16} />
+              Sair
+            </button>
+          )}
         </div>
       </aside>
 
