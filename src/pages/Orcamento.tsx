@@ -21,6 +21,30 @@ import { Modal } from '../components/Modal';
 import { Input, Select, Textarea, Checkbox } from '../components/FormFields';
 import { formatarDinheiro, formatarData, isoParaDataBR, gerarId, hojeISO } from '../utils';
 
+const SELECT_CLASS = 'px-2 py-2.5 rounded-lg border text-sm bg-white dark:bg-surface-900 border-surface-300 dark:border-surface-600 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500';
+
+function DateSelectBR({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const [d, m, y] = value ? value.split('-').map(Number) : [new Date().getDate(), new Date().getMonth() + 1, new Date().getFullYear()];
+  const diasNoMes = new Date(y ?? new Date().getFullYear(), m ?? 1, 0).getDate();
+  const update = (day: number, mon: number, yr: number) => onChange(`${yr}-${String(mon).padStart(2,'0')}-${String(Math.min(day, new Date(yr, mon, 0).getDate())).padStart(2,'0')}`);
+  return (
+    <div>
+      <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">{label}</label>
+      <div className="flex gap-1">
+        <select value={d} onChange={e => update(Number(e.target.value), m ?? 1, y ?? new Date().getFullYear())} className={`w-16 ${SELECT_CLASS}`}>
+          {Array.from({length: diasNoMes}, (_, i) => i + 1).map(n => <option key={n} value={n}>{String(n).padStart(2,'0')}</option>)}
+        </select>
+        <select value={m} onChange={e => update(d ?? 1, Number(e.target.value), y ?? new Date().getFullYear())} className={`flex-1 ${SELECT_CLASS}`}>
+          {MESES.map((mes, i) => <option key={i} value={i+1}>{mes}</option>)}
+        </select>
+        <select value={y} onChange={e => update(d ?? 1, m ?? 1, Number(e.target.value))} className={`w-24 ${SELECT_CLASS}`}>
+          {[-1,0,1,2,3].map(offset => { const yr = new Date().getFullYear() + offset; return <option key={yr} value={yr}>{yr}</option>; })}
+        </select>
+      </div>
+    </div>
+  );
+}
+
 type TipoCobrancaCartao = 'avista' | 'parcelado';
 
 interface FormDespesaExtra {
@@ -589,7 +613,7 @@ export function OrcamentoPage() {
           <Input id="rec-desc" label="Descrição" required value={formReceita.descricao} onChange={e => setFormReceita(f => ({ ...f, descricao: e.target.value }))} placeholder="Ex: Salário, freelance..." />
           <div className="grid grid-cols-2 gap-3">
             <Input id="rec-valor" label="Valor (R$)" required type="number" min="0" step="0.01" value={formReceita.valor || ''} onChange={e => setFormReceita(f => ({ ...f, valor: Number(e.target.value) }))} />
-            <Input id="rec-data" label="Data" type="date" value={formReceita.data} onChange={e => setFormReceita(f => ({ ...f, data: e.target.value }))} />
+            <DateSelectBR label="Data" value={formReceita.data} onChange={v => setFormReceita(f => ({ ...f, data: v }))} />
           </div>
           <Select id="rec-cat" label="Categoria" value={formReceita.categoria} onChange={e => setFormReceita(f => ({ ...f, categoria: e.target.value as CategoriaFinanceira }))}>
             {categoriasReceita.map(c => <option key={c} value={c}>{c}</option>)}
@@ -607,10 +631,7 @@ export function OrcamentoPage() {
           <Input id="desp-desc" label="Descrição" required value={formDespesa.descricao} onChange={e => setFormDespesa(f => ({ ...f, descricao: e.target.value }))} placeholder="Ex: Aluguel, supermercado..." />
           <div className="grid grid-cols-2 gap-3">
             <Input id="desp-valor" label="Valor (R$)" required type="number" min="0" step="0.01" value={formDespesa.valor || ''} onChange={e => setFormDespesa(f => ({ ...f, valor: Number(e.target.value) }))} />
-            <div>
-              <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Data</label>
-              <input type="date" lang="pt-BR" value={formDespesa.data} onChange={e => setFormDespesa(f => ({ ...f, data: e.target.value }))} className="w-full px-3 py-2.5 rounded-lg border text-sm bg-white dark:bg-surface-900 border-surface-300 dark:border-surface-600 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500" />
-            </div>
+            <DateSelectBR label="Data" value={formDespesa.data} onChange={v => setFormDespesa(f => ({ ...f, data: v }))} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Select id="desp-cat" label="Categoria" value={formDespesa.categoria} onChange={e => setFormDespesa(f => ({ ...f, categoria: e.target.value as CategoriaFinanceira }))}>
@@ -779,7 +800,7 @@ export function OrcamentoPage() {
             <Input id="div-pagas" label="Parcelas pagas" type="number" min="0" value={formDivida.parcelasPagas} onChange={e => setFormDivida(f => ({ ...f, parcelasPagas: Number(e.target.value) }))} />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Input id="div-inicio" label="Data início" type="date" value={formDivida.dataInicio ?? ''} onChange={e => setFormDivida(f => ({ ...f, dataInicio: e.target.value }))} />
+            <DateSelectBR label="Data início" value={formDivida.dataInicio ?? hojeISO()} onChange={v => setFormDivida(f => ({ ...f, dataInicio: v }))} />
             <Input id="div-diavenc" label="Dia vencimento" type="number" min="1" max="31" value={formDivida.diaVencimento ?? 10} onChange={e => setFormDivida(f => ({ ...f, diaVencimento: Number(e.target.value) }))} />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -808,7 +829,7 @@ export function OrcamentoPage() {
             <Input id="res-meta" label="Meta (R$)" type="number" min="0" value={formReserva.metaReserva || ''} onChange={e => setFormReserva(f => ({ ...f, metaReserva: Number(e.target.value) }))} />
             <Input id="res-atual" label="Valor atual (R$)" type="number" min="0" value={formReserva.valorAtual || ''} onChange={e => setFormReserva(f => ({ ...f, valorAtual: Number(e.target.value) }))} />
           </div>
-          <Input id="res-prazo" label="Prazo desejado" type="date" value={formReserva.prazoDesejado} onChange={e => setFormReserva(f => ({ ...f, prazoDesejado: e.target.value }))} />
+          <DateSelectBR label="Prazo desejado" value={formReserva.prazoDesejado || hojeISO()} onChange={v => setFormReserva(f => ({ ...f, prazoDesejado: v }))} />
           <div className="flex gap-3 pt-2">
             <Button variant="secondary" className="flex-1" onClick={() => setModal(null)}>Cancelar</Button>
             <Button className="flex-1" onClick={salvarReserva}>Salvar</Button>
