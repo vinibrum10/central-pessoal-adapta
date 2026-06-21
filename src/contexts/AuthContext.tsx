@@ -61,7 +61,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(data.session);
       const u = data.session?.user ?? null;
       setUser(u);
-      if (u) setPerfil(await carregarPerfil(u.id));
+      if (u) {
+        let p = await carregarPerfil(u.id);
+        if (!p && u.email) {
+          // Profile não existe — criar como pendente (fallback para OAuth)
+          await supabase.from('profiles').upsert({
+            id: u.id,
+            email: u.email,
+            nome: u.user_metadata?.name ?? u.user_metadata?.nome ?? u.email.split('@')[0],
+            role: 'visualizador',
+            status: 'pendente',
+            updated_at: new Date().toISOString(),
+          });
+          p = await carregarPerfil(u.id);
+        }
+        setPerfil(p);
+      }
       setLoading(false);
     });
 
@@ -69,8 +84,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(newSession);
       const u = newSession?.user ?? null;
       setUser(u);
-      if (u) setPerfil(await carregarPerfil(u.id));
-      else setPerfil(null);
+      if (u) {
+        let p = await carregarPerfil(u.id);
+        if (!p && u.email) {
+          // Profile não existe — criar como pendente (fallback para OAuth)
+          await supabase.from('profiles').upsert({
+            id: u.id,
+            email: u.email,
+            nome: u.user_metadata?.name ?? u.user_metadata?.nome ?? u.email.split('@')[0],
+            role: 'visualizador',
+            status: 'pendente',
+            updated_at: new Date().toISOString(),
+          });
+          p = await carregarPerfil(u.id);
+        }
+        setPerfil(p);
+      } else {
+        setPerfil(null);
+      }
     });
 
     return () => subscription.unsubscribe();

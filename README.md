@@ -27,9 +27,48 @@ O app **exige Supabase configurado** para abrir em produção. Sem as variáveis
 
 1. No painel do Supabase, vá em **SQL Editor → New Query**.
 2. Cole o conteúdo de `supabase/migrations/001_initial_schema.sql`.
+3. Clique em **Run**. Isso cria 13 tabelas com Row Level Security ativo.
+4. Cole o conteúdo de `supabase/migrations/002_trigger_profile.sql`.
+5. Clique em **Run**. Isso cria o trigger automático de profile e a policy RLS para admin.
+
+---
+
+## 2b · Como reparar usuários sem profile (usuários existentes)
+
+Se você já tem usuários cadastrados que não têm profile (cadastrados antes da migration 002), execute:
+
+1. No painel do Supabase, vá em **SQL Editor → New Query**.
+2. Cole o conteúdo de `supabase/repair_profiles.sql`.
 3. Clique em **Run**.
 
-Isso cria 13 tabelas com Row Level Security ativo.
+Isso cria profiles para todos os usuários sem profile e promove `vinibrum10@gmail.com` para admin.
+
+---
+
+## 2c · Como configurar login com Google
+
+1. No Supabase Dashboard → **Authentication → Providers → Google**
+2. Ativar e inserir **Client ID** e **Client Secret** do Google Cloud Console
+3. Redirect URLs: `https://[seu-projeto].supabase.co/auth/v1/callback`
+4. No Google Cloud Console, adicione a mesma URL como "Authorized redirect URI"
+5. Adicione `VITE_GOOGLE_CLIENT_ID` nas variáveis de ambiente do app (para habilitar o botão na tela de login)
+
+---
+
+## 2d · Como configurar login com Microsoft
+
+1. No Supabase Dashboard → **Authentication → Providers → Azure**
+2. Inserir **Application (client) ID** e **Client Secret** do Microsoft Entra ID (portal.azure.com)
+3. Redirect URI no Azure: `https://[seu-projeto].supabase.co/auth/v1/callback`
+4. Adicione `VITE_MICROSOFT_CLIENT_ID` nas variáveis de ambiente do app (para habilitar o botão na tela de login)
+
+---
+
+## 2e · Como aprovar um usuário como admin
+
+1. Logar no app com a conta admin
+2. Menu lateral → **Usuários**
+3. Usuários pendentes aparecem em destaque — clique em **Aprovar**
 
 ---
 
