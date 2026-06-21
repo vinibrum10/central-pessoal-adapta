@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, type React
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured, modoLocalAtivo } from '../lib/supabase';
 import type { RoleUsuario, StatusUsuario, PerfilUsuario } from '../types';
+import type { UserPermission } from '../utils/permissions';
 
 interface AuthContextType {
   user: User | null;
@@ -11,6 +12,8 @@ interface AuthContextType {
   supabaseAtivo: boolean;
   role: RoleUsuario;
   statusConta: StatusUsuario;
+  permissoes: UserPermission[];
+  ultimoAcesso: string | null;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (email: string, password: string, nome: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
@@ -44,12 +47,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [perfil, setPerfil] = useState<PerfilUsuario | null>(null);
   const [loading, setLoading] = useState(isSupabaseConfigured);
+  const [permissoes, setPermissoes] = useState<UserPermission[]>([]);
+  const [ultimoAcesso, setUltimoAcesso] = useState<string | null>(null);
+
+  const carregarPermissoes = useCallback(async (userId: string) => {
+    if (!isSupabaseConfigured) return;
+    const { data } = await supabase
+      .from('user_permissions')
+      .select('modulo, acao, permitido')
+      .eq('user_id', userId);
+    setPermissoes((data ?? []) as UserPermission[]);
+  }, []);
+
+  const atualizarUltimoAcesso = useCallback(async (userId: string) => {
+    if (!isSupabaseConfigured) return;
+    const agora = new Date().toISOString();
+    await supabase
+      .from('profiles')
+      .update({ ultimo_acesso: agora, updated_at: agora })
+      .eq('id', userId);
+    setUltimoAcesso(agora);
+  }, []);
 
   const recarregarPerfil = useCallback(async () => {
     if (!isSupabaseConfigured || !user) return;
     const p = await carregarPerfil(user.id);
     setPerfil(p);
-  }, [user]);
+    await carregarPermissoes(user.id);
+  }, [user, carregarPermissoes]);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -76,6 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           p = await carregarPerfil(u.id);
         }
         setPerfil(p);
+        await carregarPermissoes(u.id);
       }
       setLoading(false);
     });
@@ -99,8 +125,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           p = await carregarPerfil(u.id);
         }
         setPerfil(p);
+        if (u) {
+          await carregarPermissoes(u.id);
+          await atualizarUltimoAcesso(u.id);
+        }
       } else {
         setPerfil(null);
+        setPermissoes([]);
+        setUltimoAcesso(null);
       }
     });
 
@@ -174,6 +206,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       supabaseAtivo: isSupabaseConfigured && !modoLocalAtivo,
       role,
       statusConta,
+      permissoes,
+      ultimoAcesso,
       signIn, signUp, signOut,
       recarregarPerfil,
       signInWithGoogle, signInWithMicrosoft,

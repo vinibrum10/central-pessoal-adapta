@@ -1,9 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Users, CheckCircle, XCircle, Shield, Eye, Clock, RefreshCw, UserPlus } from 'lucide-react';
+import { Users, CheckCircle, XCircle, Shield, Clock, RefreshCw, UserPlus, Key, CalendarCheck } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/Button';
 import type { RoleUsuario, StatusUsuario } from '../types';
+import type { UserPermission, Modulo, Acao } from '../utils/permissions';
+import {
+  MODULOS_ROTULOS,
+  ACOES_POR_MODULO,
+  ACOES_ROTULOS,
+  MODELO_LANCAR_DESPESAS,
+  MODELO_SOMENTE_VISUALIZACAO,
+  MODELO_EDITOR_COMPLETO,
+} from '../utils/permissions';
 
 interface UsuarioLista {
   id: string;
@@ -12,6 +21,7 @@ interface UsuarioLista {
   role: RoleUsuario;
   status: StatusUsuario;
   created_at: string;
+  ultimo_acesso?: string | null;
 }
 
 const STATUS_COLOR: Record<StatusUsuario, string> = {
@@ -26,6 +36,27 @@ const STATUS_LABEL: Record<StatusUsuario, string> = {
   bloqueado: 'Bloqueado',
 };
 
+function formatarUltimoAcesso(ts: string | null | undefined): string {
+  if (!ts) return 'Nunca acessou';
+  const diff = Date.now() - new Date(ts).getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 2) return 'Agora há pouco';
+  if (min < 60) return `Há ${min} minutos`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `Há ${h} hora${h > 1 ? 's' : ''}`;
+  const d = Math.floor(h / 24);
+  if (d === 1) return 'Ontem';
+  if (d < 7) return `Há ${d} dias`;
+  return new Date(ts).toLocaleDateString('pt-BR');
+}
+
+function isHoje(ts: string | null | undefined): boolean {
+  if (!ts) return false;
+  const d = new Date(ts);
+  const hoje = new Date();
+  return d.getDate() === hoje.getDate() && d.getMonth() === hoje.getMonth() && d.getFullYear() === hoje.getFullYear();
+}
+
 export function UsuariosPage() {
   const { role, user } = useAuth();
   const [usuarios, setUsuarios] = useState<UsuarioLista[]>([]);
@@ -33,12 +64,17 @@ export function UsuariosPage() {
   const [salvando, setSalvando] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
 
+  // Modal de permissões
+  const [modalPermissoes, setModalPermissoes] = useState<UsuarioLista | null>(null);
+  const [permsEdit, setPermsEdit] = useState<UserPermission[]>([]);
+  const [salvandoPerms, setSalvandoPerms] = useState(false);
+
   const carregar = useCallback(async () => {
     if (!isSupabaseConfigured) return;
     setCarregando(true);
     const { data } = await supabase
       .from('profiles')
-      .select('id, nome, email, role, status, created_at')
+      .select('id, nome, email, role, status, created_at, ultimo_acesso')
       .order('created_at', { ascending: true });
     setUsuarios((data ?? []) as UsuarioLista[]);
     setCarregando(false);
@@ -63,6 +99,57 @@ export function UsuariosPage() {
     setSalvando(null);
   };
 
+  const abrirPermissoes = async (usuario: UsuarioLista) => {
+    const { data } = await supabase
+      .from('user_permissions')
+      .select('modulo, acao, permitido')
+      .eq('user_id', usuario.id);
+    setPermsEdit((data ?? []) as UserPermission[]);
+    setModalPermissoes(usuario);
+  };
+
+  const togglePerm = (modulo: Modulo, acao: Acao) => {
+    setPermsEdit(prev => {
+      const idx = prev.findIndex(p => p.modulo === modulo && p.acao === acao);
+      if (idx >= 0) {
+        return prev.map((p, i) => i === idx ? { ...p, permitido: !p.permitido } : p);
+      }
+      return [...prev, { modulo, acao, permitido: true }];
+    });
+  };
+
+  const aplicarModelo = (modelo: UserPermission[]) => {
+    setPermsEdit(modelo);
+  };
+
+  const isPermitido = (modulo: Modulo, acao: Acao): boolean => {
+    const p = permsEdit.find(x => x.modulo === modulo && x.acao === acao);
+    return p?.permitido ?? false;
+  };
+
+  const salvarPermissoes = async () => {
+    if (!modalPermissoes) return;
+    setSalvandoPerms(true);
+    const rows = permsEdit.map(p => ({
+      user_id: modalPermissoes.id,
+      modulo: p.modulo,
+      acao: p.acao,
+      permitido: p.permitido,
+      updated_at: new Date().toISOString(),
+    }));
+    const { error } = await supabase
+      .from('user_permissions')
+      .upsert(rows, { onConflict: 'user_id,modulo,acao' });
+    setSalvandoPerms(false);
+    if (error) {
+      setMsg('Erro ao salvar permissões: ' + error.message);
+    } else {
+      setMsg('Permissões salvas!');
+      setTimeout(() => setMsg(''), 2000);
+    }
+    setModalPermissoes(null);
+  };
+
   if (role !== 'admin') {
     return (
       <div className="flex items-center justify-center min-h-64">
@@ -74,6 +161,9 @@ export function UsuariosPage() {
   const pendentes = usuarios.filter(u => u.status === 'pendente');
   const aprovados = usuarios.filter(u => u.status === 'aprovado');
   const bloqueados = usuarios.filter(u => u.status === 'bloqueado');
+  const comAcessoHoje = usuarios.filter(u => isHoje(u.ultimo_acesso));
+
+  const modulosOrdem = Object.keys(ACOES_POR_MODULO) as Modulo[];
 
   return (
     <div className="space-y-6 p-4 sm:p-6 max-w-4xl mx-auto">
@@ -99,11 +189,12 @@ export function UsuariosPage() {
       )}
 
       {/* KPIs */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { label: 'Pendentes', value: pendentes.length, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/10', icon: <Clock size={16} /> },
           { label: 'Aprovados', value: aprovados.length, color: 'text-green-600 dark:text-green-400', bg: 'bg-green-50 dark:bg-green-900/10', icon: <CheckCircle size={16} /> },
           { label: 'Bloqueados', value: bloqueados.length, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-900/10', icon: <XCircle size={16} /> },
+          { label: 'Acesso hoje', value: comAcessoHoje.length, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/10', icon: <CalendarCheck size={16} /> },
         ].map(({ label, value, color, bg, icon }) => (
           <div key={label} className={`${bg} rounded-xl p-3 text-center`}>
             <div className={`flex items-center justify-center gap-1 ${color} mb-1`}>{icon}</div>
@@ -172,8 +263,8 @@ export function UsuariosPage() {
                     )}
                   </div>
                   <p className="text-xs text-surface-500 dark:text-surface-400 truncate">{u.email}</p>
-                  <p className="text-[11px] text-surface-400 dark:text-surface-500 mt-0.5">
-                    Cadastrado em {new Date(u.created_at).toLocaleDateString('pt-BR')}
+                  <p className="text-[11px] text-surface-400 dark:text-surface-500 mt-0.5 flex items-center gap-1">
+                    <Clock size={10} /> {formatarUltimoAcesso(u.ultimo_acesso)}
                   </p>
                 </div>
 
@@ -184,7 +275,7 @@ export function UsuariosPage() {
 
                 {/* Controles (só para outros usuários) */}
                 {u.id !== user?.id && (
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
                     {/* Role */}
                     <select
                       value={u.role}
@@ -196,6 +287,15 @@ export function UsuariosPage() {
                       <option value="editor">Editor</option>
                       <option value="admin">Admin</option>
                     </select>
+
+                    {/* Gerenciar permissões */}
+                    <button
+                      onClick={() => abrirPermissoes(u)}
+                      title="Gerenciar permissões"
+                      className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                    >
+                      <Key size={15} />
+                    </button>
 
                     {/* Status rápido */}
                     {u.status !== 'aprovado' && (
@@ -221,9 +321,6 @@ export function UsuariosPage() {
                     {u.status === 'bloqueado' && (
                       <span className="text-xs text-red-500 flex items-center gap-1"><Shield size={12} /> Bloqueado</span>
                     )}
-                    {u.status === 'aprovado' && (
-                      <span className="text-xs text-surface-400 flex items-center gap-1"><Eye size={12} /></span>
-                    )}
                   </div>
                 )}
               </div>
@@ -234,6 +331,99 @@ export function UsuariosPage() {
 
       {!isSupabaseConfigured && (
         <p className="text-xs text-surface-400 text-center">Disponível apenas com Supabase configurado.</p>
+      )}
+
+      {/* Modal de permissões */}
+      {modalPermissoes && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white dark:bg-surface-800 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            {/* Header modal */}
+            <div className="px-6 py-4 border-b border-surface-100 dark:border-surface-700 flex items-center justify-between">
+              <div>
+                <p className="font-semibold text-surface-900 dark:text-white flex items-center gap-2">
+                  <Key size={16} /> Permissões — {modalPermissoes.nome || modalPermissoes.email}
+                </p>
+                <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">
+                  Permissões específicas sobrescrevem as do perfil ({modalPermissoes.role})
+                </p>
+              </div>
+              <button
+                onClick={() => setModalPermissoes(null)}
+                className="text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 text-xl font-bold leading-none"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Modelos rápidos */}
+            <div className="px-6 py-3 border-b border-surface-100 dark:border-surface-700 flex gap-2 flex-wrap">
+              <span className="text-xs text-surface-500 dark:text-surface-400 self-center">Modelos:</span>
+              <button
+                onClick={() => aplicarModelo(MODELO_SOMENTE_VISUALIZACAO)}
+                className="text-xs px-3 py-1 rounded-full bg-surface-100 dark:bg-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-600 transition-colors"
+              >
+                Somente visualização
+              </button>
+              <button
+                onClick={() => aplicarModelo(MODELO_LANCAR_DESPESAS)}
+                className="text-xs px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+              >
+                Lançar despesas
+              </button>
+              <button
+                onClick={() => aplicarModelo(MODELO_EDITOR_COMPLETO)}
+                className="text-xs px-3 py-1 rounded-full bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-900/40 transition-colors"
+              >
+                Editor completo
+              </button>
+              <button
+                onClick={() => setPermsEdit([])}
+                className="text-xs px-3 py-1 rounded-full bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+              >
+                Limpar tudo
+              </button>
+            </div>
+
+            {/* Checkboxes por módulo */}
+            <div className="overflow-y-auto flex-1 px-6 py-4 space-y-4">
+              {modulosOrdem.map(modulo => {
+                const acoes = ACOES_POR_MODULO[modulo];
+                return (
+                  <div key={modulo} className="bg-surface-50 dark:bg-surface-900/50 rounded-xl p-3">
+                    <p className="text-sm font-semibold text-surface-800 dark:text-surface-200 mb-2">
+                      {MODULOS_ROTULOS[modulo]}
+                    </p>
+                    <div className="flex flex-wrap gap-3">
+                      {acoes.map(acao => (
+                        <label key={acao} className="flex items-center gap-1.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={isPermitido(modulo, acao)}
+                            onChange={() => togglePerm(modulo, acao)}
+                            className="rounded text-primary-600 focus:ring-primary-500"
+                          />
+                          <span className="text-xs text-surface-700 dark:text-surface-300">
+                            {ACOES_ROTULOS[acao]}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Footer modal */}
+            <div className="px-6 py-4 border-t border-surface-100 dark:border-surface-700 flex justify-end gap-3">
+              <Button variant="secondary" size="sm" onClick={() => setModalPermissoes(null)}>
+                Cancelar
+              </Button>
+              <Button size="sm" loading={salvandoPerms} onClick={salvarPermissoes}>
+                Salvar permissões
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

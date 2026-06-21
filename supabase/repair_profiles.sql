@@ -23,7 +23,6 @@ WHERE NOT EXISTS (
 );
 
 -- 2. Promover o usuário admin principal
--- SUBSTITUA pelo e-mail real do administrador
 UPDATE public.profiles
 SET
   role = 'admin',
@@ -32,4 +31,4 @@ SET
 WHERE lower(email) = lower('vinibrum10@gmail.com');
 
 -- 3. Verificar resultado
-SELECT id, email, nome, role, status FROM public.profiles ORDER BY created_at;
+SELECT id, email, nome, role, status, ultimo_acesso FROM public.profiles ORDER BY created_at;
