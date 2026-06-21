@@ -2,7 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Target, ListChecks, Clock,
   Wallet, Settings, Menu, X, Moon, Sun, BookOpen, LogOut,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, Users,
 } from 'lucide-react';
 
 function AppIcon({ size = 18 }: { size?: number }) {
@@ -29,13 +29,17 @@ const navItems = [
   { to: '/configuracoes', label: 'Configurações', icon: Settings },
 ];
 
+const adminNavItems = [
+  { to: '/usuarios', label: 'Usuários', icon: Users },
+];
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try { return localStorage.getItem(SIDEBAR_KEY) === 'true'; } catch { return false; }
   });
   const { data, tema, toggleTema } = useApp();
-  const { user, signOut, supabaseAtivo } = useAuth();
+  const { user, signOut, supabaseAtivo, role } = useAuth();
   const location = useLocation();
 
   useEffect(() => {
@@ -122,6 +126,30 @@ export function Layout({ children }: { children: React.ReactNode }) {
               {!collapsed && label}
             </NavLink>
           ))}
+          {role === 'admin' && (
+            <>
+              {!collapsed && <p className="text-[10px] uppercase tracking-widest text-surface-400 dark:text-surface-600 px-3 pt-3 pb-1">Admin</p>}
+              {adminNavItems.map(({ to, label, icon: Icon }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  title={collapsed ? label : undefined}
+                  className={({ isActive }) => `
+                    flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+                    transition-all duration-150
+                    ${collapsed ? 'justify-center' : ''}
+                    ${isActive
+                      ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/30'
+                      : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-surface-900 dark:hover:text-white'
+                    }
+                  `}
+                >
+                  <Icon size={18} className="flex-shrink-0" />
+                  {!collapsed && label}
+                </NavLink>
+              ))}
+            </>
+          )}
         </nav>
 
         {/* Footer */}
@@ -188,6 +216,25 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   {label}
                 </NavLink>
               ))}
+              {role === 'admin' && (
+                <>
+                  <p className="text-[10px] uppercase tracking-widest text-surface-400 dark:text-surface-600 px-3 pt-3 pb-1">Admin</p>
+                  {adminNavItems.map(({ to, label, icon: Icon }) => (
+                    <NavLink
+                      key={to}
+                      to={to}
+                      onClick={() => setSidebarOpen(false)}
+                      className={({ isActive }) => `
+                        flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
+                        ${isActive ? 'bg-primary-600 text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700'}
+                      `}
+                    >
+                      <Icon size={18} />
+                      {label}
+                    </NavLink>
+                  ))}
+                </>
+              )}
             </nav>
             <div className="p-4 border-t border-surface-200 dark:border-surface-700 space-y-1">
               <button onClick={toggleTema} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors">

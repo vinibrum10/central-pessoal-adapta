@@ -10,6 +10,7 @@ import { AgendaTempoPage } from './pages/AgendaTempo';
 import { OrcamentoPage } from './pages/Orcamento';
 import { LeituraDiariaPage } from './pages/LeituraDiaria';
 import { ConfiguracoesPage } from './pages/Configuracoes';
+import { UsuariosPage } from './pages/Usuarios';
 
 function App() {
   return (
@@ -26,6 +27,7 @@ function App() {
                 <Route path="/orcamento" element={<OrcamentoPage />} />
                 <Route path="/leitura" element={<LeituraDiariaPage />} />
                 <Route path="/configuracoes" element={<ConfiguracoesPage />} />
+                <Route path="/usuarios" element={<UsuariosPage />} />
               </Routes>
             </Layout>
           </ProtectedRoute>
