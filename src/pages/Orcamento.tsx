@@ -943,7 +943,16 @@ export function OrcamentoPage() {
         <div className="space-y-3">
           <Input id="desp-desc" label="Descrição" required value={formDespesa.descricao} onChange={e => setFormDespesa(f => ({ ...f, descricao: e.target.value }))} placeholder="Ex: Aluguel, supermercado..." />
           <div className="grid grid-cols-2 gap-3">
-            <Input id="desp-valor" label="Valor (R$)" required type="text" inputMode="decimal" placeholder="0,00" value={formDespesaValorStr} onChange={e => setFormDespesaValorStr(e.target.value)} />
+            <Input
+              id="desp-valor"
+              label={!editandoId && formDespesa.formaPagamento === 'Cartão de crédito' && formDespesaExtra.tipoCobrancaCartao === 'parcelado' ? 'Valor total da compra (R$)' : 'Valor (R$)'}
+              required
+              type="text"
+              inputMode="decimal"
+              placeholder="0,00"
+              value={formDespesaValorStr}
+              onChange={e => setFormDespesaValorStr(e.target.value)}
+            />
             <div>
               <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Mês de referência</label>
               <div className="flex gap-2">
