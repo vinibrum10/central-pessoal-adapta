@@ -647,6 +647,15 @@ export function AgendaTempoPage() {
   const handleDesconectarGoogle = () => { desconectarGoogleCalendar(); setSincGoogleEm(null); };
 
   // ── Microsoft ──
+  const msErroAmigavel = (e: unknown): string => {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === 'INSTITUTIONAL_CONSENT_REQUIRED')
+      return 'Sua organização pode exigir aprovação do administrador para conectar o calendário Microsoft. Contate seu administrador de TI ou tente com uma conta pessoal (Outlook.com / Hotmail).';
+    if (msg.includes('expirada')) return 'Sessão Microsoft expirada. Clique em Reconectar.';
+    if (msg.includes('Popup bloqueado')) return 'Popup bloqueado pelo navegador. Clique no ícone de popup na barra de endereços e permita popups para este site.';
+    return msg;
+  };
+
   const handleConectarMs = async () => {
     setCarregandoMs(true); setErroConexao(null);
     try {
@@ -654,7 +663,7 @@ export function AgendaTempoPage() {
       const eventos = await sincronizarMicrosoftCalendar(range30.ini, range30.fim);
       setData(d => ({ ...d, eventosAgenda: [...d.eventosAgenda.filter(e => e.fonte !== 'microsoft'), ...eventos] }));
       setSincMsEm(new Date().toISOString());
-    } catch (e) { setErroConexao(e instanceof Error ? e.message : String(e)); }
+    } catch (e) { setErroConexao(msErroAmigavel(e)); }
     finally { setCarregandoMs(false); }
   };
 
@@ -664,7 +673,7 @@ export function AgendaTempoPage() {
       const eventos = await sincronizarMicrosoftCalendar(range30.ini, range30.fim);
       setData(d => ({ ...d, eventosAgenda: [...d.eventosAgenda.filter(e => e.fonte !== 'microsoft'), ...eventos] }));
       setSincMsEm(new Date().toISOString());
-    } catch (e) { setErroConexao(e instanceof Error ? e.message : String(e)); }
+    } catch (e) { setErroConexao(msErroAmigavel(e)); }
     finally { setCarregandoMs(false); }
   };
 
