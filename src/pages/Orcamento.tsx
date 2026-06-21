@@ -153,13 +153,16 @@ export function OrcamentoPage() {
   // Despesas que NÃO são cartão de crédito (evita duplicação com faturas)
   const despesasSemCartao = despesasFiltradas.filter(d => d.formaPagamento !== 'Cartão de crédito');
   // Faturas com competência no mês filtrado
-  const faturasMes = (data.faturas ?? []).filter(f => {
-    const [anoStr, mesStr] = f.competencia.split('-');
-    return Number(mesStr) === mesFiltro.mes + 1 && Number(anoStr) === mesFiltro.ano;
-  });
-  // Total do mês = despesas sem cartão + valor efetivo das faturas
-  const despesasMes = despesasSemCartao.reduce((a, d) => a + d.valor, 0)
-    + faturasMes.reduce((a, f) => a + calcularValorEfetivo(f), 0);
+  const competenciaMesFiltro = `${mesFiltro.ano}-${String(mesFiltro.mes + 1).padStart(2, '0')}`;
+  const faturasMes = (data.faturas ?? []).filter(f => f.competencia === competenciaMesFiltro);
+  // Total de cartões: para cada cartão, usa valorInformado da fatura se existir, senão faturaAtual do cartão
+  const totalCartoes = (data.cartoes ?? []).reduce((total, c) => {
+    const fatura = faturasMes.find(f => f.cartaoId === c.id);
+    if (fatura && fatura.valorInformado !== null) return total + fatura.valorInformado;
+    return total + (c.faturaAtual ?? 0);
+  }, 0);
+  // Total do mês = despesas sem cartão + total de faturas dos cartões
+  const despesasMes = despesasSemCartao.reduce((a, d) => a + d.valor, 0) + totalCartoes;
   const saldoMes = receitasMes - despesasMes;
   const totalDividas = data.dividas.reduce((a, d) => a + Math.max(0, d.valorTotal - calcularParcelasPagasAuto(d) * d.valorParcela), 0);
   const totalReservas = data.reservas.reduce((a, r) => a + r.valorAtual, 0);
