@@ -7,6 +7,7 @@ import {
   Zap, Info,
 } from 'lucide-react';
 import { useApp } from '../hooks/useApp';
+import { useCalendario } from '../hooks/useCalendario';
 import type { EventoAgenda, Meta } from '../types';
 import { Card, CardHeader, CardBody } from '../components/Card';
 import { Button } from '../components/Button';
@@ -376,6 +377,102 @@ function PreplyCard() {
         <div className="space-y-2">
           <p className="text-xs text-surface-500 dark:text-surface-400 leading-relaxed">
             Cole aqui o link de calendário ICS da Preply, se disponível. Você pode encontrá-lo nas configurações do perfil na Preply → "Exportar calendário".
+          </p>
+          <Button size="sm" variant="secondary" onClick={() => { setDraft(''); setEditando(true); }} icon={<Link2 size={12} />}>
+            Configurar link ICS
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// UNIASSELVI ICS CARD
+// ============================================================
+
+function UniasselviCard({ onEventosImportados }: { onEventosImportados: (eventos: EventoAgenda[]) => void }) {
+  const { config, atualizarConfig, sincronizarUniasselvi, sincronizando, erroSinc } = useCalendario();
+  const [editando, setEditando] = useState(false);
+  const [draft, setDraft] = useState(config.uniasselviIcsUrl);
+  const [statusLocal, setStatusLocal] = useState<'idle' | 'ok'>('idle');
+
+  const salvar = () => {
+    const url = draft.trim();
+    atualizarConfig({ uniasselviIcsUrl: url, uniasselviIcsAtivo: url.length > 0 });
+    setEditando(false);
+  };
+
+  const handleSincronizar = async () => {
+    const eventos = await sincronizarUniasselvi();
+    if (eventos.length > 0) {
+      onEventosImportados(eventos);
+      setStatusLocal('ok');
+      setTimeout(() => setStatusLocal('idle'), 3000);
+    }
+  };
+
+  const icsUrl = config.uniasselviIcsUrl;
+
+  return (
+    <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-700/40 rounded-2xl p-5 space-y-3">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-white dark:bg-surface-800 flex items-center justify-center shadow-sm flex-shrink-0">
+          <span className="text-green-600 font-black text-sm">U</span>
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-bold text-surface-900 dark:text-white">Uniasselvi</p>
+          <p className="text-xs text-surface-400 dark:text-surface-500">
+            {icsUrl ? 'Calendário ICS configurado' : 'Aguardando link de calendário ICS'}
+          </p>
+        </div>
+        {icsUrl && (
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-success-100 text-success-700 dark:bg-success-900/30 dark:text-success-400 font-medium">Configurado</span>
+        )}
+      </div>
+
+      {erroSinc && (
+        <div className="bg-danger-50 dark:bg-danger-900/20 border border-danger-200 dark:border-danger-700/50 rounded-xl p-3">
+          <p className="text-xs text-danger-700 dark:text-danger-300 leading-relaxed">{erroSinc}</p>
+        </div>
+      )}
+
+      {editando ? (
+        <div className="space-y-2">
+          <input
+            type="url"
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            placeholder="https://... (link ICS da Uniasselvi)"
+            className="w-full px-3 py-2 text-sm rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+          />
+          <p className="text-xs text-surface-400 dark:text-surface-500 leading-relaxed">
+            Acesse o portal da Uniasselvi → Agenda → Exportar calendário ICS. A URL precisa ser pública para funcionar.
+          </p>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={salvar} className="flex-1">Salvar</Button>
+            <Button size="sm" variant="secondary" onClick={() => setEditando(false)}>Cancelar</Button>
+          </div>
+        </div>
+      ) : icsUrl ? (
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={handleSincronizar}
+            icon={<RefreshCw size={12} className={sincronizando ? 'animate-spin' : ''} />}
+            className="flex-1"
+          >
+            {sincronizando ? 'Sincronizando…' : statusLocal === 'ok' ? 'Sincronizado!' : 'Sincronizar'}
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => { setDraft(icsUrl); setEditando(true); }}>
+            Editar URL
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-xs text-surface-500 dark:text-surface-400 leading-relaxed">
+            Cole aqui o link de calendário ICS da Uniasselvi para importar automaticamente suas aulas e eventos acadêmicos.
           </p>
           <Button size="sm" variant="secondary" onClick={() => { setDraft(''); setEditando(true); }} icon={<Link2 size={12} />}>
             Configurar link ICS
@@ -885,8 +982,16 @@ export function AgendaTempoPage() {
             />
           </div>
 
-          {/* Preply + OneDrive */}
+          {/* Preply + Uniasselvi + OneDrive */}
           <PreplyCard />
+          <UniasselviCard
+            onEventosImportados={(novos) => {
+              setData(d => {
+                const semUniasselvi = d.eventosAgenda.filter(e => !e.id.startsWith('ics-uniasselvi-'));
+                return { ...d, eventosAgenda: [...semUniasselvi, ...deduplicarEventos(semUniasselvi, novos)] };
+              });
+            }}
+          />
           <div className="bg-surface-50 dark:bg-surface-700/20 border border-surface-200 dark:border-surface-700 rounded-2xl p-5 flex items-start gap-4">
             <div className="w-10 h-10 rounded-xl bg-white dark:bg-surface-800 flex items-center justify-center flex-shrink-0 shadow-sm">
               <span className="text-blue-400 font-black text-sm">OD</span>

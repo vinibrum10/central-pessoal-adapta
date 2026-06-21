@@ -2,10 +2,11 @@ import { useState, useRef } from 'react';
 import {
   Settings, User, Moon, Sun, Download, Upload, RotateCcw, Trash2,
   CheckCircle, Database, Calendar, FolderOpen, Smartphone, LogOut, RefreshCw,
-  FileSpreadsheet, Palette, ShieldCheck,
+  FileSpreadsheet, Palette, ShieldCheck, Plus, X,
 } from 'lucide-react';
 import { useApp } from '../hooks/useApp';
 import { useAuth } from '../contexts/AuthContext';
+import { useCalendario } from '../hooks/useCalendario';
 import { Card, CardHeader, CardBody } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input, Select } from '../components/FormFields';
@@ -37,6 +38,10 @@ export function ConfiguracoesPage() {
   // Tema de cores
   const [corSelecionada, setCorSelecionada] = useState(carregarCorTema());
   const [corSalva, setCorSalva] = useState(false);
+
+  // Agenda e Integrações
+  const { config: cfgCal, atualizarConfig: atualizarCal, adicionarFeriadoCustom, removerFeriadoCustom } = useCalendario();
+  const [novoFeriado, setNovoFeriado] = useState('');
 
   const handleSalvarCor = () => {
     salvarCorTema(corSelecionada);
@@ -198,6 +203,144 @@ export function ConfiguracoesPage() {
                 <p className="text-sm font-medium text-surface-700 dark:text-surface-300">Microsoft Outlook</p>
                 <p className="text-xs text-surface-400 dark:text-surface-500">Em breve</p>
               </div>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+
+      {/* ── Agenda e Integrações ── */}
+      <Card>
+        <CardHeader title="Agenda e Integrações" subtitle="Bloqueio de trabalho, feriados e ICS" icon={<Calendar size={18} />} />
+        <CardBody>
+          <div className="space-y-5">
+            {/* Bloqueio fixo de trabalho */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-sm font-medium text-surface-700 dark:text-surface-300">Bloqueio fixo de trabalho</p>
+                  <p className="text-xs text-surface-400 dark:text-surface-500">Bloqueia horários de trabalho no cálculo de disponibilidade</p>
+                </div>
+                <button
+                  onClick={() => atualizarCal({ bloqueioTrabalhoAtivo: !cfgCal.bloqueioTrabalhoAtivo })}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${cfgCal.bloqueioTrabalhoAtivo ? 'bg-primary-600' : 'bg-surface-300 dark:bg-surface-600'}`}
+                >
+                  <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${cfgCal.bloqueioTrabalhoAtivo ? 'translate-x-4' : 'translate-x-1'}`} />
+                </button>
+              </div>
+
+              {cfgCal.bloqueioTrabalhoAtivo && (
+                <div className="space-y-3 pl-0">
+                  <p className="text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wide">Horários de trabalho</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-surface-500 dark:text-surface-400 block mb-1">Seg–Qui início</label>
+                      <input
+                        type="time"
+                        value={cfgCal.trabalhoSegQuiIni}
+                        onChange={e => atualizarCal({ trabalhoSegQuiIni: e.target.value })}
+                        className="w-full px-3 py-1.5 text-sm rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-surface-500 dark:text-surface-400 block mb-1">Seg–Qui fim</label>
+                      <input
+                        type="time"
+                        value={cfgCal.trabalhoSegQuiFim}
+                        onChange={e => atualizarCal({ trabalhoSegQuiFim: e.target.value })}
+                        className="w-full px-3 py-1.5 text-sm rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-surface-500 dark:text-surface-400 block mb-1">Sexta início</label>
+                      <input
+                        type="time"
+                        value={cfgCal.trabalhoSextaIni}
+                        onChange={e => atualizarCal({ trabalhoSextaIni: e.target.value })}
+                        className="w-full px-3 py-1.5 text-sm rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-surface-500 dark:text-surface-400 block mb-1">Sexta fim</label>
+                      <input
+                        type="time"
+                        value={cfgCal.trabalhoSextaFim}
+                        onChange={e => atualizarCal({ trabalhoSextaFim: e.target.value })}
+                        className="w-full px-3 py-1.5 text-sm rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-surface-400 dark:text-surface-500">
+                    Esses horários são usados como referência de disponibilidade. Sábado e domingo não têm bloqueio de trabalho.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-surface-100 dark:border-surface-700" />
+
+            {/* Feriados customizados */}
+            <div>
+              <p className="text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Feriados e folgas customizados</p>
+              <p className="text-xs text-surface-400 dark:text-surface-500 mb-3">
+                Adicione datas extras (formato AAAA-MM-DD) que devem ser tratadas como feriados no cálculo de disponibilidade.
+              </p>
+              <div className="flex gap-2 mb-3">
+                <input
+                  type="date"
+                  value={novoFeriado}
+                  onChange={e => setNovoFeriado(e.target.value)}
+                  className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+                <Button
+                  size="sm"
+                  icon={<Plus size={13} />}
+                  onClick={() => {
+                    if (novoFeriado) { adicionarFeriadoCustom(novoFeriado); setNovoFeriado(''); }
+                  }}
+                  disabled={!novoFeriado}
+                >
+                  Adicionar
+                </Button>
+              </div>
+              {cfgCal.feriadosCustom.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {cfgCal.feriadosCustom.map(d => (
+                    <span key={d} className="inline-flex items-center gap-1 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-2 py-1 rounded-full">
+                      {d}
+                      <button onClick={() => removerFeriadoCustom(d)} className="hover:text-amber-900 dark:hover:text-amber-100">
+                        <X size={10} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-surface-400 dark:text-surface-500 italic">Nenhum feriado customizado adicionado.</p>
+              )}
+            </div>
+
+            <div className="border-t border-surface-100 dark:border-surface-700" />
+
+            {/* Status ICS Uniasselvi */}
+            <div>
+              <p className="text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Calendário Uniasselvi (ICS)</p>
+              <div className="flex items-center justify-between p-3 bg-surface-50 dark:bg-surface-700/30 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <div className={`w-2.5 h-2.5 rounded-full ${cfgCal.uniasselviIcsAtivo && cfgCal.uniasselviIcsUrl ? 'bg-success-500' : 'bg-surface-300'}`} />
+                  <div>
+                    <p className="text-sm text-surface-700 dark:text-surface-300">
+                      {cfgCal.uniasselviIcsAtivo && cfgCal.uniasselviIcsUrl ? 'Configurado' : 'Não configurado'}
+                    </p>
+                    {cfgCal.uniasselviUltimaSinc && (
+                      <p className="text-xs text-surface-400 dark:text-surface-500">
+                        Última sinc: {new Date(cfgCal.uniasselviUltimaSinc).toLocaleString('pt-BR')}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-surface-400 dark:text-surface-500 mt-2">
+                Configure o link ICS na página <strong>Agenda e Tempo → Conexões → Uniasselvi</strong>.
+              </p>
             </div>
           </div>
         </CardBody>
