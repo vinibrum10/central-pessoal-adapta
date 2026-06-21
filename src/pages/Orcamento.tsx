@@ -547,7 +547,10 @@ export function OrcamentoPage() {
           <Input id="desp-desc" label="Descrição" required value={formDespesa.descricao} onChange={e => setFormDespesa(f => ({ ...f, descricao: e.target.value }))} placeholder="Ex: Aluguel, supermercado..." />
           <div className="grid grid-cols-2 gap-3">
             <Input id="desp-valor" label="Valor (R$)" required type="number" min="0" step="0.01" value={formDespesa.valor || ''} onChange={e => setFormDespesa(f => ({ ...f, valor: Number(e.target.value) }))} />
-            <Input id="desp-data" label="Data" type="date" value={formDespesa.data} onChange={e => setFormDespesa(f => ({ ...f, data: e.target.value }))} />
+            <div>
+              <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Data</label>
+              <input type="date" lang="pt-BR" value={formDespesa.data} onChange={e => setFormDespesa(f => ({ ...f, data: e.target.value }))} className="w-full px-3 py-2.5 rounded-lg border text-sm bg-white dark:bg-surface-900 border-surface-300 dark:border-surface-600 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Select id="desp-cat" label="Categoria" value={formDespesa.categoria} onChange={e => setFormDespesa(f => ({ ...f, categoria: e.target.value as CategoriaFinanceira }))}>
@@ -583,13 +586,36 @@ export function OrcamentoPage() {
                       value={formDespesaExtra.quantidadeParcelas}
                       onChange={e => setFormDespesaExtra(f => ({ ...f, quantidadeParcelas: Math.max(2, Math.min(72, Number(e.target.value))) }))}
                     />
-                    <Input
-                      id="desp-mes-inicio"
-                      label="Mês de início"
-                      type="month"
-                      value={formDespesaExtra.mesInicioParcelas}
-                      onChange={e => setFormDespesaExtra(f => ({ ...f, mesInicioParcelas: e.target.value }))}
-                    />
+                    <div>
+                      <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Mês de início</label>
+                      <div className="flex gap-2">
+                        <select
+                          value={formDespesaExtra.mesInicioParcelas.split('-')[1] ?? ''}
+                          onChange={e => {
+                            const ano = formDespesaExtra.mesInicioParcelas.split('-')[0] ?? new Date().getFullYear().toString();
+                            setFormDespesaExtra(f => ({ ...f, mesInicioParcelas: `${ano}-${e.target.value}` }));
+                          }}
+                          className="flex-1 px-3 py-2.5 rounded-lg border text-sm bg-white dark:bg-surface-900 border-surface-300 dark:border-surface-600 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        >
+                          {['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'].map((m, i) => (
+                            <option key={i} value={String(i + 1).padStart(2, '0')}>{m}</option>
+                          ))}
+                        </select>
+                        <select
+                          value={formDespesaExtra.mesInicioParcelas.split('-')[0] ?? ''}
+                          onChange={e => {
+                            const mes = formDespesaExtra.mesInicioParcelas.split('-')[1] ?? '01';
+                            setFormDespesaExtra(f => ({ ...f, mesInicioParcelas: `${e.target.value}-${mes}` }));
+                          }}
+                          className="w-24 px-3 py-2.5 rounded-lg border text-sm bg-white dark:bg-surface-900 border-surface-300 dark:border-surface-600 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        >
+                          {[0,1,2].map(d => {
+                            const y = new Date().getFullYear() + d;
+                            return <option key={y} value={y}>{y}</option>;
+                          })}
+                        </select>
+                      </div>
+                    </div>
                   </div>
                   {formDespesa.valor > 0 && formDespesaExtra.quantidadeParcelas >= 2 && (
                     <p className="text-xs text-surface-500 dark:text-surface-400">
