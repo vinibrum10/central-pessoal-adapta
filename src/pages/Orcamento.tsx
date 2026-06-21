@@ -30,20 +30,26 @@ import { formatarDinheiro, formatarData, isoParaDataBR, gerarId, hojeISO } from 
 const SELECT_CLASS = 'px-1.5 py-2 rounded-lg border text-sm bg-white dark:bg-surface-900 border-surface-300 dark:border-surface-600 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500';
 
 function DateSelectBR({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  const [d, m, y] = value ? value.split('-').map(Number) : [new Date().getDate(), new Date().getMonth() + 1, new Date().getFullYear()];
-  const diasNoMes = new Date(y ?? new Date().getFullYear(), m ?? 1, 0).getDate();
-  const update = (day: number, mon: number, yr: number) => onChange(`${yr}-${String(mon).padStart(2,'0')}-${String(Math.min(day, new Date(yr, mon, 0).getDate())).padStart(2,'0')}`);
+  // ISO format: YYYY-MM-DD → partes[0]=ano, partes[1]=mes, partes[2]=dia
+  const partes = value ? value.split('-').map(Number) : [];
+  const curY = partes[0] ?? new Date().getFullYear();
+  const curM = partes[1] ?? new Date().getMonth() + 1;
+  const curD = partes[2] ?? new Date().getDate();
+  const diasNoMes = new Date(curY, curM, 0).getDate();
+  const clampDay = (day: number, mon: number, yr: number) => Math.min(day, new Date(yr, mon, 0).getDate());
+  const emit = (day: number, mon: number, yr: number) =>
+    onChange(`${yr}-${String(mon).padStart(2,'0')}-${String(clampDay(day, mon, yr)).padStart(2,'0')}`);
   return (
     <div>
       <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">{label}</label>
       <div className="flex gap-1">
-        <select value={d} onChange={e => update(Number(e.target.value), m ?? 1, y ?? new Date().getFullYear())} className={`w-16 ${SELECT_CLASS}`}>
+        <select value={curD} onChange={e => emit(Number(e.target.value), curM, curY)} className={`w-16 ${SELECT_CLASS}`}>
           {Array.from({length: diasNoMes}, (_, i) => i + 1).map(n => <option key={n} value={n}>{String(n).padStart(2,'0')}</option>)}
         </select>
-        <select value={m} onChange={e => update(d ?? 1, Number(e.target.value), y ?? new Date().getFullYear())} className={`flex-1 ${SELECT_CLASS}`}>
+        <select value={curM} onChange={e => emit(curD, Number(e.target.value), curY)} className={`flex-1 ${SELECT_CLASS}`}>
           {MESES.map((mes, i) => <option key={i} value={i+1}>{mes}</option>)}
         </select>
-        <select value={y} onChange={e => update(d ?? 1, m ?? 1, Number(e.target.value))} className={`w-24 ${SELECT_CLASS}`}>
+        <select value={curY} onChange={e => emit(curD, curM, Number(e.target.value))} className={`w-24 ${SELECT_CLASS}`}>
           {[-1,0,1,2,3].map(offset => { const yr = new Date().getFullYear() + offset; return <option key={yr} value={yr}>{yr}</option>; })}
         </select>
       </div>
@@ -107,7 +113,16 @@ export function OrcamentoPage() {
 
   // Resumo financeiro do mês filtrado
   const receitasFiltradas = data.receitas.filter(r => new Date(r.data).getMonth() === mesFiltro.mes && new Date(r.data).getFullYear() === mesFiltro.ano);
-  const despesasFiltradas = data.despesas.filter(d => new Date(d.data).getMonth() === mesFiltro.mes && new Date(d.data).getFullYear() === mesFiltro.ano);
+  // Despesas: não-cartão filtra por data da compra; cartão filtra pela competência da fatura
+  const despesasFiltradas = data.despesas.filter(d => {
+    if (d.formaPagamento !== 'Cartão de crédito' || !d.faturaId) {
+      return new Date(d.data).getMonth() === mesFiltro.mes && new Date(d.data).getFullYear() === mesFiltro.ano;
+    }
+    const fatura = (data.faturas ?? []).find(f => f.id === d.faturaId);
+    if (!fatura) return new Date(d.data).getMonth() === mesFiltro.mes && new Date(d.data).getFullYear() === mesFiltro.ano;
+    const [fAno, fMes] = fatura.competencia.split('-').map(Number);
+    return fMes === mesFiltro.mes + 1 && fAno === mesFiltro.ano;
+  });
   const receitasMes = receitasFiltradas.reduce((a, r) => a + r.valor, 0);
 
   // Despesas que NÃO são cartão de crédito (evita duplicação com faturas)
