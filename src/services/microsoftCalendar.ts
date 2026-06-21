@@ -1,241 +1,246 @@
 /**
- * Integração com Microsoft Outlook / Teams Calendar (somente leitura)
+ * Integração com Microsoft Outlook Calendar (somente leitura)
  *
- * Usa OAuth 2.0 implicit flow para SPA — sem client secret, sem MSAL.
- * Permissões delegadas: User.Read + Calendars.Read
+ * Usa OAuth 2.0 Implicit Flow com popup — sem redirect, sem client secret.
+ * Escopos: Calendars.Read, User.Read
  *
  * Como configurar:
- * 1. portal.azure.com → Microsoft Entra ID → Registros de Aplicativo
- * 2. Novo Registro → Nome: "Agenda Pessoal" → Tipo: Contas pessoais e corporativas
- * 3. URI de Redirecionamento: SPA → https://central-pessoal-adapta.vercel.app
- * 4. Permissões de API → Adicionar: User.Read + Calendars.Read (Delegado)
- * 5. Copiar "ID do Aplicativo (cliente)" → VITE_MICROSOFT_CLIENT_ID no Vercel
+ * 1. portal.azure.com → App registrations → New registration
+ * 2. Supported account types: "Accounts in any organizational directory and personal Microsoft accounts"
+ * 3. Redirect URI: Single-page application (SPA) → https://central-pessoal-adapta.vercel.app
+ *    e também http://localhost:5173 para dev
+ * 4. Permissions → Add: Calendars.Read, User.Read (delegated)
+ * 5. Copiar Application (client) ID → VITE_MICROSOFT_CLIENT_ID
  */
 
 /// <reference types="vite/client" />
 import type { EventoAgenda } from '../types';
 
-const MICROSOFT_CLIENT_ID = import.meta.env.VITE_MICROSOFT_CLIENT_ID as string | undefined;
+const CLIENT_ID = import.meta.env.VITE_MICROSOFT_CLIENT_ID as string | undefined;
+const GRAPH_API = 'https://graph.microsoft.com/v1.0';
+const SCOPES = 'Calendars.Read User.Read';
+const SESSION_KEY = 'ms_access_token';
 
 // ============================================================
-// CONFIGURAÇÃO E ESTADO
+// CONFIGURAÇÃO / STATUS
 // ============================================================
 
 export function isMicrosoftConfigured(): boolean {
-  return Boolean(MICROSOFT_CLIENT_ID && MICROSOFT_CLIENT_ID.length > 10);
+  return Boolean(CLIENT_ID && CLIENT_ID.trim().length > 10);
 }
 
 export function getMensagemNaoConfigurado(): string {
-  return 'Configure VITE_MICROSOFT_CLIENT_ID nas variáveis de ambiente do Vercel para habilitar o Microsoft Outlook.';
-}
-
-export function getMicrosoftToken(): string | null {
-  return sessionStorage.getItem('microsoft_access_token');
+  return 'Configure VITE_MICROSOFT_CLIENT_ID na Vercel para habilitar Microsoft Outlook.';
 }
 
 export function isMicrosoftConectado(): boolean {
-  return Boolean(getMicrosoftToken());
+  return Boolean(sessionStorage.getItem(SESSION_KEY));
+}
+
+function getToken(): string | null {
+  return sessionStorage.getItem(SESSION_KEY);
 }
 
 // ============================================================
-// AUTENTICAÇÃO — IMPLICIT FLOW (SPA)
+// AUTENTICAÇÃO — POPUP (não redireciona a página)
 // ============================================================
 
-const SCOPES = ['Calendars.Read', 'User.Read'].join(' ');
+export async function conectarMicrosoftCalendar(): Promise<string> {
+  if (!isMicrosoftConfigured()) throw new Error(getMensagemNaoConfigurado());
 
-export async function conectarMicrosoftCalendar(): Promise<boolean> {
-  if (!isMicrosoftConfigured()) return false;
   const redirectUri = encodeURIComponent(window.location.origin);
-  const nonce = Math.random().toString(36).slice(2);
-  const url =
+  const authUrl =
     `https://login.microsoftonline.com/common/oauth2/v2.0/authorize` +
-    `?client_id=${MICROSOFT_CLIENT_ID}` +
+    `?client_id=${CLIENT_ID}` +
     `&response_type=token` +
     `&redirect_uri=${redirectUri}` +
     `&scope=${encodeURIComponent(SCOPES)}` +
     `&response_mode=fragment` +
-    `&nonce=${nonce}`;
-  window.location.href = url;
-  return true;
-}
+    `&prompt=select_account`;
 
-export function capturarTokenMicrosoftDaURL(): string | null {
-  const hash = window.location.hash;
-  if (!hash) return null;
-  const params = new URLSearchParams(hash.replace('#', ''));
-  const token = params.get('access_token');
-  const error = params.get('error');
-  const errorDesc = params.get('error_description');
+  const popup = window.open(authUrl, 'ms-oauth-popup', 'width=520,height=680,left=200,top=100');
+  if (!popup) throw new Error('Popup bloqueado. Habilite popups para este site e tente novamente.');
 
-  if (error) {
-    // Limpa o hash independentemente
-    window.history.replaceState(null, '', window.location.pathname);
-    if (
-      errorDesc?.includes('AADSTS65001') ||
-      errorDesc?.includes('consent') ||
-      error === 'interaction_required'
-    ) {
-      throw new Error('INSTITUTIONAL_CONSENT_REQUIRED');
-    }
-    throw new Error(errorDesc ?? error);
-  }
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      clearInterval(poller);
+      try { popup.close(); } catch {}
+      reject(new Error('Timeout na autenticação Microsoft (2 min).'));
+    }, 120_000);
 
-  if (token) {
-    sessionStorage.setItem('microsoft_access_token', token);
-    window.history.replaceState(null, '', window.location.pathname);
-  }
-  return token;
+    const poller = setInterval(() => {
+      try {
+        if (popup.closed) {
+          clearInterval(poller);
+          clearTimeout(timeout);
+          reject(new Error('Autenticação cancelada.'));
+          return;
+        }
+
+        // Tenta ler o hash — vai lançar DOMException enquanto ainda no domínio Microsoft
+        const hash = popup.location.hash;
+        if (hash && hash.includes('access_token')) {
+          const params = new URLSearchParams(hash.replace('#', ''));
+          const token = params.get('access_token');
+          if (token) {
+            sessionStorage.setItem(SESSION_KEY, token);
+            popup.close();
+            clearInterval(poller);
+            clearTimeout(timeout);
+            resolve(token);
+          }
+        }
+        if (hash && hash.includes('error')) {
+          const params = new URLSearchParams(hash.replace('#', ''));
+          const err = params.get('error_description') ?? params.get('error') ?? 'Erro OAuth Microsoft';
+          popup.close();
+          clearInterval(poller);
+          clearTimeout(timeout);
+          reject(new Error(err));
+        }
+      } catch {
+        // Cross-origin error enquanto a aba navega — ignorar
+      }
+    }, 400);
+  });
 }
 
 export function desconectarMicrosoftCalendar(): void {
-  sessionStorage.removeItem('microsoft_access_token');
+  sessionStorage.removeItem(SESSION_KEY);
 }
 
 // ============================================================
 // LISTAGEM DE CALENDÁRIOS
 // ============================================================
 
-interface CalendarioMicrosoft {
+interface MsCalendario {
   id: string;
   name: string;
   isDefaultCalendar?: boolean;
 }
 
-async function listarCalendariosMicrosoft(token: string): Promise<CalendarioMicrosoft[]> {
-  const res = await fetch(
-    'https://graph.microsoft.com/v1.0/me/calendars?$select=id,name,isDefaultCalendar&$top=50',
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  if (!res.ok) return [{ id: 'primary', name: 'Calendário', isDefaultCalendar: true }];
-  const json = await res.json() as { value?: CalendarioMicrosoft[] };
-  return json.value ?? [{ id: 'primary', name: 'Calendário', isDefaultCalendar: true }];
+async function listarCalendariosMs(): Promise<MsCalendario[]> {
+  const token = getToken();
+  if (!token) throw new Error('Não conectado ao Microsoft Calendar');
+
+  const res = await fetch(`${GRAPH_API}/me/calendars?$select=id,name,isDefaultCalendar&$top=50`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    if (res.status === 401) { desconectarMicrosoftCalendar(); throw new Error('Sessão Microsoft expirada. Reconecte.'); }
+    throw new Error(`Erro ao listar calendários Microsoft: ${res.status}`);
+  }
+  const json = await res.json() as { value?: MsCalendario[] };
+  return json.value ?? [];
 }
 
 // ============================================================
-// EXTRAÇÃO DE LINK DE REUNIÃO
+// LISTAGEM DE EVENTOS
 // ============================================================
 
-interface MicrosoftEvent {
+interface MsEvent {
   id: string;
   subject?: string;
   bodyPreview?: string;
-  body?: { content?: string };
   start: { dateTime: string; timeZone?: string };
   end: { dateTime: string; timeZone?: string };
-  isAllDay: boolean;
+  isAllDay?: boolean;
   location?: { displayName?: string };
-  onlineMeeting?: { joinUrl?: string };
+  onlineMeeting?: { joinUrl?: string } | null;
   onlineMeetingUrl?: string;
+  webLink?: string;
 }
 
-function extrairLinkReuniao(ev: MicrosoftEvent): string | undefined {
-  // 1. Campo direto onlineMeeting.joinUrl (Teams / Skype)
-  if (ev.onlineMeeting?.joinUrl) return ev.onlineMeeting.joinUrl;
-  // 2. Campo legado onlineMeetingUrl
-  if (ev.onlineMeetingUrl) return ev.onlineMeetingUrl;
-  // 3. Busca no corpo do evento (HTML ou texto)
-  const corpo = ev.body?.content ?? ev.bodyPreview ?? '';
-  const match = corpo.match(/https:\/\/teams\.microsoft\.com\/l\/meetup-join\/[^\s"'<>]+/);
-  if (match) return match[0];
-  // 4. Zoom
-  const zoom = corpo.match(/https:\/\/[a-z0-9.]+\.zoom\.us\/[j|w]\/[^\s"'<>]+/);
-  if (zoom) return zoom[0];
-  return undefined;
+function extrairLinkReuniaoms(ev: MsEvent): string | undefined {
+  return ev.onlineMeeting?.joinUrl ?? ev.onlineMeetingUrl ?? undefined;
 }
 
-// ============================================================
-// BUSCA DE EVENTOS POR CALENDÁRIO
-// ============================================================
-
-async function buscarEventosPorCalendario(
-  token: string,
+async function buscarEventosCalendarioMs(
   calendarId: string,
   calendarNome: string,
   dataInicio: string,
   dataFim: string
 ): Promise<EventoAgenda[]> {
+  const token = getToken();
+  if (!token) return [];
+
   const params = new URLSearchParams({
     startDateTime: `${dataInicio}T00:00:00Z`,
     endDateTime: `${dataFim}T23:59:59Z`,
-    $select: 'id,subject,start,end,isAllDay,location,bodyPreview,body,onlineMeeting,onlineMeetingUrl',
-    $top: '500',
-    $orderby: 'start/dateTime',
+    '$select': 'id,subject,bodyPreview,start,end,isAllDay,location,onlineMeeting,onlineMeetingUrl',
+    '$top': '250',
+    '$orderby': 'start/dateTime',
   });
 
-  const endpoint = calendarId === 'primary'
-    ? `https://graph.microsoft.com/v1.0/me/calendarView?${params}`
-    : `https://graph.microsoft.com/v1.0/me/calendars/${encodeURIComponent(calendarId)}/calendarView?${params}`;
+  const res = await fetch(
+    `${GRAPH_API}/me/calendars/${encodeURIComponent(calendarId)}/calendarView?${params}`,
+    { headers: { Authorization: `Bearer ${token}`, Prefer: 'outlook.timezone="UTC"' } }
+  );
 
-  const res = await fetch(endpoint, { headers: { Authorization: `Bearer ${token}` } });
-
-  if (res.status === 401) {
-    desconectarMicrosoftCalendar();
-    throw new Error('Sessão Microsoft expirada. Reconecte.');
+  if (!res.ok) {
+    if (res.status === 401) { desconectarMicrosoftCalendar(); throw new Error('Sessão Microsoft expirada. Reconecte.'); }
+    if (res.status === 403 || res.status === 404) return [];
+    return [];
   }
-  // Calendários sem acesso: ignora silenciosamente
-  if (res.status === 403 || res.status === 404) return [];
-  if (!res.ok) return [];
 
-  const json = await res.json() as { value?: MicrosoftEvent[] };
-  return (json.value ?? []).map((ev): EventoAgenda => {
-    const diaInteiro = ev.isAllDay;
-    const inicio = ev.start.dateTime;
-    const fim = ev.end.dateTime;
-    const linkReuniao = extrairLinkReuniao(ev);
-
-    return {
-      id: `ms-${calendarId}-${ev.id}`,
-      fonte: 'microsoft' as const,
-      titulo: ev.subject ?? '(sem título)',
-      descricao: ev.bodyPreview ?? undefined,
-      inicio,
-      fim,
-      diaInteiro,
-      local: ev.location?.displayName ?? undefined,
-      bloqueiaTempo: !diaInteiro,
-      importadoEm: new Date().toISOString(),
-      tarefaGeradaId: null,
-      ignorado: false,
-      calendarNome,
-      linkReuniao,
-    };
-  });
-}
-
-// ============================================================
-// API PÚBLICA: LISTAR E SINCRONIZAR EVENTOS
-// ============================================================
-
-export async function listarEventosMicrosoft(
-  dataInicio: string,
-  dataFim: string
-): Promise<EventoAgenda[]> {
-  const token = getMicrosoftToken();
-  if (!token) return [];
-
-  try {
-    // Busca todos os calendários do usuário
-    const calendarios = await listarCalendariosMicrosoft(token);
-
-    // Busca eventos de todos os calendários em paralelo
-    const resultados = await Promise.all(
-      calendarios.map(cal =>
-        buscarEventosPorCalendario(token, cal.id, cal.name, dataInicio, dataFim)
-      )
-    );
-
-    return resultados.flat();
-  } catch (e) {
-    if (e instanceof Error && e.message.includes('expirada')) {
-      desconectarMicrosoftCalendar();
-    }
-    throw e;
-  }
+  const json = await res.json() as { value?: MsEvent[] };
+  return (json.value ?? []).map((ev): EventoAgenda => ({
+    id: `ms-${calendarId.slice(0, 8)}-${ev.id.slice(-12)}`,
+    fonte: 'microsoft',
+    titulo: ev.subject ?? '(Sem título)',
+    descricao: ev.bodyPreview,
+    inicio: ev.start.dateTime.endsWith('Z') ? ev.start.dateTime : `${ev.start.dateTime}Z`,
+    fim: ev.end.dateTime.endsWith('Z') ? ev.end.dateTime : `${ev.end.dateTime}Z`,
+    diaInteiro: Boolean(ev.isAllDay),
+    local: ev.location?.displayName ?? undefined,
+    bloqueiaTempo: !ev.isAllDay,
+    importadoEm: new Date().toISOString(),
+    tarefaGeradaId: null,
+    ignorado: false,
+    calendarNome,
+    linkReuniao: extrairLinkReuniaoms(ev),
+  }));
 }
 
 export async function sincronizarMicrosoftCalendar(
   dataInicio: string,
   dataFim: string
 ): Promise<EventoAgenda[]> {
-  return listarEventosMicrosoft(dataInicio, dataFim);
+  const token = getToken();
+  if (!token) throw new Error('Não conectado ao Microsoft Calendar');
+
+  let calendarios: MsCalendario[];
+  try {
+    calendarios = await listarCalendariosMs();
+  } catch {
+    // Fallback: tenta só o calendário padrão
+    const res = await fetch(
+      `${GRAPH_API}/me/calendarView?startDateTime=${dataInicio}T00:00:00Z&endDateTime=${dataFim}T23:59:59Z` +
+      `&$select=id,subject,bodyPreview,start,end,isAllDay,location,onlineMeeting&$top=250`,
+      { headers: { Authorization: `Bearer ${token}`, Prefer: 'outlook.timezone="UTC"' } }
+    );
+    if (!res.ok) { if (res.status === 401) desconectarMicrosoftCalendar(); return []; }
+    const json = await res.json() as { value?: MsEvent[] };
+    return (json.value ?? []).map((ev): EventoAgenda => ({
+      id: `ms-${ev.id.slice(-12)}`,
+      fonte: 'microsoft',
+      titulo: ev.subject ?? '(Sem título)',
+      descricao: ev.bodyPreview,
+      inicio: ev.start.dateTime.endsWith('Z') ? ev.start.dateTime : `${ev.start.dateTime}Z`,
+      fim: ev.end.dateTime.endsWith('Z') ? ev.end.dateTime : `${ev.end.dateTime}Z`,
+      diaInteiro: Boolean(ev.isAllDay),
+      local: ev.location?.displayName ?? undefined,
+      bloqueiaTempo: !ev.isAllDay,
+      importadoEm: new Date().toISOString(),
+      tarefaGeradaId: null,
+      ignorado: false,
+      calendarNome: 'Outlook',
+      linkReuniao: extrairLinkReuniaoms(ev),
+    }));
+  }
+
+  const resultados = await Promise.all(
+    calendarios.map(c => buscarEventosCalendarioMs(c.id, c.name, dataInicio, dataFim))
+  );
+  return resultados.flat();
 }
