@@ -956,7 +956,14 @@ export function AgendaTempoPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <IntegracaoCard
               nome="Google Calendar"
-              icone={<span className="text-red-500 font-black text-lg">G</span>}
+              icone={
+                <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                </svg>
+              }
               configurado={isGoogleConfigured()}
               conectado={isGoogleConectado()}
               sincronizadaEm={sincGoogleEm}
@@ -969,7 +976,14 @@ export function AgendaTempoPage() {
             />
             <IntegracaoCard
               nome="Microsoft Outlook"
-              icone={<span className="text-blue-500 font-black text-lg">M</span>}
+              icone={
+                <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="1" y="1" width="10" height="10" fill="#F25022"/>
+                  <rect x="13" y="1" width="10" height="10" fill="#7FBA00"/>
+                  <rect x="1" y="13" width="10" height="10" fill="#00A4EF"/>
+                  <rect x="13" y="13" width="10" height="10" fill="#FFB900"/>
+                </svg>
+              }
               configurado={isMicrosoftConfigured()}
               conectado={isMicrosoftConectado()}
               sincronizadaEm={sincMsEm}
@@ -1040,7 +1054,19 @@ export function AgendaTempoPage() {
       <Modal isOpen={modalManual} onClose={() => setModalManual(false)} title="Adicionar bloqueio manual" size="md">
         <div className="space-y-4">
           <Input id="m-titulo" label="Título" required value={formManual.titulo} onChange={e => setFormManual(f => ({ ...f, titulo: e.target.value }))} error={errosManual.titulo} placeholder="Ex: Reunião, Consulta médica…" />
-          <Input id="m-data" label="Data" required type="date" value={formManual.data} onChange={e => setFormManual(f => ({ ...f, data: e.target.value }))} error={errosManual.data} />
+          <div>
+            <label htmlFor="m-data" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Data <span className="text-danger-500">*</span></label>
+            <input
+              id="m-data"
+              type="date"
+              value={formManual.data}
+              onChange={e => setFormManual(f => ({ ...f, data: e.target.value }))}
+              lang="pt-BR"
+              style={{ colorScheme: 'dark' }}
+              className="w-full px-3 py-2.5 rounded-lg border text-sm bg-white dark:bg-surface-900 border-surface-300 dark:border-surface-600 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 [&::-webkit-datetime-edit-month-field]:order-2 [&::-webkit-datetime-edit-day-field]:order-1 [&::-webkit-datetime-edit-year-field]:order-3"
+            />
+            {errosManual.data && <p className="mt-1 text-xs text-danger-600 dark:text-danger-400">{errosManual.data}</p>}
+          </div>
           <label className="flex items-center gap-2 cursor-pointer select-none">
             <input type="checkbox" checked={formManual.diaInteiro} onChange={e => setFormManual(f => ({ ...f, diaInteiro: e.target.checked }))} className="accent-primary-600 w-4 h-4" />
             <span className="text-sm text-surface-700 dark:text-surface-300">Dia inteiro</span>
