@@ -30,7 +30,12 @@ export const leituraRepository = {
     if (!isSupabaseConfigured) return;
     const { error } = await supabase
       .from('leituras_diarias')
-      .update({ status: l.status, data_leitura: l.dataLeitura ?? null, updated_at: new Date().toISOString() })
+      .update({
+        ...(l.status ? { status: l.status } : {}),
+        ...(l.prioridade ? { prioridade: l.prioridade } : {}),
+        ...(l.dataLeitura !== undefined ? { data_leitura: l.dataLeitura } : {}),
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', l.id);
     if (error) throw error;
   },
