@@ -1,5 +1,6 @@
-import { useState, useEffect, type InputHTMLAttributes } from 'react';
-import { isoParaDataBR, dataBRParaISO } from '../utils';
+import { useRef, type InputHTMLAttributes } from 'react';
+import { Calendar } from 'lucide-react';
+import { dataBRParaISO, isoParaDataBR } from '../utils';
 
 interface DateInputBRProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'id' | 'type' | 'value' | 'onChange'> {
   id: string;
@@ -12,24 +13,19 @@ interface DateInputBRProps extends Omit<InputHTMLAttributes<HTMLInputElement>, '
 }
 
 export function DateInputBR({ id, label, value, onChange, required, error, hint, className = '', ...props }: DateInputBRProps) {
-  const [display, setDisplay] = useState(() => isoParaDataBR(value));
+  const inputRef = useRef<HTMLInputElement>(null);
+  const isoValue = /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : dataBRParaISO(value);
+  const display = isoValue ? isoParaDataBR(isoValue) : value || '';
 
-  useEffect(() => {
-    setDisplay(isoParaDataBR(value));
-  }, [value]);
+  const abrirCalendario = () => {
+    const input = inputRef.current;
+    if (!input) return;
+    if (typeof input.showPicker === 'function') input.showPicker();
+    else input.focus();
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value.replace(/\D/g, '').slice(0, 8);
-    let masked = raw;
-    if (raw.length > 2) masked = raw.slice(0, 2) + '/' + raw.slice(2);
-    if (raw.length > 4) masked = raw.slice(0, 2) + '/' + raw.slice(2, 4) + '/' + raw.slice(4, 8);
-    setDisplay(masked);
-    if (raw.length === 8) {
-      const iso = dataBRParaISO(masked);
-      if (iso) onChange(iso);
-    } else if (raw.length === 0) {
-      onChange('');
-    }
+    onChange(e.target.value || '');
   };
 
   return (
@@ -37,27 +33,38 @@ export function DateInputBR({ id, label, value, onChange, required, error, hint,
       <label htmlFor={id} className="text-sm font-medium text-surface-700 dark:text-surface-300">
         {label} {required && <span className="text-danger-500">*</span>}
       </label>
-      <input
-        id={id}
-        type="text"
-        inputMode="numeric"
-        placeholder="dd/MM/aaaa"
-        maxLength={10}
-        value={display}
-        onChange={handleChange}
-        {...props}
-        className={`
-          w-full px-3 py-2 rounded-lg border text-sm
-          bg-white dark:bg-surface-900
-          border-surface-300 dark:border-surface-600
-          text-surface-900 dark:text-white
-          placeholder:text-surface-400 dark:placeholder:text-surface-500
-          focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
-          disabled:opacity-50 disabled:cursor-not-allowed transition-colors
-          ${error ? 'border-danger-500 focus:ring-danger-500' : ''}
-          ${className}
-        `}
-      />
+      <div className="relative">
+        <button
+          type="button"
+          onClick={abrirCalendario}
+          disabled={props.disabled}
+          className={`
+            w-full px-3 py-2 pr-10 rounded-lg border text-sm text-left
+            bg-white dark:bg-surface-900
+            border-surface-300 dark:border-surface-600
+            text-surface-900 dark:text-white
+            focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+            disabled:opacity-50 disabled:cursor-not-allowed transition-colors
+            ${error ? 'border-danger-500 focus:ring-danger-500' : ''}
+            ${className}
+          `}
+        >
+          <span className={display ? '' : 'text-surface-400 dark:text-surface-500'}>
+            {display || 'dd/mm/aaaa'}
+          </span>
+        </button>
+        <Calendar size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-surface-400" />
+        <input
+          ref={inputRef}
+          id={id}
+          type="date"
+          value={isoValue}
+          onChange={handleChange}
+          {...props}
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          aria-label={label}
+        />
+      </div>
       {hint && !error && <p className="text-xs text-surface-400 dark:text-surface-500">{hint}</p>}
       {error && <p className="text-xs text-danger-600 dark:text-danger-400">{error}</p>}
     </div>
