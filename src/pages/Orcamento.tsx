@@ -92,6 +92,42 @@ const categoriasReceita: CategoriaFinanceira[] = ['Salário', 'Freelance', 'Inve
 const categoriasDespesa: CategoriaFinanceira[] = ['Moradia', 'Alimentação', 'Transporte', 'Saúde', 'Educação', 'Lazer', 'Dívidas', 'Cartão', 'Reserva', 'Outros'];
 const formasPagamento: FormaPagamento[] = ['Dinheiro', 'Cartão de crédito', 'Débito', 'PIX', 'Boleto', 'Transferência'];
 
+type FormReceita = Omit<Receita, 'id' | 'dataCriacao'>;
+
+const novaReceitaForm = (): FormReceita => {
+  const hoje = hojeISO();
+  return {
+    descricao: '',
+    valor: 0,
+    data: hoje,
+    dataReceita: hoje,
+    mesReferencia: Number(hoje.slice(5, 7)),
+    anoReferencia: Number(hoje.slice(0, 4)),
+    categoria: 'Salário',
+    recorrente: false,
+    recorrenciaId: null,
+    recorrenciaTemTermino: false,
+    recorrenciaMesTermino: null,
+    recorrenciaAnoTermino: null,
+  };
+};
+
+const dataCompetencia = (ano: number, mes: number) => `${ano}-${String(mes).padStart(2, '0')}-01`;
+
+function mesesRecorrenciaReceita(form: FormReceita): { mes: number; ano: number }[] {
+  const inicioMes = form.mesReferencia ?? Number((form.dataReceita ?? form.data).slice(5, 7));
+  const inicioAno = form.anoReferencia ?? Number((form.dataReceita ?? form.data).slice(0, 4));
+  const fimMes = form.recorrenciaTemTermino ? form.recorrenciaMesTermino ?? inicioMes : 12;
+  const fimAno = form.recorrenciaTemTermino ? form.recorrenciaAnoTermino ?? inicioAno : 2026;
+  const meses: { mes: number; ano: number }[] = [];
+  for (let ano = inicioAno; ano <= fimAno; ano++) {
+    const de = ano === inicioAno ? inicioMes : 1;
+    const ate = ano === fimAno ? fimMes : 12;
+    for (let mes = de; mes <= ate; mes++) meses.push({ mes, ano });
+  }
+  return meses;
+}
+
 export function OrcamentoPage() {
   const { data, setData } = useApp();
   const { perfil } = useAuth();
@@ -105,7 +141,7 @@ export function OrcamentoPage() {
   const [modalEscopoParcela, setModalEscopoParcela] = useState<null | { despesaId: string; grupoId: string }>(null);
 
   // Forms
-  const [formReceita, setFormReceita] = useState<Omit<Receita, 'id' | 'dataCriacao'>>({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Salário', recorrente: false });
+  const [formReceita, setFormReceita] = useState<FormReceita>(novaReceitaForm());
   const [formReceitaValorStr, setFormReceitaValorStr] = useState('');
   const [formDespesa, setFormDespesa] = useState<Omit<Despesa, 'id' | 'dataCriacao'>>({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Alimentação', formaPagamento: 'PIX', recorrente: false, essencial: true });
   const [formDespesaValorStr, setFormDespesaValorStr] = useState('');
@@ -132,7 +168,9 @@ export function OrcamentoPage() {
   };
   const receitasFiltradas = data.receitas.filter(r => {
     const { mes, ano } = mesAnoDeData(r.data);
-    return mes === mesFiltro.mes && ano === mesFiltro.ano;
+    const mesRef = (r.mesReferencia ?? mes + 1) - 1;
+    const anoRef = r.anoReferencia ?? ano;
+    return mesRef === mesFiltro.mes && anoRef === mesFiltro.ano;
   });
   // Despesas: não-cartão filtra por mês de referência; cartão filtra pela competência da fatura
   const despesasFiltradas = data.despesas.filter(d => {
@@ -271,16 +309,63 @@ export function OrcamentoPage() {
 
   const salvarReceita = useCallback(() => {
     const valorFinal = parseBRLMoney(formReceitaValorStr);
-    const receitaComValor = { ...formReceita, valor: valorFinal };
-    setData(d => ({
-      ...d,
-      receitas: editandoId
-        ? d.receitas.map(r => r.id === editandoId ? { ...r, ...receitaComValor } : r)
-        : [...d.receitas, { id: gerarId(), ...receitaComValor, dataCriacao: hojeISO() }],
-    }));
+    const baseReceita: FormReceita = {
+      ...formReceita,
+      valor: valorFinal,
+      dataReceita: formReceita.dataReceita ?? formReceita.data,
+      mesReferencia: formReceita.mesReferencia ?? Number(formReceita.data.slice(5, 7)),
+      anoReferencia: formReceita.anoReferencia ?? Number(formReceita.data.slice(0, 4)),
+    };
+
+    setData(d => {
+      if (editandoId) {
+        const atual = d.receitas.find(r => r.id === editandoId);
+        const recorrenciaId = atual?.recorrenciaId ?? baseReceita.recorrenciaId ?? null;
+        return {
+          ...d,
+          receitas: d.receitas.map(r =>
+            r.id === editandoId
+              ? { ...r, ...baseReceita, recorrenciaId, data: dataCompetencia(baseReceita.anoReferencia!, baseReceita.mesReferencia!) }
+              : r
+          ),
+        };
+      }
+
+      if (baseReceita.recorrente) {
+        const recorrenciaId = crypto.randomUUID();
+        const meses = mesesRecorrenciaReceita(baseReceita);
+        const novas = meses
+          .filter(({ mes, ano }) => !d.receitas.some(r =>
+            r.recorrenciaId === recorrenciaId && r.mesReferencia === mes && r.anoReferencia === ano
+          ))
+          .map(({ mes, ano }) => ({
+            id: gerarId(),
+            ...baseReceita,
+            data: dataCompetencia(ano, mes),
+            mesReferencia: mes,
+            anoReferencia: ano,
+            recorrenciaId,
+            dataCriacao: hojeISO(),
+          }));
+        return { ...d, receitas: [...d.receitas, ...novas] };
+      }
+
+      return {
+        ...d,
+        receitas: [
+          ...d.receitas,
+          {
+            id: gerarId(),
+            ...baseReceita,
+            data: dataCompetencia(baseReceita.anoReferencia!, baseReceita.mesReferencia!),
+            dataCriacao: hojeISO(),
+          },
+        ],
+      };
+    });
     setModal(null);
     setEditandoId(null);
-    setFormReceita({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Salário', recorrente: false });
+    setFormReceita(novaReceitaForm());
     setFormReceitaValorStr('');
   }, [formReceita, formReceitaValorStr, editandoId, setData]);
 
@@ -601,10 +686,10 @@ export function OrcamentoPage() {
               { label: 'Reserva atual', valor: totalReservas, icon: <PiggyBank size={18} />, cor: 'text-primary-600 dark:text-primary-400', bg: 'bg-primary-50 dark:bg-primary-900/20' },
             ].map(item => (
               <Card key={item.label}>
-                <CardBody>
+                <CardBody className="min-h-[132px] p-4 overflow-hidden">
                   <div className={`w-9 h-9 rounded-lg ${item.bg} ${item.cor} flex items-center justify-center mb-3`}>{item.icon}</div>
-                  <p className={`text-xl font-bold ${item.cor}`}>{formatarDinheiro(item.valor)}</p>
-                  <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">{item.label}</p>
+                  <p className={`text-lg sm:text-xl font-bold ${item.cor} truncate`} title={formatarDinheiro(item.valor)}>{formatarDinheiro(item.valor)}</p>
+                  <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5 truncate" title={item.label}>{item.label}</p>
                 </CardBody>
               </Card>
             ))}
@@ -648,7 +733,7 @@ export function OrcamentoPage() {
       {aba === 'receitas' && (
         <div className="space-y-4 animate-fade-in">
           <div className="flex justify-end">
-            <Button icon={<Plus size={16} />} onClick={() => { setFormReceita({ descricao: '', valor: 0, data: hojeISO(), categoria: 'Salário', recorrente: false }); abrirModal('receita'); }}>
+            <Button icon={<Plus size={16} />} onClick={() => { setFormReceita(novaReceitaForm()); setFormReceitaValorStr(''); abrirModal('receita'); }}>
               Nova Receita
             </Button>
           </div>
@@ -659,19 +744,21 @@ export function OrcamentoPage() {
               ) : (
                 <div className="space-y-2">
                   {receitasFiltradas.map(r => (
-                    <div key={r.id} className="flex items-center justify-between p-3 rounded-xl border border-surface-200 dark:border-surface-700">
-                      <div className="flex items-center gap-3">
+                    <div key={r.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-surface-200 dark:border-surface-700">
+                      <div className="flex items-center gap-3 min-w-0">
                         <div className="w-8 h-8 rounded-lg bg-success-50 dark:bg-success-900/20 flex items-center justify-center">
                           <TrendingUp size={14} className="text-success-600 dark:text-success-400" />
                         </div>
-                        <div>
-                          <p className="text-sm font-medium text-surface-900 dark:text-white">{r.descricao}</p>
-                          <p className="text-xs text-surface-400 dark:text-surface-500">{formatarData(r.data)} · {r.categoria}{r.recorrente ? ' · Recorrente' : ''}</p>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-surface-900 dark:text-white truncate" title={r.descricao}>{r.descricao}</p>
+                          <p className="text-xs text-surface-400 dark:text-surface-500 truncate">
+                            Receita: {formatarData(r.dataReceita ?? r.data)} · Ref.: {MESES[(r.mesReferencia ?? Number(r.data.slice(5, 7))) - 1]} {r.anoReferencia ?? Number(r.data.slice(0, 4))} · {r.categoria}{r.recorrente ? ' · Recorrente' : ''}
+                          </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-success-600 dark:text-success-400">{formatarDinheiro(r.valor)}</span>
-                        <button onClick={() => { setFormReceita({ descricao: r.descricao, valor: r.valor, data: r.data, categoria: r.categoria, recorrente: r.recorrente }); setFormReceitaValorStr(moneyToInputBR(r.valor)); abrirModal('receita', r); }} className="p-1.5 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="text-sm font-semibold text-success-600 dark:text-success-400 whitespace-nowrap">{formatarDinheiro(r.valor)}</span>
+                        <button onClick={() => { setFormReceita({ descricao: r.descricao, valor: r.valor, data: r.data, dataReceita: r.dataReceita ?? r.data, mesReferencia: r.mesReferencia ?? Number(r.data.slice(5, 7)), anoReferencia: r.anoReferencia ?? Number(r.data.slice(0, 4)), categoria: r.categoria, recorrente: r.recorrente, recorrenciaId: r.recorrenciaId ?? null, recorrenciaTemTermino: r.recorrenciaTemTermino ?? false, recorrenciaMesTermino: r.recorrenciaMesTermino ?? null, recorrenciaAnoTermino: r.recorrenciaAnoTermino ?? null }); setFormReceitaValorStr(moneyToInputBR(r.valor)); abrirModal('receita', r); }} className="p-1.5 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
                         <button onClick={() => setData(d => ({ ...d, receitas: d.receitas.filter(x => x.id !== r.id) }))} className="p-1.5 rounded text-surface-400 hover:text-danger-600 transition-colors"><Trash2 size={13} /></button>
                       </div>
                     </div>
@@ -1009,12 +1096,33 @@ export function OrcamentoPage() {
           <Input id="rec-desc" label="Descrição" required value={formReceita.descricao} onChange={e => setFormReceita(f => ({ ...f, descricao: e.target.value }))} placeholder="Ex: Salário, freelance..." />
           <div className="grid grid-cols-2 gap-3">
             <Input id="rec-valor" label="Valor (R$)" required type="text" inputMode="decimal" placeholder="0,00" value={formReceitaValorStr} onChange={e => setFormReceitaValorStr(e.target.value)} />
-            <DateSelectBR label="Data" value={formReceita.data} onChange={v => setFormReceita(f => ({ ...f, data: v }))} />
+            <DateSelectBR label="Data da receita" value={formReceita.dataReceita ?? formReceita.data} onChange={v => setFormReceita(f => ({ ...f, dataReceita: v }))} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Select id="rec-mes-ref" label="Mês de referência" value={String(formReceita.mesReferencia ?? Number(formReceita.data.slice(5, 7)))} onChange={e => setFormReceita(f => ({ ...f, mesReferencia: Number(e.target.value) }))}>
+              {MESES.map((mes, i) => <option key={mes} value={i + 1}>{mes}</option>)}
+            </Select>
+            <Input id="rec-ano-ref" label="Ano de referência" type="number" min="2020" max="2035" value={formReceita.anoReferencia ?? Number(formReceita.data.slice(0, 4))} onChange={e => setFormReceita(f => ({ ...f, anoReferencia: Number(e.target.value) }))} />
           </div>
           <Select id="rec-cat" label="Categoria" value={formReceita.categoria} onChange={e => setFormReceita(f => ({ ...f, categoria: e.target.value as CategoriaFinanceira }))}>
             {categoriasReceita.map(c => <option key={c} value={c}>{c}</option>)}
           </Select>
           <Checkbox id="rec-rec" label="Receita recorrente" checked={formReceita.recorrente} onChange={e => setFormReceita(f => ({ ...f, recorrente: e.target.checked }))} />
+          {formReceita.recorrente && (
+            <div className="space-y-3 rounded-xl border border-surface-200 dark:border-surface-700 p-3">
+              <Checkbox id="rec-tem-fim" label="Essa receita tem término?" checked={!!formReceita.recorrenciaTemTermino} onChange={e => setFormReceita(f => ({ ...f, recorrenciaTemTermino: e.target.checked }))} />
+              {formReceita.recorrenciaTemTermino ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <Select id="rec-mes-fim" label="Mês de término" value={String(formReceita.recorrenciaMesTermino ?? formReceita.mesReferencia ?? 12)} onChange={e => setFormReceita(f => ({ ...f, recorrenciaMesTermino: Number(e.target.value) }))}>
+                    {MESES.map((mes, i) => <option key={mes} value={i + 1}>{mes}</option>)}
+                  </Select>
+                  <Input id="rec-ano-fim" label="Ano de término" type="number" min="2026" max="2035" value={formReceita.recorrenciaAnoTermino ?? formReceita.anoReferencia ?? 2026} onChange={e => setFormReceita(f => ({ ...f, recorrenciaAnoTermino: Number(e.target.value) }))} />
+                </div>
+              ) : (
+                <p className="text-xs text-surface-400 dark:text-surface-500">Sem término: cria inicialmente os meses restantes de 2026 e mantém vínculo da série recorrente.</p>
+              )}
+            </div>
+          )}
           <div className="flex gap-3 pt-2">
             <Button variant="secondary" className="flex-1" onClick={() => setModal(null)}>Cancelar</Button>
             <Button className="flex-1" onClick={salvarReceita}>Salvar</Button>

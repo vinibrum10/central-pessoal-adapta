@@ -35,6 +35,8 @@ type FormAtiva = {
   resultadoEsperado: string;
   frequenciaRevisao: FrequenciaRevisao;
   status: StatusMeta;
+  quantidadeEtapas: number;
+  etapas: string[];
 };
 
 type FormFutura = {
@@ -61,6 +63,8 @@ const formAtivaVazio = (): FormAtiva => ({
   resultadoEsperado: '',
   frequenciaRevisao: 'semanal',
   status: 'ativa',
+  quantidadeEtapas: 0,
+  etapas: [],
 });
 
 const formFuturaVazia = (): FormFutura => ({
@@ -197,6 +201,8 @@ export function MetasPage() {
       resultadoEsperado: meta.resultadoEsperado,
       frequenciaRevisao: meta.frequenciaRevisao,
       status: meta.status,
+      quantidadeEtapas: meta.etapas?.length ?? 0,
+      etapas: meta.etapas?.map(e => e.descricao) ?? [],
     });
     setMetaEditando(meta);
     setErrosAtiva({});
@@ -213,18 +219,50 @@ export function MetasPage() {
         : undefined;
 
     setData(d => {
+      const etapas = formAtiva.etapas
+        .map((descricao, index) => ({ numero: index + 1, descricao: descricao.trim() }))
+        .filter(etapa => etapa.descricao.length > 0);
       if (metaEditando) {
+        const tarefasSemDuplicar = d.tarefas.filter(t =>
+          !(t.metaId === metaEditando.id && t.geradaPorMeta && t.etapaMetaNumero && !etapas.some(e => e.numero === t.etapaMetaNumero))
+        );
+        const tarefasAtualizadas = etapas.reduce((acc, etapa) => {
+          const existente = acc.find(t => t.metaId === metaEditando.id && t.geradaPorMeta && t.etapaMetaNumero === etapa.numero);
+          if (existente) {
+            return acc.map(t => t.id === existente.id ? { ...t, titulo: etapa.descricao, categoria: formAtiva.categoria, prazo: formAtiva.prazoFinal } : t);
+          }
+          return [...acc, {
+            id: gerarId(),
+            titulo: etapa.descricao,
+            metaId: metaEditando.id,
+            categoria: formAtiva.categoria,
+            prazo: formAtiva.prazoFinal,
+            tempoEstimado: 30,
+            faixa: 'médio impacto' as const,
+            faixaManual: false,
+            status: 'não iniciado' as const,
+            energiaNecessaria: 'média' as const,
+            observacoes: `Etapa ${etapa.numero} da meta "${formAtiva.nome}"`,
+            dataCriacao: hojeISO(),
+            dataConclusao: null,
+            tipoAcao: 'eventual' as const,
+            etapaMetaNumero: etapa.numero,
+            geradaPorMeta: true,
+          }];
+        }, tarefasSemDuplicar);
         return {
           ...d,
           metas: d.metas.map(m =>
             m.id === metaEditando.id
-              ? { ...m, ...formAtiva, grau: Number(formAtiva.grau) || 0, dataInicio, classificacaoPrazo, dataUltimaAcao: hojeISO() }
+              ? { ...m, ...formAtiva, grau: Number(formAtiva.grau) || 0, dataInicio, classificacaoPrazo, dataUltimaAcao: hojeISO(), etapas }
               : m
           ),
+          tarefas: tarefasAtualizadas,
         };
       }
+      const metaId = gerarId();
       const nova: Meta = {
-        id: gerarId(),
+        id: metaId,
         nome: formAtiva.nome,
         categoria: formAtiva.categoria,
         grau: Number(formAtiva.grau) || 0,
@@ -238,8 +276,27 @@ export function MetasPage() {
         dataCriacao: hojeISO(),
         dataUltimaRevisao: null,
         dataUltimaAcao: null,
+        etapas,
       };
-      return { ...d, metas: [...d.metas, nova] };
+      const tarefasEtapas = etapas.map(etapa => ({
+        id: gerarId(),
+        titulo: etapa.descricao,
+        metaId,
+        categoria: formAtiva.categoria,
+        prazo: formAtiva.prazoFinal,
+        tempoEstimado: 30,
+        faixa: 'médio impacto' as const,
+        faixaManual: false,
+        status: 'não iniciado' as const,
+        energiaNecessaria: 'média' as const,
+        observacoes: `Etapa ${etapa.numero} da meta "${formAtiva.nome}"`,
+        dataCriacao: hojeISO(),
+        dataConclusao: null,
+        tipoAcao: 'eventual' as const,
+        etapaMetaNumero: etapa.numero,
+        geradaPorMeta: true,
+      }));
+      return { ...d, metas: [...d.metas, nova], tarefas: [...d.tarefas, ...tarefasEtapas] };
     });
     setModalAtivo(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -360,8 +417,15 @@ export function MetasPage() {
 
   // ---- Ações gerais ----
   const excluir = (id: string) => {
-    if (!confirm('Excluir esta meta? As tarefas vinculadas ficarão sem meta.')) return;
-    setData(d => ({ ...d, metas: d.metas.filter(m => m.id !== id) }));
+    if (!confirm('Excluir esta meta?')) return;
+    const excluirAcoes = confirm('Deseja excluir também as ações vinculadas a esta meta?');
+    setData(d => ({
+      ...d,
+      metas: d.metas.filter(m => m.id !== id),
+      tarefas: excluirAcoes
+        ? d.tarefas.filter(t => t.metaId !== id)
+        : d.tarefas.map(t => t.metaId === id ? { ...t, metaId: null } : t),
+    }));
   };
 
   const concluirMeta = (id: string) => {
@@ -678,6 +742,38 @@ export function MetasPage() {
         <option value="concluída">Concluída</option>
         <option value="cancelada">Cancelada</option>
       </Select>
+      <div className="space-y-3">
+        <Input
+          id="meta-qtd-etapas"
+          label="Em quantas etapas você pretende concluir essa meta?"
+          type="number"
+          min="0"
+          max="30"
+          value={form.quantidadeEtapas}
+          onChange={e => {
+            const qtd = Math.max(0, Number(e.target.value) || 0);
+            setForm({
+              ...form,
+              quantidadeEtapas: qtd,
+              etapas: Array.from({ length: qtd }, (_, i) => form.etapas[i] ?? ''),
+            });
+          }}
+        />
+        {form.etapas.map((etapa, index) => (
+          <Input
+            key={index}
+            id={`meta-etapa-${index + 1}`}
+            label={`Etapa ${index + 1}`}
+            value={etapa}
+            onChange={e => {
+              const etapas = [...form.etapas];
+              etapas[index] = e.target.value;
+              setForm({ ...form, etapas });
+            }}
+            placeholder={`Descrição da etapa ${index + 1}`}
+          />
+        ))}
+      </div>
     </div>
   );
 

@@ -27,6 +27,7 @@ import {
 } from '../utils/calendarAvailability';
 import {
   isGoogleConfigured, isGoogleConectado,
+  getGoogleConnectionStatus,
   getMensagemNaoConfigurado as googleMsg,
   conectarGoogleCalendar, desconectarGoogleCalendar,
   sincronizarGoogleCalendar, deduplicarEventos,
@@ -593,16 +594,18 @@ export function AgendaTempoPage() {
   useEffect(() => {
     let cancelado = false;
     const autoSync = async () => {
-      if (isGoogleConfigured() && isGoogleConectado()) {
+      if (isGoogleConfigured() && getGoogleConnectionStatus() === 'conectado') {
         try {
           const eventos = await sincronizarGoogleCalendar(range30.ini, range30.fim);
           if (!cancelado) {
             setData(d => ({ ...d, eventosAgenda: [...d.eventosAgenda.filter(e => e.fonte !== 'google'), ...eventos] }));
             setSincGoogleEm(new Date().toISOString());
           }
-        } catch {
-          // Token expirado ou erro de rede — limpa silenciosamente para forçar reconexão
-          if (!cancelado) desconectarGoogleCalendar();
+        } catch (e) {
+          if (!cancelado) {
+            const msg = e instanceof Error ? e.message : String(e);
+            setErroConexao(msg.includes('Sessão expirada') ? msg : 'Não foi possível sincronizar Google Calendar agora.');
+          }
         }
       }
       if (isMicrosoftConfigured() && isMicrosoftConectado()) {

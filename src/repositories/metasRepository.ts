@@ -51,6 +51,7 @@ function metaToRow(userId: string | null, m: Meta) {
     frequencia_revisao: m.frequenciaRevisao,
     data_ultima_revisao: m.dataUltimaRevisao ?? null,
     data_ultima_acao: m.dataUltimaAcao ?? null,
+    etapas: m.etapas ?? [],
     updated_at: new Date().toISOString(),
   };
 }
@@ -71,5 +72,6 @@ function rowToMeta(row: Record<string, unknown>): Meta {
     dataCriacao: row.created_at as string,
     dataUltimaRevisao: (row.data_ultima_revisao as string | null) ?? null,
     dataUltimaAcao: (row.data_ultima_acao as string | null) ?? null,
+    etapas: Array.isArray(row.etapas) ? row.etapas as Meta['etapas'] : [],
   };
 }

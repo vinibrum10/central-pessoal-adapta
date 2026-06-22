@@ -42,6 +42,9 @@ function migrarMetas(raw: Record<string, unknown>[]): Meta[] {
       dataCriacao: (m.dataCriacao as string) || '',
       dataUltimaRevisao: (m.dataUltimaRevisao as string | null) ?? null,
       dataUltimaAcao: (m.dataUltimaAcao as string | null) ?? null,
+      etapas: Array.isArray(m.etapas)
+        ? (m.etapas as Meta['etapas'])
+        : [],
       descricao: (m.descricao as string) || '',
       progresso: typeof m.progresso === 'number' ? m.progresso : 0,
       prioridade: (m.prioridade as Meta['prioridade']) ?? undefined,
@@ -134,6 +137,37 @@ function migrarTarefas(raw: Record<string, unknown>[]): Tarefa[] {
       tempoMinimoMinutos: typeof t.tempoMinimoMinutos === 'number' ? t.tempoMinimoMinutos : undefined,
       dataProximaOcorrencia: (t.dataProximaOcorrencia as string | null) ?? null,
       ultimaReabertura: (t.ultimaReabertura as string | null) ?? null,
+      etapaMetaNumero: typeof t.etapaMetaNumero === 'number' ? t.etapaMetaNumero : undefined,
+      geradaPorMeta: Boolean(t.geradaPorMeta),
+    };
+  });
+}
+
+function migrarReceitas(raw: Record<string, unknown>[]): AppData['receitas'] {
+  return raw.map(r => {
+    const data = (r.data as string) || new Date().toISOString().slice(0, 10);
+    const dataReceita = (r.dataReceita as string) || data;
+    const mesReferencia = typeof r.mesReferencia === 'number'
+      ? r.mesReferencia
+      : Number(data.slice(5, 7));
+    const anoReferencia = typeof r.anoReferencia === 'number'
+      ? r.anoReferencia
+      : Number(data.slice(0, 4));
+    return {
+      id: (r.id as string) || '',
+      descricao: (r.descricao as string) || '',
+      valor: typeof r.valor === 'number' ? r.valor : 0,
+      data,
+      dataReceita,
+      mesReferencia,
+      anoReferencia,
+      categoria: (r.categoria as AppData['receitas'][number]['categoria']) || 'Outros',
+      recorrente: Boolean(r.recorrente),
+      recorrenciaId: (r.recorrenciaId as string | null | undefined) ?? null,
+      recorrenciaTemTermino: Boolean(r.recorrenciaTemTermino),
+      recorrenciaMesTermino: (r.recorrenciaMesTermino as number | null | undefined) ?? null,
+      recorrenciaAnoTermino: (r.recorrenciaAnoTermino as number | null | undefined) ?? null,
+      dataCriacao: (r.dataCriacao as string) || data,
     };
   });
 }
@@ -168,7 +202,9 @@ function migrarDados(raw: Record<string, unknown>): AppData {
     tarefas: tarefasRaw.length > 0 ? migrarTarefas(tarefasRaw) : base.tarefas,
     blocosTempo: Array.isArray(raw.blocosTempo) ? (raw.blocosTempo as AppData['blocosTempo']) : base.blocosTempo,
     rotinasSemana: Array.isArray(raw.rotinasSemana) ? (raw.rotinasSemana as AppData['rotinasSemana']) : [],
-    receitas: Array.isArray(raw.receitas) ? (raw.receitas as AppData['receitas']) : base.receitas,
+    receitas: Array.isArray(raw.receitas)
+      ? migrarReceitas(raw.receitas as Record<string, unknown>[])
+      : migrarReceitas(base.receitas as unknown as Record<string, unknown>[]),
     despesas: Array.isArray(raw.despesas) ? (raw.despesas as AppData['despesas']) : base.despesas,
     cartoes: Array.isArray(raw.cartoes) ? (raw.cartoes as AppData['cartoes']) : base.cartoes,
     dividas: Array.isArray(raw.dividas) ? (raw.dividas as AppData['dividas']) : base.dividas,

@@ -10,7 +10,15 @@ export const receitasRepository = {
     return (data ?? []).map((r: Record<string, unknown>) => ({
       id: r.id as string, descricao: r.descricao as string, valor: r.valor as number,
       data: r.data as string, categoria: r.categoria as Receita['categoria'],
-      recorrente: r.recorrente as boolean, dataCriacao: r.created_at as string,
+      dataReceita: (r.data_receita as string | null) ?? (r.data as string),
+      mesReferencia: (r.mes_referencia as number | null) ?? Number(String(r.data).slice(5, 7)),
+      anoReferencia: (r.ano_referencia as number | null) ?? Number(String(r.data).slice(0, 4)),
+      recorrente: r.recorrente as boolean,
+      recorrenciaId: (r.recorrencia_id as string | null) ?? null,
+      recorrenciaTemTermino: Boolean(r.recorrencia_tem_termino),
+      recorrenciaMesTermino: (r.recorrencia_mes_termino as number | null) ?? null,
+      recorrenciaAnoTermino: (r.recorrencia_ano_termino as number | null) ?? null,
+      dataCriacao: r.created_at as string,
     }));
   },
 
@@ -19,6 +27,13 @@ export const receitasRepository = {
     const { error } = await supabase.from('receitas').insert({
       id: r.id, user_id: userId, descricao: r.descricao, valor: r.valor,
       data: r.data, categoria: r.categoria, recorrente: r.recorrente,
+      data_receita: r.dataReceita ?? r.data,
+      mes_referencia: r.mesReferencia ?? Number(r.data.slice(5, 7)),
+      ano_referencia: r.anoReferencia ?? Number(r.data.slice(0, 4)),
+      recorrencia_id: r.recorrenciaId ?? null,
+      recorrencia_tem_termino: r.recorrenciaTemTermino ?? false,
+      recorrencia_mes_termino: r.recorrenciaMesTermino ?? null,
+      recorrencia_ano_termino: r.recorrenciaAnoTermino ?? null,
       created_at: r.dataCriacao,
     });
     if (error) throw error;
