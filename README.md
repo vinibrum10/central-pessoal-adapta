@@ -57,10 +57,12 @@ Isso cria profiles para todos os usuários sem profile e promove `vinibrum10@gma
 
 ## 2d · Como configurar login com Microsoft
 
-1. No Supabase Dashboard → **Authentication → Providers → Azure**
-2. Inserir **Application (client) ID** e **Client Secret** do Microsoft Entra ID (portal.azure.com)
-3. Redirect URI no Azure: `https://[seu-projeto].supabase.co/auth/v1/callback`
-4. Adicione `VITE_MICROSOFT_CLIENT_ID` nas variáveis de ambiente do app (para habilitar o botão na tela de login)
+1. No Microsoft Entra → **Registros de aplicativo**, crie um app SPA
+2. Tipos de conta: contas pessoais Microsoft e contas de qualquer diretório organizacional
+3. Redirect URI SPA: `https://central-pessoal-adapta.vercel.app`, `http://localhost:5173` e `http://127.0.0.1:5173`
+4. Permissões delegadas Microsoft Graph: `User.Read` e `Calendars.Read`
+5. Copie o **Application (client) ID** para `VITE_MICROSOFT_CLIENT_ID`
+6. Não cadastre nem exponha Client Secret no front-end
 
 ---
 
@@ -174,8 +176,10 @@ Usuários seguintes entram como `pendente` e precisam ser aprovados pelo admin e
 ## 11 · Microsoft Outlook Calendar
 
 1. [portal.azure.com](https://portal.azure.com) → Azure Active Directory → Registros de aplicativo
-2. Configure `VITE_MICROSOFT_CLIENT_ID`
-3. No app: **Agenda e Tempo → Conexões → Microsoft Outlook → Conectar**
+2. Configure o app como SPA com permissões delegadas `User.Read` e `Calendars.Read`
+3. Configure `VITE_MICROSOFT_CLIENT_ID`
+4. No app: **Agenda e Tempo → Conexões → Microsoft Outlook → Conectar**
+5. Para a Uniasselvi, faça login diretamente com `vinicius.brum@regente.uniasselvi.com.br`
 
 ---
 
