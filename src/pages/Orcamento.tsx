@@ -26,37 +26,8 @@ import { ProgressBar } from '../components/Badge';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { Input, Select, Textarea, Checkbox } from '../components/FormFields';
+import { DateInputBR } from '../components/DateInputBR';
 import { formatarDinheiro, formatarData, isoParaDataBR, gerarId, hojeISO } from '../utils';
-
-const SELECT_CLASS = 'px-1.5 py-2 rounded-lg border text-sm bg-white dark:bg-surface-900 border-surface-300 dark:border-surface-600 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500';
-
-function DateSelectBR({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  // ISO format: YYYY-MM-DD → partes[0]=ano, partes[1]=mes, partes[2]=dia
-  const partes = value ? value.split('-').map(Number) : [];
-  const curY = partes[0] ?? new Date().getFullYear();
-  const curM = partes[1] ?? new Date().getMonth() + 1;
-  const curD = partes[2] ?? new Date().getDate();
-  const diasNoMes = new Date(curY, curM, 0).getDate();
-  const clampDay = (day: number, mon: number, yr: number) => Math.min(day, new Date(yr, mon, 0).getDate());
-  const emit = (day: number, mon: number, yr: number) =>
-    onChange(`${yr}-${String(mon).padStart(2,'0')}-${String(clampDay(day, mon, yr)).padStart(2,'0')}`);
-  return (
-    <div>
-      <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">{label}</label>
-      <div className="flex gap-1">
-        <select value={curD} onChange={e => emit(Number(e.target.value), curM, curY)} className={`w-16 ${SELECT_CLASS}`}>
-          {Array.from({length: diasNoMes}, (_, i) => i + 1).map(n => <option key={n} value={n}>{String(n).padStart(2,'0')}</option>)}
-        </select>
-        <select value={curM} onChange={e => emit(curD, Number(e.target.value), curY)} className={`flex-1 ${SELECT_CLASS}`}>
-          {MESES.map((mes, i) => <option key={i} value={i+1}>{mes}</option>)}
-        </select>
-        <select value={curY} onChange={e => emit(curD, curM, Number(e.target.value))} className={`w-24 ${SELECT_CLASS}`}>
-          {[-1,0,1,2,3].map(offset => { const yr = new Date().getFullYear() + offset; return <option key={yr} value={yr}>{yr}</option>; })}
-        </select>
-      </div>
-    </div>
-  );
-}
 
 type TipoCobrancaCartao = 'avista' | 'parcelado';
 
@@ -1406,7 +1377,7 @@ export function OrcamentoPage() {
             <Input id="div-pagas" label="Parcelas pagas" type="number" min="0" value={formDivida.parcelasPagas} onChange={e => setFormDivida(f => ({ ...f, parcelasPagas: Number(e.target.value) }))} />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <DateSelectBR label="Data início" value={formDivida.dataInicio ?? hojeISO()} onChange={v => setFormDivida(f => ({ ...f, dataInicio: v }))} />
+            <DateInputBR id="div-data-inicio" label="Data início" value={formDivida.dataInicio ?? hojeISO()} onChange={v => setFormDivida(f => ({ ...f, dataInicio: v }))} />
             <Input id="div-diavenc" label="Dia vencimento" type="number" min="1" max="31" value={formDivida.diaVencimento ?? 10} onChange={e => setFormDivida(f => ({ ...f, diaVencimento: Number(e.target.value) }))} />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -1435,7 +1406,7 @@ export function OrcamentoPage() {
             <Input id="res-meta" label="Meta (R$)" type="text" inputMode="decimal" placeholder="0,00" value={formReservaMetaStr} onChange={e => setFormReservaMetaStr(e.target.value)} />
             <Input id="res-atual" label="Valor atual (R$)" type="text" inputMode="decimal" placeholder="0,00" value={formReservaAtualStr} onChange={e => setFormReservaAtualStr(e.target.value)} />
           </div>
-          <DateSelectBR label="Prazo desejado" value={formReserva.prazoDesejado || hojeISO()} onChange={v => setFormReserva(f => ({ ...f, prazoDesejado: v }))} />
+          <DateInputBR id="res-prazo" label="Prazo desejado" value={formReserva.prazoDesejado || ''} onChange={v => setFormReserva(f => ({ ...f, prazoDesejado: v }))} />
           <div className="flex gap-3 pt-2">
             <Button variant="secondary" className="flex-1" onClick={() => setModal(null)}>Cancelar</Button>
             <Button className="flex-1" onClick={salvarReserva}>Salvar</Button>
