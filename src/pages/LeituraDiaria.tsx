@@ -41,10 +41,11 @@ const tipoColors: Record<TipoLeitura, string> = {
 
 // ---- Card de leitura ----
 function LeituraCard({
-  item, onLido, onArquivar, onTarefa,
+  item, onLido, onImportante, onArquivar, onTarefa,
 }: {
   item: LeituraDiaria;
   onLido: () => void;
+  onImportante: () => void;
   onArquivar: () => void;
   onTarefa: () => void;
 }) {
@@ -119,6 +120,15 @@ function LeituraCard({
             <CheckCircle size={12} /> Lido
           </span>
         )}
+        {item.prioridade !== 'importante' && !arquivado && (
+          <button
+            onClick={onImportante}
+            className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/30 border border-amber-200 dark:border-amber-800 transition-colors"
+          >
+            <Star size={12} />
+            Importante
+          </button>
+        )}
         <button
           onClick={onTarefa}
           className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 hover:bg-primary-100 dark:hover:bg-primary-900/30 border border-primary-200 dark:border-primary-800 transition-colors"
@@ -189,6 +199,16 @@ export function LeituraDiariaPage() {
     if (user) leituraRepository.atualizar({ id, status: 'lido', dataLeitura: hoje }).catch(() => {});
   };
 
+  const marcarImportante = (id: string) => {
+    setData(d => ({
+      ...d,
+      leiturasDiarias: (d.leiturasDiarias ?? []).map(l =>
+        l.id === id ? { ...l, prioridade: 'importante' as const } : l
+      ),
+    }));
+    if (user) leituraRepository.atualizar({ id, prioridade: 'importante' }).catch(() => {});
+  };
+
   const arquivar = (id: string) => {
     setData(d => ({
       ...d,
@@ -253,7 +273,7 @@ export function LeituraDiariaPage() {
         }
         setMsgSync(`${novos.length} novo${novos.length > 1 ? 's itens importados' : ' item importado'} do Drive.`);
       } else {
-        setMsgSync('Nenhum item novo encontrado na pasta do Drive.');
+        setMsgSync(novosItens.length === 0 ? 'Nenhuma leitura encontrada nesta pasta.' : 'Nenhum item novo encontrado na pasta do Drive.');
       }
     } catch (e) {
       setMsgSync(`Erro: ${(e as Error).message}`);
@@ -403,7 +423,9 @@ export function LeituraDiariaPage() {
           <BookOpen size={40} className="mx-auto mb-3 opacity-30" />
           <p className="text-sm">
             {leituras.length === 0
-              ? 'Nenhuma leitura ainda. Sincronize com o Google Drive ou adicione um link.'
+              ? isDriveConfigurado()
+                ? 'Nenhuma leitura encontrada nesta pasta.'
+                : 'Nenhuma leitura ainda. Sincronize com o Google Drive ou adicione um link.'
               : 'Nenhum item encontrado para este filtro.'}
           </p>
         </div>
@@ -414,6 +436,7 @@ export function LeituraDiariaPage() {
               key={item.id}
               item={item}
               onLido={() => marcarLido(item.id)}
+              onImportante={() => marcarImportante(item.id)}
               onArquivar={() => arquivar(item.id)}
               onTarefa={() => abrirModalTarefa(item)}
             />

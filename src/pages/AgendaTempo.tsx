@@ -382,8 +382,19 @@ function UniasselviCard({ onEventosImportados }: { onEventosImportados: (eventos
 // VISTA MÊS — grid de calendário
 // ============================================================
 
-function VistaMes({ eventos, filtroFonte }: { eventos: EventoAgenda[]; filtroFonte: string }) {
-  const [mesRef, setMesRef] = useState(() => new Date());
+function VistaMes({
+  eventos, filtroFonte, selectedDate, onSelectDate,
+}: {
+  eventos: EventoAgenda[];
+  filtroFonte: string;
+  selectedDate: string;
+  onSelectDate: (data: string) => void;
+}) {
+  const [mesRef, setMesRef] = useState(() => new Date(selectedDate + 'T12:00:00'));
+
+  useEffect(() => {
+    setMesRef(new Date(selectedDate + 'T12:00:00'));
+  }, [selectedDate]);
 
   const diasDoMes = useMemo(() => {
     const inicio = startOfWeek(startOfMonth(mesRef), { weekStartsOn: 0 });
@@ -402,8 +413,8 @@ function VistaMes({ eventos, filtroFonte }: { eventos: EventoAgenda[]; filtroFon
     return map;
   }, [eventos, filtroFonte]);
 
-  const [diaExpandido, setDiaExpandido] = useState<string | null>(null);
   const hoje = hojeISO();
+  const eventosSelecionados = eventosPorDia.get(selectedDate) ?? [];
 
   return (
     <div className="space-y-3">
@@ -423,14 +434,15 @@ function VistaMes({ eventos, filtroFonte }: { eventos: EventoAgenda[]; filtroFon
           const iso = format(dia, 'yyyy-MM-dd');
           const evsDia = eventosPorDia.get(iso) ?? [];
           const isHoje = iso === hoje;
+          const isSelecionado = iso === selectedDate;
           const isDoMes = isSameMonth(dia, mesRef);
 
           return (
             <div key={iso}
-              onClick={() => setDiaExpandido(diaExpandido === iso ? null : iso)}
-              className={`bg-white dark:bg-surface-800 min-h-[64px] p-1.5 cursor-pointer transition-colors hover:bg-surface-50 dark:hover:bg-surface-700/50 ${!isDoMes ? 'opacity-30' : ''}`}
+              onClick={() => onSelectDate(iso)}
+              className={`bg-white dark:bg-surface-800 min-h-[64px] p-1.5 cursor-pointer transition-colors hover:bg-surface-50 dark:hover:bg-surface-700/50 ${!isDoMes ? 'opacity-30' : ''} ${isSelecionado ? 'ring-2 ring-primary-500 ring-inset' : ''}`}
             >
-              <span className={`text-xs font-semibold w-6 h-6 flex items-center justify-center rounded-full ${isHoje ? 'bg-primary-600 text-white' : 'text-surface-700 dark:text-surface-300'}`}>
+              <span className={`text-xs font-semibold w-6 h-6 flex items-center justify-center rounded-full ${isSelecionado ? 'bg-primary-700 text-white' : isHoje ? 'bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300' : 'text-surface-700 dark:text-surface-300'}`}>
                 {format(dia, 'd')}
               </span>
               {evsDia.length > 0 && (
@@ -449,16 +461,18 @@ function VistaMes({ eventos, filtroFonte }: { eventos: EventoAgenda[]; filtroFon
         })}
       </div>
 
-      {diaExpandido && (eventosPorDia.get(diaExpandido) ?? []).length > 0 && (
-        <Card>
-          <CardHeader title={`Eventos — ${format(new Date(diaExpandido + 'T12:00:00'), "EEEE, dd 'de' MMMM", { locale: ptBR })}`} icon={<Calendar size={16} />} />
-          <CardBody>
+      <Card>
+        <CardHeader title={`Programação — ${format(new Date(selectedDate + 'T12:00:00'), "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}`} icon={<Calendar size={16} />} />
+        <CardBody>
+          {eventosSelecionados.length === 0 ? (
+            <p className="text-sm text-surface-400 dark:text-surface-500 text-center py-8">Nenhum compromisso nesta data.</p>
+          ) : (
             <div className="space-y-2">
-              {(eventosPorDia.get(diaExpandido) ?? []).map(ev => <EventoCard key={ev.id} ev={ev} />)}
+              {eventosSelecionados.map(ev => <EventoCard key={ev.id} ev={ev} />)}
             </div>
-          </CardBody>
-        </Card>
-      )}
+          )}
+        </CardBody>
+      </Card>
     </div>
   );
 }
@@ -529,6 +543,7 @@ export function AgendaTempoPage() {
   const [abaAtiva, setAbaAtiva] = useState<'agenda' | 'disponibilidade' | 'fds' | 'fontes' | 'planejamento'>('agenda');
   const [viewMode, setViewMode] = useState<'hoje' | 'semana' | 'mes' | 'lista'>('hoje');
   const [filtroFonte, setFiltroFonte] = useState<'todos' | 'google' | 'microsoft' | 'ics' | 'manual'>('todos');
+  const [selectedDate, setSelectedDate] = useState(hoje);
   const [modalManual, setModalManual] = useState(false);
   const [formManual, setFormManual] = useState({ titulo: '', data: hoje, horaInicio: '09:00', horaFim: '10:00', diaInteiro: false, bloqueiaTempo: true });
   const [errosManual, setErrosManual] = useState<Record<string, string>>({});
@@ -543,6 +558,7 @@ export function AgendaTempoPage() {
 
   // ── Cálculos de disponibilidade ──
   const dispHoje = useMemo(() => calcularDisponibilidadeDia(hoje, data.eventosAgenda), [hoje, data.eventosAgenda]);
+  const dispDiaSelecionado = useMemo(() => calcularDisponibilidadeDia(selectedDate, data.eventosAgenda), [selectedDate, data.eventosAgenda]);
   const semana = useMemo(() => obterSemanaAtual(), []);
   const dispSemana = useMemo(() => calcularDisponibilidadePeriodo(semana[0], semana[6], data.eventosAgenda), [semana, data.eventosAgenda]);
 
@@ -555,6 +571,11 @@ export function AgendaTempoPage() {
   const eventosHoje = useMemo(() =>
     data.eventosAgenda.filter(e => !e.ignorado && e.inicio.startsWith(hoje)).sort((a, b) => a.inicio.localeCompare(b.inicio)),
     [hoje, data.eventosAgenda]
+  );
+
+  const eventosDiaSelecionado = useMemo(() =>
+    data.eventosAgenda.filter(e => !e.ignorado && e.inicio.startsWith(selectedDate)).sort((a, b) => a.inicio.localeCompare(b.inicio)),
+    [selectedDate, data.eventosAgenda]
   );
 
   const eventosSemana = useMemo(() =>
@@ -791,6 +812,18 @@ export function AgendaTempoPage() {
     { id: 'manual' as const, label: 'Manual' },
   ];
 
+  const navegarDia = (delta: number) => {
+    const d = new Date(selectedDate + 'T12:00:00');
+    d.setDate(d.getDate() + delta);
+    setSelectedDate(d.toISOString().slice(0, 10));
+    setViewMode('hoje');
+  };
+
+  const selecionarDataCalendario = (dataIso: string) => {
+    setSelectedDate(dataIso);
+    setViewMode('mes');
+  };
+
   // Google SVG
   const googleIcon = (
     <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -853,9 +886,9 @@ export function AgendaTempoPage() {
           {/* KPI Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="rounded-2xl bg-gradient-to-br from-blue-700 to-blue-600 p-4 text-white shadow-lg">
-              <p className="text-[10px] font-semibold uppercase tracking-wide opacity-70 mb-2">Hoje</p>
-              <p className="text-2xl font-extrabold">{eventosHoje.length}</p>
-              <p className="text-[10px] opacity-70 mt-0.5">compromisso{eventosHoje.length !== 1 ? 's' : ''}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wide opacity-70 mb-2">Data selecionada</p>
+              <p className="text-2xl font-extrabold">{eventosDiaSelecionado.length}</p>
+              <p className="text-[10px] opacity-70 mt-0.5">compromisso{eventosDiaSelecionado.length !== 1 ? 's' : ''}</p>
             </div>
             <div className="rounded-2xl bg-gradient-to-br from-violet-700 to-violet-600 p-4 text-white shadow-lg">
               <p className="text-[10px] font-semibold uppercase tracking-wide opacity-70 mb-1">Próxima reunião</p>
@@ -903,20 +936,37 @@ export function AgendaTempoPage() {
 
           {/* ── VIEW HOJE ── */}
           {viewMode === 'hoje' && (() => {
-            const evs = filtroFonte === 'todos' ? eventosHoje : eventosHoje.filter(e => e.fonte === filtroFonte);
+            const evs = filtroFonte === 'todos' ? eventosDiaSelecionado : eventosDiaSelecionado.filter(e => e.fonte === filtroFonte);
             return (
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => navegarDia(-1)} className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors" title="Dia anterior"><ChevronLeft size={16} /></button>
+                    <div>
+                      <p className="text-sm font-bold text-surface-900 dark:text-white capitalize">
+                        {format(new Date(selectedDate + 'T12:00:00'), "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                      </p>
+                      {selectedDate === hoje && <p className="text-xs text-primary-600 dark:text-primary-400">Hoje</p>}
+                    </div>
+                    <button onClick={() => navegarDia(1)} className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors" title="Próximo dia"><ChevronRight size={16} /></button>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => setSelectedDate(hoje)}>Hoje</Button>
+                    <Button size="sm" variant="secondary" onClick={() => navegarDia(selectedDate === hoje ? 1 : Math.round((new Date(hoje + 'T12:00:00').getTime() + 86400000 - new Date(selectedDate + 'T12:00:00').getTime()) / 86400000))}>Amanhã</Button>
+                  </div>
+                </div>
               <Card>
-                <CardHeader title={`Hoje — ${format(new Date(hoje + 'T12:00:00'), "EEEE, dd 'de' MMMM", { locale: ptBR })}`} icon={<Clock size={18} />} />
+                <CardHeader title="Programação do dia" icon={<Clock size={18} />} />
                 <CardBody>
                   {/* Barra de tempo */}
                   <div className="mb-4 space-y-1.5">
                     <div className="flex justify-between text-xs text-surface-400 dark:text-surface-500">
-                      <span>{dispHoje.inicioJanela}</span><span>{dispHoje.fimJanela}</span>
+                      <span>{dispDiaSelecionado.inicioJanela}</span><span>{dispDiaSelecionado.fimJanela}</span>
                     </div>
                     <div className="h-3 bg-surface-100 dark:bg-surface-700 rounded-full overflow-hidden relative">
-                      {eventosHoje.filter(e => e.bloqueiaTempo && !e.ignorado).map(e => {
-                        const jIni = parseInt(dispHoje.inicioJanela) * 60 + parseInt(dispHoje.inicioJanela.split(':')[1] ?? '0');
-                        const totalMin = dispHoje.minutosJanela;
+                      {eventosDiaSelecionado.filter(e => e.bloqueiaTempo && !e.ignorado).map(e => {
+                        const jIni = parseInt(dispDiaSelecionado.inicioJanela) * 60 + parseInt(dispDiaSelecionado.inicioJanela.split(':')[1] ?? '0');
+                        const totalMin = dispDiaSelecionado.minutosJanela;
                         if (totalMin === 0) return null;
                         const mIni = e.diaInteiro ? jIni : (parseInt(e.inicio.slice(11, 13)) * 60 + parseInt(e.inicio.slice(14, 16)));
                         const mFim = e.diaInteiro ? jIni + totalMin : (parseInt(e.fim.slice(11, 13)) * 60 + parseInt(e.fim.slice(14, 16)));
@@ -926,16 +976,15 @@ export function AgendaTempoPage() {
                       })}
                     </div>
                     <div className="flex justify-between text-xs">
-                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{formatarMinutos(dispHoje.minutosDisponiveis)} livre</span>
-                      <span className="text-red-500 font-semibold">{formatarMinutos(dispHoje.minutosOcupados)} ocupado</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{formatarMinutos(dispDiaSelecionado.minutosDisponiveis)} livre</span>
+                      <span className="text-red-500 font-semibold">{formatarMinutos(dispDiaSelecionado.minutosOcupados)} ocupado</span>
                     </div>
                   </div>
 
                   {evs.length === 0
                     ? <div className="text-center py-10 space-y-2">
                         <Calendar size={28} className="mx-auto text-surface-300 dark:text-surface-600" />
-                        <p className="text-sm text-surface-400 dark:text-surface-500">Nenhum evento hoje{filtroFonte !== 'todos' ? ` (${filtroFonte})` : ''}</p>
-                        <p className="text-xs text-surface-300 dark:text-surface-600">Conecte sua agenda na aba Conexões</p>
+                        <p className="text-sm text-surface-400 dark:text-surface-500">Nenhum compromisso nesta data.</p>
                       </div>
                     : <div className="space-y-2">
                         {evs.map(ev => <EventoCard key={ev.id} ev={ev} onToggle={toggleBloqueiaTempo} onExcluir={excluirEvento} />)}
@@ -943,6 +992,7 @@ export function AgendaTempoPage() {
                   }
                 </CardBody>
               </Card>
+              </div>
             );
           })()}
 
@@ -977,7 +1027,7 @@ export function AgendaTempoPage() {
           })()}
 
           {/* ── VIEW MÊS ── */}
-          {viewMode === 'mes' && <VistaMes eventos={data.eventosAgenda} filtroFonte={filtroFonte} />}
+          {viewMode === 'mes' && <VistaMes eventos={data.eventosAgenda} filtroFonte={filtroFonte} selectedDate={selectedDate} onSelectDate={selecionarDataCalendario} />}
 
           {/* ── VIEW LISTA ── */}
           {viewMode === 'lista' && <VistaLista eventos={data.eventosAgenda} filtroFonte={filtroFonte} />}
