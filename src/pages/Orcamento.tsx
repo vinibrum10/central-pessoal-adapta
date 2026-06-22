@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   Plus, Trash2, Pencil, TrendingUp, TrendingDown,
   CreditCard, AlertTriangle, PiggyBank, Package,
@@ -94,15 +94,18 @@ const formasPagamento: FormaPagamento[] = ['Dinheiro', 'Cartão de crédito', 'D
 
 type FormReceita = Omit<Receita, 'id' | 'dataCriacao'>;
 
+const dataCompetencia = (ano: number, mes: number) => `${ano}-${String(mes).padStart(2, '0')}-01`;
+
 const novaReceitaForm = (): FormReceita => {
   const hoje = hojeISO();
+  const mesReferencia = Number(hoje.slice(5, 7));
+  const anoReferencia = Number(hoje.slice(0, 4));
   return {
     descricao: '',
     valor: 0,
-    data: hoje,
-    dataReceita: hoje,
-    mesReferencia: Number(hoje.slice(5, 7)),
-    anoReferencia: Number(hoje.slice(0, 4)),
+    data: dataCompetencia(anoReferencia, mesReferencia),
+    mesReferencia,
+    anoReferencia,
     categoria: 'Salário',
     recorrente: false,
     recorrenciaId: null,
@@ -112,13 +115,11 @@ const novaReceitaForm = (): FormReceita => {
   };
 };
 
-const dataCompetencia = (ano: number, mes: number) => `${ano}-${String(mes).padStart(2, '0')}-01`;
-
 function mesesRecorrenciaReceita(form: FormReceita): { mes: number; ano: number }[] {
-  const inicioMes = form.mesReferencia ?? Number((form.dataReceita ?? form.data).slice(5, 7));
-  const inicioAno = form.anoReferencia ?? Number((form.dataReceita ?? form.data).slice(0, 4));
+  const inicioMes = form.mesReferencia ?? Number(form.data.slice(5, 7));
+  const inicioAno = form.anoReferencia ?? Number(form.data.slice(0, 4));
   const fimMes = form.recorrenciaTemTermino ? form.recorrenciaMesTermino ?? inicioMes : 12;
-  const fimAno = form.recorrenciaTemTermino ? form.recorrenciaAnoTermino ?? inicioAno : 2026;
+  const fimAno = form.recorrenciaTemTermino ? form.recorrenciaAnoTermino ?? inicioAno : Math.max(2026, inicioAno);
   const meses: { mes: number; ano: number }[] = [];
   for (let ano = inicioAno; ano <= fimAno; ano++) {
     const de = ano === inicioAno ? inicioMes : 1;
@@ -126,6 +127,39 @@ function mesesRecorrenciaReceita(form: FormReceita): { mes: number; ano: number 
     for (let mes = de; mes <= ate; mes++) meses.push({ mes, ano });
   }
   return meses;
+}
+
+function prepararProximoAnoReceitas(receitas: Receita[], hoje = new Date()): Receita[] {
+  if (hoje.getMonth() !== 11) return receitas;
+  const proximoAno = hoje.getFullYear() + 1;
+  const series = new Map<string, Receita>();
+  for (const receita of receitas) {
+    if (receita.recorrente && receita.recorrenciaId && !receita.recorrenciaTemTermino && !series.has(receita.recorrenciaId)) {
+      series.set(receita.recorrenciaId, receita);
+    }
+  }
+
+  const novas: Receita[] = [];
+  for (const receitaBase of series.values()) {
+    for (let mes = 1; mes <= 12; mes++) {
+      const jaExiste = receitas.some(r =>
+        r.recorrenciaId === receitaBase.recorrenciaId &&
+        r.mesReferencia === mes &&
+        r.anoReferencia === proximoAno
+      );
+      if (!jaExiste) {
+        novas.push({
+          ...receitaBase,
+          id: gerarId(),
+          data: dataCompetencia(proximoAno, mes),
+          mesReferencia: mes,
+          anoReferencia: proximoAno,
+          dataCriacao: hojeISO(),
+        });
+      }
+    }
+  }
+  return novas.length > 0 ? [...receitas, ...novas] : receitas;
 }
 
 export function OrcamentoPage() {
@@ -159,6 +193,13 @@ export function OrcamentoPage() {
   const [formBem, setFormBem] = useState<Omit<Bem, 'id' | 'dataCriacao'>>({ nome: '', tipo: 'Carro', valorEstimado: 0, status: 'manter', observacoes: '' });
   const [formBemValorStr, setFormBemValorStr] = useState('');
   const [formFaturaValorStr, setFormFaturaValorStr] = useState('');
+
+  useEffect(() => {
+    setData(d => {
+      const receitasAtualizadas = prepararProximoAnoReceitas(d.receitas);
+      return receitasAtualizadas === d.receitas ? d : { ...d, receitas: receitasAtualizadas };
+    });
+  }, [setData]);
 
   // Resumo financeiro do mês filtrado
   // Lê mês/ano diretamente da string ISO para evitar bug de fuso horário (UTC vs local)
@@ -309,12 +350,14 @@ export function OrcamentoPage() {
 
   const salvarReceita = useCallback(() => {
     const valorFinal = parseBRLMoney(formReceitaValorStr);
+    const mesReferencia = formReceita.mesReferencia ?? Number(formReceita.data.slice(5, 7));
+    const anoReferencia = formReceita.anoReferencia ?? Number(formReceita.data.slice(0, 4));
     const baseReceita: FormReceita = {
       ...formReceita,
       valor: valorFinal,
-      dataReceita: formReceita.dataReceita ?? formReceita.data,
-      mesReferencia: formReceita.mesReferencia ?? Number(formReceita.data.slice(5, 7)),
-      anoReferencia: formReceita.anoReferencia ?? Number(formReceita.data.slice(0, 4)),
+      data: dataCompetencia(anoReferencia, mesReferencia),
+      mesReferencia,
+      anoReferencia,
     };
 
     setData(d => {
@@ -752,13 +795,13 @@ export function OrcamentoPage() {
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-surface-900 dark:text-white truncate" title={r.descricao}>{r.descricao}</p>
                           <p className="text-xs text-surface-400 dark:text-surface-500 truncate">
-                            Receita: {formatarData(r.dataReceita ?? r.data)} · Ref.: {MESES[(r.mesReferencia ?? Number(r.data.slice(5, 7))) - 1]} {r.anoReferencia ?? Number(r.data.slice(0, 4))} · {r.categoria}{r.recorrente ? ' · Recorrente' : ''}
+                            Ref.: {MESES[(r.mesReferencia ?? Number(r.data.slice(5, 7))) - 1]} {r.anoReferencia ?? Number(r.data.slice(0, 4))} · {r.categoria}{r.recorrente ? ' · Recorrente' : ''}
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <span className="text-sm font-semibold text-success-600 dark:text-success-400 whitespace-nowrap">{formatarDinheiro(r.valor)}</span>
-                        <button onClick={() => { setFormReceita({ descricao: r.descricao, valor: r.valor, data: r.data, dataReceita: r.dataReceita ?? r.data, mesReferencia: r.mesReferencia ?? Number(r.data.slice(5, 7)), anoReferencia: r.anoReferencia ?? Number(r.data.slice(0, 4)), categoria: r.categoria, recorrente: r.recorrente, recorrenciaId: r.recorrenciaId ?? null, recorrenciaTemTermino: r.recorrenciaTemTermino ?? false, recorrenciaMesTermino: r.recorrenciaMesTermino ?? null, recorrenciaAnoTermino: r.recorrenciaAnoTermino ?? null }); setFormReceitaValorStr(moneyToInputBR(r.valor)); abrirModal('receita', r); }} className="p-1.5 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
+                        <button onClick={() => { setFormReceita({ descricao: r.descricao, valor: r.valor, data: dataCompetencia(r.anoReferencia ?? Number(r.data.slice(0, 4)), r.mesReferencia ?? Number(r.data.slice(5, 7))), mesReferencia: r.mesReferencia ?? Number(r.data.slice(5, 7)), anoReferencia: r.anoReferencia ?? Number(r.data.slice(0, 4)), categoria: r.categoria, recorrente: r.recorrente, recorrenciaId: r.recorrenciaId ?? null, recorrenciaTemTermino: r.recorrenciaTemTermino ?? false, recorrenciaMesTermino: r.recorrenciaMesTermino ?? null, recorrenciaAnoTermino: r.recorrenciaAnoTermino ?? null }); setFormReceitaValorStr(moneyToInputBR(r.valor)); abrirModal('receita', r); }} className="p-1.5 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
                         <button onClick={() => setData(d => ({ ...d, receitas: d.receitas.filter(x => x.id !== r.id) }))} className="p-1.5 rounded text-surface-400 hover:text-danger-600 transition-colors"><Trash2 size={13} /></button>
                       </div>
                     </div>
@@ -1094,10 +1137,7 @@ export function OrcamentoPage() {
       <Modal isOpen={modal === 'receita'} onClose={() => setModal(null)} title={editandoId ? 'Editar Receita' : 'Nova Receita'}>
         <div className="space-y-4">
           <Input id="rec-desc" label="Descrição" required value={formReceita.descricao} onChange={e => setFormReceita(f => ({ ...f, descricao: e.target.value }))} placeholder="Ex: Salário, freelance..." />
-          <div className="grid grid-cols-2 gap-3">
-            <Input id="rec-valor" label="Valor (R$)" required type="text" inputMode="decimal" placeholder="0,00" value={formReceitaValorStr} onChange={e => setFormReceitaValorStr(e.target.value)} />
-            <DateSelectBR label="Data da receita" value={formReceita.dataReceita ?? formReceita.data} onChange={v => setFormReceita(f => ({ ...f, dataReceita: v }))} />
-          </div>
+          <Input id="rec-valor" label="Valor (R$)" required type="text" inputMode="decimal" placeholder="0,00" value={formReceitaValorStr} onChange={e => setFormReceitaValorStr(e.target.value)} />
           <div className="grid grid-cols-2 gap-3">
             <Select id="rec-mes-ref" label="Mês de referência" value={String(formReceita.mesReferencia ?? Number(formReceita.data.slice(5, 7)))} onChange={e => setFormReceita(f => ({ ...f, mesReferencia: Number(e.target.value) }))}>
               {MESES.map((mes, i) => <option key={mes} value={i + 1}>{mes}</option>)}
