@@ -346,6 +346,14 @@ export function PlanoAcaoPage() {
   const [erros, setErros] = useState<Record<string, string>>({});
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
 
+  const recalcularProgressoMetas = (metas: typeof data.metas, tarefas: Tarefa[]) =>
+    metas.map(meta => {
+      const tarefasMeta = tarefas.filter(t => t.metaId === meta.id);
+      if (tarefasMeta.length === 0) return meta;
+      const concluidas = tarefasMeta.filter(t => t.status === 'concluído').length;
+      return { ...meta, progresso: Math.round((concluidas / tarefasMeta.length) * 100) };
+    });
+
   // Ler parâmetros da URL
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -417,17 +425,19 @@ export function PlanoAcaoPage() {
         const novoStatus = form.status;
         const antiga = d.tarefas.find(t => t.id === tarefaEditando.id);
         const dataConclusao = novoStatus === 'concluído' ? (antiga?.dataConclusao ?? hojeISO()) : null;
+        const tarefasAtualizadas = d.tarefas.map(t =>
+          t.id === tarefaEditando.id ? {
+            ...t, ...form, faixa: faixaFinal, dataConclusao,
+            dataProximaOcorrencia: proxOcorrencia,
+          } : t
+        );
+        const metasAtualizadas = novoStatus === 'concluído'
+          ? d.metas.map(m => form.metaId === m.id ? { ...m, dataUltimaAcao: hojeISO() } : m)
+          : d.metas;
         return {
           ...d,
-          tarefas: d.tarefas.map(t =>
-            t.id === tarefaEditando.id ? {
-              ...t, ...form, faixa: faixaFinal, dataConclusao,
-              dataProximaOcorrencia: proxOcorrencia,
-            } : t
-          ),
-          metas: novoStatus === 'concluído'
-            ? d.metas.map(m => form.metaId === m.id ? { ...m, dataUltimaAcao: hojeISO() } : m)
-            : d.metas,
+          tarefas: tarefasAtualizadas,
+          metas: recalcularProgressoMetas(metasAtualizadas, tarefasAtualizadas),
         };
       }
       const nova: Tarefa = {
@@ -438,7 +448,8 @@ export function PlanoAcaoPage() {
         dataConclusao: form.status === 'concluído' ? hojeISO() : null,
         dataProximaOcorrencia: proxOcorrencia,
       };
-      return { ...d, tarefas: [...d.tarefas, nova] };
+      const tarefasAtualizadas = [...d.tarefas, nova];
+      return { ...d, tarefas: tarefasAtualizadas, metas: recalcularProgressoMetas(d.metas, tarefasAtualizadas) };
     });
     setModalAberto(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -457,19 +468,21 @@ export function PlanoAcaoPage() {
       const proxOcorrencia = novoStatus === 'concluído' && tarefa.tipoAcao === 'rotineira' && tarefa.periodicidade
         ? calcularProximaOcorrencia(hojeISO(), tarefa.periodicidade, tarefa.intervaloDias ?? 1)
         : tarefa.dataProximaOcorrencia ?? null;
+      const tarefasAtualizadas = d.tarefas.map(t => {
+        if (t.id !== id) return t;
+        const dataConclusao = novoStatus === 'concluído' ? hojeISO() : null;
+        return { ...t, status: novoStatus, dataConclusao, dataProximaOcorrencia: proxOcorrencia };
+      });
+      const metasAtualizadas = novoStatus === 'concluído'
+        ? d.metas.map(m => {
+          const t = d.tarefas.find(t => t.id === id);
+          return t?.metaId === m.id ? { ...m, dataUltimaAcao: hojeISO() } : m;
+        })
+        : d.metas;
       return {
         ...d,
-        tarefas: d.tarefas.map(t => {
-          if (t.id !== id) return t;
-          const dataConclusao = novoStatus === 'concluído' ? hojeISO() : null;
-          return { ...t, status: novoStatus, dataConclusao, dataProximaOcorrencia: proxOcorrencia };
-        }),
-        metas: novoStatus === 'concluído'
-          ? d.metas.map(m => {
-            const t = d.tarefas.find(t => t.id === id);
-            return t?.metaId === m.id ? { ...m, dataUltimaAcao: hojeISO() } : m;
-          })
-          : d.metas,
+        tarefas: tarefasAtualizadas,
+        metas: recalcularProgressoMetas(metasAtualizadas, tarefasAtualizadas),
       };
     });
   }, [setData]);

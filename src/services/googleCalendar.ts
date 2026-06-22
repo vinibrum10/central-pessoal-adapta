@@ -18,10 +18,46 @@ const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 const SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
 const GSI_URL = 'https://accounts.google.com/gsi/client';
 const CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
-const SESSION_KEY = 'google_access_token';
+const STORAGE_KEY = 'google_calendar_connection';
 
-// Token em memória + sessionStorage (limpo ao fechar o navegador, não persiste indefinidamente)
-let tokenEmMemoria: string | null = sessionStorage.getItem(SESSION_KEY);
+type GoogleConnectionState = {
+  accessToken: string;
+  expiresAt: number;
+};
+
+function lerEstado(): GoogleConnectionState | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<GoogleConnectionState>;
+    if (!parsed.accessToken || !parsed.expiresAt) return null;
+    return { accessToken: parsed.accessToken, expiresAt: parsed.expiresAt };
+  } catch {
+    return null;
+  }
+}
+
+function salvarEstado(accessToken: string, expiresInSeconds = 3600): void {
+  const margemSegurancaMs = 60_000;
+  const expiresAt = Date.now() + expiresInSeconds * 1000 - margemSegurancaMs;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ accessToken, expiresAt }));
+}
+
+function limparEstado(): void {
+  localStorage.removeItem(STORAGE_KEY);
+}
+
+function tokenValido(): string | null {
+  const estado = lerEstado();
+  if (!estado) return null;
+  if (estado.expiresAt <= Date.now()) {
+    limparEstado();
+    return null;
+  }
+  return estado.accessToken;
+}
+
+let tokenEmMemoria: string | null = tokenValido();
 
 // ============================================================
 // VERIFICAÇÃO DE CONFIGURAÇÃO
@@ -86,7 +122,7 @@ export async function conectarGoogleCalendar(): Promise<string> {
             initTokenClient: (config: {
               client_id: string;
               scope: string;
-              callback: (resp: { access_token?: string; error?: string }) => void;
+              callback: (resp: { access_token?: string; expires_in?: number; error?: string }) => void;
             }) => { requestAccessToken: () => void };
           };
         };
@@ -110,7 +146,7 @@ export async function conectarGoogleCalendar(): Promise<string> {
           return;
         }
         tokenEmMemoria = resp.access_token;
-        sessionStorage.setItem(SESSION_KEY, resp.access_token);
+        salvarEstado(resp.access_token, resp.expires_in);
         resolve(resp.access_token);
       },
     });
@@ -126,16 +162,39 @@ export function desconectarGoogleCalendar(): void {
   if (tokenEmMemoria && win.google?.accounts?.oauth2) {
     win.google.accounts.oauth2.revoke(tokenEmMemoria, () => {
       tokenEmMemoria = null;
-      sessionStorage.removeItem(SESSION_KEY);
+      limparEstado();
     });
   } else {
     tokenEmMemoria = null;
-    sessionStorage.removeItem(SESSION_KEY);
+    limparEstado();
   }
 }
 
 export function isGoogleConectado(): boolean {
+  tokenEmMemoria = tokenValido();
   return Boolean(tokenEmMemoria);
+}
+
+export function getGoogleConnectionStatus(): 'desconectado' | 'conectado' | 'expirado' {
+  const estado = lerEstado();
+  if (!estado) return 'desconectado';
+  if (estado.expiresAt <= Date.now()) {
+    limparEstado();
+    tokenEmMemoria = null;
+    return 'expirado';
+  }
+  tokenEmMemoria = estado.accessToken;
+  return 'conectado';
+}
+
+function obterTokenOuErro(): string {
+  const token = tokenValido();
+  if (!token) {
+    tokenEmMemoria = null;
+    throw new Error('Sessão expirada — reconectar Google Calendar');
+  }
+  tokenEmMemoria = token;
+  return token;
 }
 
 // ============================================================
@@ -151,16 +210,17 @@ export interface CalendarioGoogle {
 }
 
 export async function listarCalendarios(): Promise<CalendarioGoogle[]> {
-  if (!tokenEmMemoria) throw new Error('Não conectado ao Google Calendar');
+  const token = obterTokenOuErro();
 
   const resp = await fetch(`${CALENDAR_API}/users/me/calendarList`, {
-    headers: { Authorization: `Bearer ${tokenEmMemoria}` },
+    headers: { Authorization: `Bearer ${token}` },
   });
 
   if (!resp.ok) {
     if (resp.status === 401) {
       tokenEmMemoria = null;
-      throw new Error('Sessão Google expirada. Reconecte.');
+      limparEstado();
+      throw new Error('Sessão expirada — reconectar Google Calendar');
     }
     throw new Error(`Erro ao listar calendários: ${resp.status}`);
   }
@@ -205,6 +265,7 @@ async function buscarEventosCalendario(
   dataInicio: string,
   dataFim: string
 ): Promise<EventoAgenda[]> {
+  const token = obterTokenOuErro();
   const params = new URLSearchParams({
     timeMin: `${dataInicio}T00:00:00Z`,
     timeMax: `${dataFim}T23:59:59Z`,
@@ -215,13 +276,14 @@ async function buscarEventosCalendario(
 
   const resp = await fetch(
     `${CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
-    { headers: { Authorization: `Bearer ${tokenEmMemoria}` } }
+    { headers: { Authorization: `Bearer ${token}` } }
   );
 
   if (!resp.ok) {
     if (resp.status === 401) {
       tokenEmMemoria = null;
-      throw new Error('Sessão Google expirada. Reconecte.');
+      limparEstado();
+      throw new Error('Sessão expirada — reconectar Google Calendar');
     }
     // Calendários sem acesso de leitura retornam 403/404 — ignorar silenciosamente
     if (resp.status === 403 || resp.status === 404) return [];
@@ -260,7 +322,7 @@ export async function listarEventosTodosCalendarios(
   dataInicio: string,
   dataFim: string
 ): Promise<EventoAgenda[]> {
-  if (!tokenEmMemoria) throw new Error('Não conectado ao Google Calendar');
+  obterTokenOuErro();
 
   const calendarios = await listarCalendarios();
   const resultados = await Promise.all(

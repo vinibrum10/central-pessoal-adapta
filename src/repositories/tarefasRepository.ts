@@ -53,6 +53,8 @@ function tarefaToRow(userId: string | null, t: Tarefa) {
     prazo: t.prazo,
     data_proxima_ocorrencia: t.dataProximaOcorrencia ?? null,
     ultima_reabertura: t.ultimaReabertura ?? null,
+    etapa_meta_numero: t.etapaMetaNumero ?? null,
+    gerada_por_meta: t.geradaPorMeta ?? false,
     energia_necessaria: t.energiaNecessaria,
     observacoes: t.observacoes,
     data_conclusao: t.dataConclusao ?? null,
@@ -81,5 +83,7 @@ function rowToTarefa(row: Record<string, unknown>): Tarefa {
     tempoMinimoMinutos: (row.tempo_minimo_minutos as number | null) ?? undefined,
     dataProximaOcorrencia: (row.data_proxima_ocorrencia as string | null) ?? null,
     ultimaReabertura: (row.ultima_reabertura as string | null) ?? null,
+    etapaMetaNumero: (row.etapa_meta_numero as number | null) ?? undefined,
+    geradaPorMeta: Boolean(row.gerada_por_meta),
   };
 }

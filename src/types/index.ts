@@ -32,10 +32,16 @@ export interface Meta {
   dataCriacao: string;
   dataUltimaRevisao: string | null;
   dataUltimaAcao: string | null;
+  etapas?: EtapaMeta[];
   // campos legados opcionais (mantidos para compatibilidade)
   descricao?: string;
   progresso?: number;
   prioridade?: Prioridade;
+}
+
+export interface EtapaMeta {
+  numero: number;
+  descricao: string;
 }
 
 // ---- TAREFA ----
@@ -66,6 +72,8 @@ export interface Tarefa {
   tempoMinimoMinutos?: number;
   dataProximaOcorrencia?: string | null;
   ultimaReabertura?: string | null;
+  etapaMetaNumero?: number;
+  geradaPorMeta?: boolean;
 }
 
 // ---- TEMPO DISPONÍVEL ----
@@ -114,8 +122,15 @@ export interface Receita {
   descricao: string;
   valor: number;
   data: string;
+  dataReceita?: string;
+  mesReferencia?: number;
+  anoReferencia?: number;
   categoria: CategoriaFinanceira;
   recorrente: boolean;
+  recorrenciaId?: string | null;
+  recorrenciaTemTermino?: boolean;
+  recorrenciaMesTermino?: number | null;
+  recorrenciaAnoTermino?: number | null;
   dataCriacao: string;
 }
 
