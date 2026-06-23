@@ -176,13 +176,17 @@ Usuários seguintes entram como `pendente` e precisam ser aprovados pelo admin e
 ## 11 · Inglês
 
 1. Habilite **YouTube Data API v3** no Google Cloud Console.
-2. Crie uma API key restrita por domínio/origem e configure `VITE_YOUTUBE_API_KEY`. Se `VITE_GOOGLE_API_KEY` já tiver YouTube Data API habilitada, ela também é aceita como fallback.
-3. Crie uma pasta no Google Drive para materiais de inglês e copie o ID da URL.
-4. Configure `VITE_ENGLISH_DRIVE_FOLDER_ID`. Se não houver uma pasta separada, o app usa `VITE_GOOGLE_DRIVE_FOLDER_ID` como fallback.
-5. Rode a migration `supabase/migrations/20260623_english_study_data.sql`.
-6. No app: **Estudo → Inglês**.
+2. Crie uma API key, restrinja por domínio/origem e restrinja a chave somente para **YouTube Data API v3**.
+3. Configure `VITE_YOUTUBE_API_KEY` na Vercel e faça redeploy.
+4. Crie uma pasta no Google Drive para materiais de inglês e copie o ID da URL.
+5. Configure `VITE_ENGLISH_DRIVE_FOLDER_ID`. Se não houver uma pasta separada, o app usa `VITE_GOOGLE_DRIVE_FOLDER_ID` como fallback.
+6. Rode a migration `supabase/migrations/20260623_english_study_data.sql`.
+7. Para apoio com Claude, configure `ANTHROPIC_API_KEY` na Vercel como variável server-side. Nunca use `VITE_` para essa chave.
+8. Opcionalmente configure `ANTHROPIC_MODEL=claude-sonnet-4-5`.
+9. No app: **Estudo → Inglês**.
 
 Os dados de estudo ficam na tabela `english_study_data`, isolados por usuário via RLS. Em desenvolvimento local sem Supabase, o app usa LocalStorage apenas como fallback.
+O Claude é chamado pela rota serverless `/api/claude`; a chave Anthropic nunca é enviada para o bundle React.
 
 ---
 

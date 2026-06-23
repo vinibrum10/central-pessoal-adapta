@@ -31,6 +31,11 @@ import {
   toggleDailyPlanItem,
 } from '../services/englishStudyStorage';
 import {
+  getClaudeEnglishConfigMessage,
+  pedirAjudaClaude,
+  type ClaudeEnglishResult,
+} from '../services/claudeEnglish';
+import {
   buscarVideosIngles,
   getYouTubeEnglishConfigMessage,
   isYouTubeEnglishConfigured,
@@ -118,6 +123,27 @@ function MetricCard({ label, value }: { label: string; value: string }) {
   );
 }
 
+function ClaudeResultBox({ result }: { result: ClaudeEnglishResult | null }) {
+  if (!result) return null;
+  return (
+    <div className="rounded-xl border border-primary-200 bg-primary-50 p-4 text-sm dark:border-primary-900/40 dark:bg-primary-900/20">
+      <p className="font-semibold text-surface-900 dark:text-white mb-2">Resposta do Claude</p>
+      {result.correction && <p className="text-surface-700 dark:text-surface-200"><strong>Correção:</strong> {result.correction}</p>}
+      {result.naturalVersion && <p className="text-surface-700 dark:text-surface-200 mt-1"><strong>Versão natural:</strong> {result.naturalVersion}</p>}
+      {result.explanationPt && <p className="text-surface-700 dark:text-surface-200 mt-1"><strong>Explicação:</strong> {result.explanationPt}</p>}
+      {!!result.alternatives?.length && (
+        <p className="text-surface-700 dark:text-surface-200 mt-1"><strong>Alternativas:</strong> {result.alternatives.join(' | ')}</p>
+      )}
+      {!!result.vocabulary?.length && (
+        <p className="text-surface-700 dark:text-surface-200 mt-1"><strong>Vocabulário:</strong> {result.vocabulary.join(', ')}</p>
+      )}
+      {!!result.phrases?.length && (
+        <p className="text-surface-700 dark:text-surface-200 mt-1"><strong>Frases:</strong> {result.phrases.join(' | ')}</p>
+      )}
+    </div>
+  );
+}
+
 export function InglesPage() {
   const { user } = useAuth();
   const userId = user?.id ?? null;
@@ -132,6 +158,9 @@ export function InglesPage() {
   });
   const [videos, setVideos] = useState<YouTubeEnglishVideo[]>([]);
   const [materiais, setMateriais] = useState<EnglishDriveMaterial[]>([]);
+  const [listeningSummary, setListeningSummary] = useState('');
+  const [claudeResult, setClaudeResult] = useState<ClaudeEnglishResult | null>(null);
+  const [claudeLoading, setClaudeLoading] = useState(false);
   const [sessionModal, setSessionModal] = useState<{ open: boolean; source: StudySource; title: string; url?: string }>({
     open: false,
     source: 'manual',
@@ -199,6 +228,29 @@ export function InglesPage() {
       setVideos(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao buscar vídeos.');
+    }
+  }
+
+  async function handleClaude(mode: 'speaking_feedback' | 'phrase_suggestion' | 'listening_review', input: string) {
+    setError('');
+    setClaudeResult(null);
+    const cleanInput = input.trim();
+    if (!cleanInput) {
+      setError('Informe um texto para o Claude analisar.');
+      return;
+    }
+    try {
+      setClaudeLoading(true);
+      const result = await pedirAjudaClaude({
+        mode,
+        input: cleanInput,
+        context: { level: 'intermediario', goal: 'fluencia e trabalho nos EUA' },
+      });
+      setClaudeResult(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : getClaudeEnglishConfigMessage());
+    } finally {
+      setClaudeLoading(false);
     }
   }
 
@@ -437,6 +489,23 @@ export function InglesPage() {
               </div>
             ))}
           </div>
+          <div className="rounded-xl border border-surface-200 dark:border-surface-700 p-3 space-y-3">
+            <Textarea
+              id="listening-summary"
+              label="O que eu entendi"
+              value={listeningSummary}
+              onChange={e => setListeningSummary(e.target.value)}
+              placeholder="Escreva um resumo em inglês ou português para o Claude revisar."
+            />
+            <Button
+              variant="secondary"
+              loading={claudeLoading}
+              onClick={() => handleClaude('listening_review', listeningSummary)}
+            >
+              Analisar meu resumo com Claude
+            </Button>
+          </div>
+          <ClaudeResultBox result={claudeResult} />
         </CardBody>
       </Card>
 
@@ -520,6 +589,13 @@ export function InglesPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Button icon={<Plus size={16} />} onClick={handleSavePhrase}>{phraseForm.id ? 'Salvar edição' : 'Adicionar frase'}</Button>
+              <Button
+                variant="secondary"
+                loading={claudeLoading}
+                onClick={() => handleClaude('phrase_suggestion', phraseForm.phrase ?? '')}
+              >
+                Gerar frase com Claude
+              </Button>
               <Select id="phrase-filter" label="Filtro" value={phraseFilter} onChange={e => setPhraseFilter(e.target.value as ReviewStatus | 'todos')} className="min-w-40">
                 <option value="todos">Todos</option>
                 <option value="novo">Novo</option>
@@ -527,6 +603,7 @@ export function InglesPage() {
                 <option value="dominado">Dominado</option>
               </Select>
             </div>
+            <ClaudeResultBox result={claudeResult} />
             <div className="space-y-2">
               {filteredPhrases.map(item => (
                 <div key={item.id} className="rounded-lg border border-surface-200 dark:border-surface-700 p-3">
@@ -626,10 +703,18 @@ export function InglesPage() {
               {listening ? 'Parar gravação' : 'Usar microfone'}
             </Button>
             <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                loading={claudeLoading}
+                onClick={() => handleClaude('speaking_feedback', speakingText)}
+              >
+                Corrigir com Claude
+              </Button>
               <Button variant="secondary" onClick={() => setSpeakingOpen(false)}>Cancelar</Button>
               <Button onClick={handleSaveSpeaking}>Salvar prática</Button>
             </div>
           </div>
+          <ClaudeResultBox result={claudeResult} />
         </div>
       </Modal>
     </div>
