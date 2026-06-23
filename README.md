@@ -173,7 +173,20 @@ Usuários seguintes entram como `pendente` e precisam ser aprovados pelo admin e
 
 ---
 
-## 11 · Microsoft Outlook Calendar
+## 11 · Inglês
+
+1. Habilite **YouTube Data API v3** no Google Cloud Console.
+2. Crie uma API key restrita por domínio/origem e configure `VITE_YOUTUBE_API_KEY`.
+3. Crie uma pasta no Google Drive para materiais de inglês e copie o ID da URL.
+4. Configure `VITE_ENGLISH_DRIVE_FOLDER_ID`.
+5. Rode a migration `supabase/migrations/20260623_english_study_data.sql`.
+6. No app: **Estudo → Inglês**.
+
+Os dados de estudo ficam na tabela `english_study_data`, isolados por usuário via RLS. Em desenvolvimento local sem Supabase, o app usa LocalStorage apenas como fallback.
+
+---
+
+## 12 · Microsoft Outlook Calendar
 
 1. [portal.azure.com](https://portal.azure.com) → Azure Active Directory → Registros de aplicativo
 2. Configure o app como SPA com permissões delegadas `User.Read` e `Calendars.Read`
@@ -183,7 +196,7 @@ Usuários seguintes entram como `pendente` e precisam ser aprovados pelo admin e
 
 ---
 
-## 12 · Exportar dados em Excel
+## 13 · Exportar dados em Excel
 
 No app: **Configurações → Seus Dados → Exportar Excel**
 
@@ -192,7 +205,7 @@ Metas, Tarefas, Receitas, Despesas, Cartões, Dívidas, Reservas, Bens, Agenda, 
 
 ---
 
-## 13 · Rodando localmente (dev)
+## 14 · Rodando localmente (dev)
 
 ```bash
 npm install
@@ -206,7 +219,7 @@ VITE_ENABLE_LOCAL_MODE=true
 
 ---
 
-## 14 · Deploy na Vercel
+## 15 · Deploy na Vercel
 
 1. Importe o repositório em [vercel.com](https://vercel.com)
 2. Configure as variáveis de ambiente
@@ -216,7 +229,7 @@ O `vercel.json` garante que rotas como `/metas`, `/plano`, `/agenda` funcionem a
 
 ---
 
-## 15 · Tabelas no Supabase
+## 16 · Tabelas no Supabase
 
 | Tabela | Descrição |
 |--------|-----------|
@@ -233,5 +246,6 @@ O `vercel.json` garante que rotas como `/metas`, `/plano`, `/agenda` funcionem a
 | `configuracoes_agenda` | Configurações de fontes |
 | `leituras_diarias` | Itens de leitura diária |
 | `fontes_leitura` | Fontes configuradas |
+| `english_study_data` | Dados da central de estudos de inglês |
 
 Todas com **Row Level Security** ativo — cada usuário vê apenas seus próprios dados.
