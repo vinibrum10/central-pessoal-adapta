@@ -2,7 +2,8 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Target, ListChecks, Clock,
   Wallet, Settings, Menu, X, Moon, Sun, BookOpen, LogOut,
-  ChevronLeft, ChevronRight, Users,
+  ChevronLeft, ChevronRight, Users, Layers, ChevronDown,
+  type LucideIcon,
 } from 'lucide-react';
 
 function AppIcon({ size = 18 }: { size?: number }) {
@@ -20,14 +21,33 @@ import { MigrationBanner } from '../components/MigrationBanner';
 
 const SIDEBAR_KEY = 'adapta-sidebar-collapsed';
 
-const navItems = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+type NavItem = {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+  aliases?: string[];
+};
+
+const gestaoNavItems: NavItem[] = [
   { to: '/metas', label: 'Metas', icon: Target },
-  { to: '/plano', label: 'Plano de Ação', icon: ListChecks },
+  { to: '/plano-acao', label: 'Plano de Ação', icon: ListChecks, aliases: ['/plano'] },
   { to: '/agenda', label: 'Agenda e Tempo', icon: Clock },
+];
+
+const topNavItems = [
+  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+];
+
+const bottomNavItems = [
   { to: '/orcamento', label: 'Orçamento', icon: Wallet },
   { to: '/leitura', label: 'Leitura Diária', icon: BookOpen },
   { to: '/configuracoes', label: 'Configurações', icon: Settings },
+];
+
+const navItems = [
+  ...topNavItems,
+  ...gestaoNavItems,
+  ...bottomNavItems,
 ];
 
 const adminNavItems = [
@@ -43,12 +63,30 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { user, signOut, supabaseAtivo, role } = useAuth();
   const location = useLocation();
 
+  const pathMatches = (target: string) =>
+    location.pathname === target || location.pathname.startsWith(`${target}/`);
+
+  const isNavItemActive = (item: NavItem) =>
+    [item.to, ...(item.aliases ?? [])].some(pathMatches);
+
+  const isGestaoActive = gestaoNavItems.some(isNavItemActive);
+
+  const [gestaoOpen, setGestaoOpen] = useState(() =>
+    gestaoNavItems.some(isNavItemActive)
+  );
+
   useEffect(() => {
     try { localStorage.setItem(SIDEBAR_KEY, String(collapsed)); } catch { /* noop */ }
   }, [collapsed]);
 
+  useEffect(() => {
+    if (gestaoNavItems.some(isNavItemActive)) {
+      setGestaoOpen(true);
+    }
+  }, [location.pathname]);
+
   const currentPage = navItems.find(n =>
-    n.to === '/' ? location.pathname === '/' : location.pathname.startsWith(n.to)
+    n.to === '/' ? location.pathname === '/' : isNavItemActive(n)
   );
 
   return (
@@ -57,7 +95,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <aside
         className={`hidden lg:flex flex-col bg-white dark:bg-surface-800 border-r border-surface-200 dark:border-surface-700 flex-shrink-0 transition-all duration-200 ${collapsed ? 'w-16' : 'w-64'}`}
       >
-        {/* Logo */}
         <div className={`border-b border-surface-200 dark:border-surface-700 flex items-center ${collapsed ? 'justify-center p-3' : 'justify-between p-5'}`}>
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-9 h-9 bg-primary-600 rounded-xl flex items-center justify-center shadow-lg shadow-primary-600/30 flex-shrink-0">
@@ -81,7 +118,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
           )}
         </div>
 
-        {/* Expand button when collapsed — fica bem visível no centro */}
         {collapsed && (
           <div className="flex justify-center py-2 border-b border-surface-200 dark:border-surface-700">
             <button
@@ -94,7 +130,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
         )}
 
-        {/* User info */}
         {!collapsed && (
           <div className="px-4 py-3 border-b border-surface-200 dark:border-surface-700">
             <p className="text-xs text-surface-400 dark:text-surface-500">Bem-vindo,</p>
@@ -105,13 +140,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
         )}
 
-        {/* Nav */}
         <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
-          {navItems.map(({ to, label, icon: Icon }) => (
+          {topNavItems.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
-              end={to === '/'}
+              end
               title={collapsed ? label : undefined}
               className={({ isActive }) => `
                 flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
@@ -127,6 +161,84 @@ export function Layout({ children }: { children: React.ReactNode }) {
               {!collapsed && label}
             </NavLink>
           ))}
+
+          {collapsed ? (
+            <button
+              onClick={() => { setCollapsed(false); setGestaoOpen(true); }}
+              title="Gestão"
+              className={`w-full flex items-center justify-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+                isGestaoActive
+                  ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/30'
+                  : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-surface-900 dark:hover:text-white'
+              }`}
+            >
+              <Layers size={18} className="flex-shrink-0" />
+            </button>
+          ) : (
+            <div>
+              <button
+                onClick={() => setGestaoOpen(o => !o)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+                  isGestaoActive
+                    ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/20'
+                    : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-surface-900 dark:hover:text-white'
+                }`}
+              >
+                <Layers size={18} className="flex-shrink-0" />
+                <span className="flex-1 text-left">Gestão</span>
+                <ChevronDown
+                  size={14}
+                  className={`transition-transform duration-150 ${gestaoOpen ? 'rotate-180' : ''}`}
+                />
+              </button>
+              {gestaoOpen && (
+                <div className="ml-3 mt-0.5 pl-3 border-l-2 border-surface-200 dark:border-surface-700 space-y-0.5">
+                  {gestaoNavItems.map((item) => {
+                    const { to, label, icon: Icon } = item;
+                    const active = isNavItemActive(item);
+                    return (
+                      <NavLink
+                        key={to}
+                        to={to}
+                        className={`
+                          flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium
+                          transition-all duration-150
+                          ${active
+                            ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/30'
+                            : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-surface-900 dark:hover:text-white'
+                          }
+                        `}
+                      >
+                        <Icon size={16} className="flex-shrink-0" />
+                        {label}
+                      </NavLink>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {bottomNavItems.map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              title={collapsed ? label : undefined}
+              className={({ isActive }) => `
+                flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+                transition-all duration-150
+                ${collapsed ? 'justify-center' : ''}
+                ${isActive
+                  ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/30'
+                  : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-surface-900 dark:hover:text-white'
+                }
+              `}
+            >
+              <Icon size={18} className="flex-shrink-0" />
+              {!collapsed && label}
+            </NavLink>
+          ))}
+
           {role === 'admin' && (
             <>
               {!collapsed && <p className="text-[10px] uppercase tracking-widest text-surface-400 dark:text-surface-600 px-3 pt-3 pb-1">Admin</p>}
@@ -153,7 +265,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
           )}
         </nav>
 
-        {/* Footer */}
         <div className="p-3 border-t border-surface-200 dark:border-surface-700 space-y-0.5">
           <button
             onClick={toggleTema}
@@ -202,11 +313,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </div>
             )}
             <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-              {navItems.map(({ to, label, icon: Icon }) => (
+              {topNavItems.map(({ to, label, icon: Icon }) => (
                 <NavLink
                   key={to}
                   to={to}
-                  end={to === '/'}
+                  end
                   onClick={() => setSidebarOpen(false)}
                   className={({ isActive }) => `
                     flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
@@ -217,6 +328,62 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   {label}
                 </NavLink>
               ))}
+
+              <div>
+                <button
+                  onClick={() => setGestaoOpen(o => !o)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                    isGestaoActive
+                      ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/20'
+                      : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700'
+                  }`}
+                >
+                  <Layers size={18} />
+                  <span className="flex-1 text-left">Gestão</span>
+                  <ChevronDown
+                    size={14}
+                    className={`transition-transform duration-150 ${gestaoOpen ? 'rotate-180' : ''}`}
+                  />
+                </button>
+                {gestaoOpen && (
+                  <div className="ml-3 mt-0.5 pl-3 border-l-2 border-surface-200 dark:border-surface-700 space-y-0.5">
+                    {gestaoNavItems.map((item) => {
+                      const { to, label, icon: Icon } = item;
+                      const active = isNavItemActive(item);
+                      return (
+                        <NavLink
+                          key={to}
+                          to={to}
+                          onClick={() => setSidebarOpen(false)}
+                          className={`
+                            flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all
+                            ${active ? 'bg-primary-600 text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700'}
+                          `}
+                        >
+                          <Icon size={16} />
+                          {label}
+                        </NavLink>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {bottomNavItems.map(({ to, label, icon: Icon }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  onClick={() => setSidebarOpen(false)}
+                  className={({ isActive }) => `
+                    flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
+                    ${isActive ? 'bg-primary-600 text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700'}
+                  `}
+                >
+                  <Icon size={18} />
+                  {label}
+                </NavLink>
+              ))}
+
               {role === 'admin' && (
                 <>
                   <p className="text-[10px] uppercase tracking-widest text-surface-400 dark:text-surface-600 px-3 pt-3 pb-1">Admin</p>
@@ -255,7 +422,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {/* === MAIN CONTENT === */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        {/* Top bar mobile */}
         <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-white dark:bg-surface-800 border-b border-surface-200 dark:border-surface-700 flex-shrink-0">
           <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700">
             <Menu size={20} className="text-surface-600 dark:text-surface-400" />
@@ -271,7 +437,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </button>
         </header>
 
-        {/* Page title bar (desktop) */}
         <div className="hidden lg:flex items-center px-6 py-4 border-b border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 flex-shrink-0">
           <h1 className="font-semibold text-surface-900 dark:text-white">{currentPage?.label ?? 'Sistema de Gestão Pessoal'}</h1>
         </div>
@@ -284,13 +449,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </main>
 
-        {/* Bottom nav mobile */}
         <nav className="lg:hidden flex bg-white dark:bg-surface-800 border-t border-surface-200 dark:border-surface-700 flex-shrink-0">
-          {navItems.map(({ to, label, icon: Icon }) => (
+          <button
+            type="button"
+            onClick={() => {
+              setGestaoOpen(true);
+              setSidebarOpen(true);
+            }}
+            className={`flex-1 flex flex-col items-center py-2 gap-0.5 ${isGestaoActive ? 'text-primary-600' : 'text-surface-400'}`}
+          >
+            <Layers size={18} />
+            <span className="text-[9px] font-medium leading-tight text-center">Gestão</span>
+          </button>
+          {bottomNavItems.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
-              end={to === '/'}
               className={({ isActive }) => `
                 flex-1 flex flex-col items-center py-2 gap-0.5
                 ${isActive ? 'text-primary-600' : 'text-surface-400'}

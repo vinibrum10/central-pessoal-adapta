@@ -30,6 +30,7 @@ function App() {
                     <Route path="/" element={<InicioPage />} />
                     <Route path="/metas" element={<MetasPage />} />
                     <Route path="/plano" element={<PlanoAcaoPage />} />
+                    <Route path="/plano-acao" element={<PlanoAcaoPage />} />
                     <Route path="/agenda" element={<AgendaTempoPage />} />
                     <Route path="/orcamento" element={<OrcamentoPage />} />
                     <Route path="/leitura" element={<LeituraDiariaPage />} />
