@@ -3,6 +3,7 @@ import {
   LayoutDashboard, Target, ListChecks, Clock,
   Wallet, Settings, Menu, X, Moon, Sun, BookOpen, LogOut,
   ChevronLeft, ChevronRight, Users, Layers, ChevronDown,
+  type LucideIcon,
 } from 'lucide-react';
 
 function AppIcon({ size = 18 }: { size?: number }) {
@@ -19,9 +20,16 @@ import { useAuth } from '../contexts/AuthContext';
 
 const SIDEBAR_KEY = 'adapta-sidebar-collapsed';
 
-const gestaoNavItems = [
+type NavItem = {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+  aliases?: string[];
+};
+
+const gestaoNavItems: NavItem[] = [
   { to: '/metas', label: 'Metas', icon: Target },
-  { to: '/plano', label: 'Plano de Ação', icon: ListChecks },
+  { to: '/plano-acao', label: 'Plano de Ação', icon: ListChecks, aliases: ['/plano'] },
   { to: '/agenda', label: 'Agenda e Tempo', icon: Clock },
 ];
 
@@ -54,10 +62,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { user, signOut, supabaseAtivo, role } = useAuth();
   const location = useLocation();
 
-  const isGestaoActive = gestaoNavItems.some(item => location.pathname.startsWith(item.to));
+  const pathMatches = (target: string) =>
+    location.pathname === target || location.pathname.startsWith(`${target}/`);
+
+  const isNavItemActive = (item: NavItem) =>
+    [item.to, ...(item.aliases ?? [])].some(pathMatches);
+
+  const isGestaoActive = gestaoNavItems.some(isNavItemActive);
 
   const [gestaoOpen, setGestaoOpen] = useState(() =>
-    gestaoNavItems.some(item => location.pathname.startsWith(item.to))
+    gestaoNavItems.some(isNavItemActive)
   );
 
   useEffect(() => {
@@ -65,13 +79,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
   }, [collapsed]);
 
   useEffect(() => {
-    if (gestaoNavItems.some(item => location.pathname.startsWith(item.to))) {
+    if (gestaoNavItems.some(isNavItemActive)) {
       setGestaoOpen(true);
     }
   }, [location.pathname]);
 
   const currentPage = navItems.find(n =>
-    n.to === '/' ? location.pathname === '/' : location.pathname.startsWith(n.to)
+    n.to === '/' ? location.pathname === '/' : isNavItemActive(n)
   );
 
   return (
@@ -178,23 +192,27 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </button>
               {gestaoOpen && (
                 <div className="ml-3 mt-0.5 pl-3 border-l-2 border-surface-200 dark:border-surface-700 space-y-0.5">
-                  {gestaoNavItems.map(({ to, label, icon: Icon }) => (
-                    <NavLink
-                      key={to}
-                      to={to}
-                      className={({ isActive }) => `
-                        flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium
-                        transition-all duration-150
-                        ${isActive
-                          ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/30'
-                          : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-surface-900 dark:hover:text-white'
-                        }
-                      `}
-                    >
-                      <Icon size={16} className="flex-shrink-0" />
-                      {label}
-                    </NavLink>
-                  ))}
+                  {gestaoNavItems.map((item) => {
+                    const { to, label, icon: Icon } = item;
+                    const active = isNavItemActive(item);
+                    return (
+                      <NavLink
+                        key={to}
+                        to={to}
+                        className={`
+                          flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium
+                          transition-all duration-150
+                          ${active
+                            ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/30'
+                            : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-surface-900 dark:hover:text-white'
+                          }
+                        `}
+                      >
+                        <Icon size={16} className="flex-shrink-0" />
+                        {label}
+                      </NavLink>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -328,20 +346,24 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </button>
                 {gestaoOpen && (
                   <div className="ml-3 mt-0.5 pl-3 border-l-2 border-surface-200 dark:border-surface-700 space-y-0.5">
-                    {gestaoNavItems.map(({ to, label, icon: Icon }) => (
-                      <NavLink
-                        key={to}
-                        to={to}
-                        onClick={() => setSidebarOpen(false)}
-                        className={({ isActive }) => `
-                          flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all
-                          ${isActive ? 'bg-primary-600 text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700'}
-                        `}
-                      >
-                        <Icon size={16} />
-                        {label}
-                      </NavLink>
-                    ))}
+                    {gestaoNavItems.map((item) => {
+                      const { to, label, icon: Icon } = item;
+                      const active = isNavItemActive(item);
+                      return (
+                        <NavLink
+                          key={to}
+                          to={to}
+                          onClick={() => setSidebarOpen(false)}
+                          className={`
+                            flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all
+                            ${active ? 'bg-primary-600 text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700'}
+                          `}
+                        >
+                          <Icon size={16} />
+                          {label}
+                        </NavLink>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -418,7 +440,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <h1 className="font-semibold text-surface-900 dark:text-white">{currentPage?.label ?? 'Sistema de Gestão Pessoal'}</h1>
         </div>
 
-        
+        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+          {children}
+        </main>
+
+        <nav className="lg:hidden flex bg-white dark:bg-surface-800 border-t border-surface-200 dark:border-surface-700 flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              setGestaoOpen(true);
+              setSidebarOpen(true);
+            }}
             className={`flex-1 flex flex-col items-center py-2 gap-0.5 ${isGestaoActive ? 'text-primary-600' : 'text-surface-400'}`}
           >
             <Layers size={18} />
