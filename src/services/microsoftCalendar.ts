@@ -32,6 +32,7 @@ const CONSENT_ERROR_CODE = 'INSTITUTIONAL_CONSENT_REQUIRED';
 const INTERACTION_PROGRESS_CODE = 'MICROSOFT_INTERACTION_IN_PROGRESS';
 const RECONNECT_REQUIRED_CODE = 'MICROSOFT_RECONNECT_REQUIRED';
 const LOGIN_TIMEOUT_CODE = 'MICROSOFT_LOGIN_TIMEOUT';
+const ACCESS_DENIED_CODE = 'MICROSOFT_ACCESS_DENIED';
 const UNIASSELVI_TENANT_ID = '28ee1771-192d-4a6a-9d2d-d43859ae1aef';
 
 let msalApp: PublicClientApplication | null = null;
@@ -144,6 +145,15 @@ function isTimedOutError(error: unknown): boolean {
   );
 }
 
+function isAccessDeniedError(error: unknown): boolean {
+  const authError = error as { errorCode?: string; message?: string };
+  const message = authError.message ?? String(error);
+  return (
+    authError.errorCode === 'access_denied' ||
+    message.includes('access_denied')
+  );
+}
+
 function clearMsalInteractionStatus(): void {
   for (const storage of [localStorage, sessionStorage]) {
     for (let i = storage.length - 1; i >= 0; i -= 1) {
@@ -155,13 +165,29 @@ function clearMsalInteractionStatus(): void {
   }
 }
 
+function clearMicrosoftLocalState(): void {
+  localStorage.removeItem(CONNECTED_KEY);
+  localStorage.removeItem(USER_EMAIL_KEY);
+  clearMsalInteractionStatus();
+}
+
 function normalizeMsError(error: unknown): Error {
-  if (isConsentError(error)) return new Error(CONSENT_ERROR_CODE);
+  if (isConsentError(error)) {
+    clearMicrosoftLocalState();
+    return new Error(CONSENT_ERROR_CODE);
+  }
+  if (isAccessDeniedError(error)) {
+    clearMicrosoftLocalState();
+    return new Error(ACCESS_DENIED_CODE);
+  }
   if (isInteractionInProgressError(error)) {
-    clearMsalInteractionStatus();
+    clearMicrosoftLocalState();
     return new Error(INTERACTION_PROGRESS_CODE);
   }
-  if (isTimedOutError(error)) return new Error(LOGIN_TIMEOUT_CODE);
+  if (isTimedOutError(error)) {
+    clearMicrosoftLocalState();
+    return new Error(LOGIN_TIMEOUT_CODE);
+  }
   return error instanceof Error ? error : new Error(String(error));
 }
 
@@ -175,8 +201,7 @@ async function getAccessToken(): Promise<string> {
   const app = await ensureMsalReady();
   const account = getActiveAccount(app);
   if (!account) {
-    localStorage.removeItem(CONNECTED_KEY);
-    localStorage.removeItem(USER_EMAIL_KEY);
+    clearMicrosoftLocalState();
     throw new Error('Não conectado ao Microsoft Calendar');
   }
 
@@ -201,7 +226,7 @@ export async function prepararMicrosoftCalendar(): Promise<boolean> {
 
 export async function conectarMicrosoftCalendar(): Promise<boolean> {
   const app = await ensureMsalReady();
-  clearMsalInteractionStatus();
+  clearMicrosoftLocalState();
   try {
     await app.loginRedirect({
       scopes: SCOPES,
@@ -215,8 +240,7 @@ export async function conectarMicrosoftCalendar(): Promise<boolean> {
 }
 
 export function desconectarMicrosoftCalendar(): void {
-  localStorage.removeItem(CONNECTED_KEY);
-  localStorage.removeItem(USER_EMAIL_KEY);
+  clearMicrosoftLocalState();
 
   if (!isMicrosoftConfigured()) return;
   void ensureMsalReady()
