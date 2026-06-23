@@ -17,6 +17,7 @@ function AppIcon({ size = 18 }: { size?: number }) {
 import { useState, useEffect } from 'react';
 import { useApp } from '../hooks/useApp';
 import { useAuth } from '../contexts/AuthContext';
+import { MigrationBanner } from '../components/MigrationBanner';
 
 const SIDEBAR_KEY = 'adapta-sidebar-collapsed';
 
@@ -440,8 +441,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <h1 className="font-semibold text-surface-900 dark:text-white">{currentPage?.label ?? 'Sistema de Gestão Pessoal'}</h1>
         </div>
 
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-          {children}
+        {/* Page content */}
+        <main className="flex-1 overflow-y-auto">
+          <MigrationBanner />
+          <div className="p-4 lg:p-6">
+            {children}
+          </div>
         </main>
 
         <nav className="lg:hidden flex bg-white dark:bg-surface-800 border-t border-surface-200 dark:border-surface-700 flex-shrink-0">
