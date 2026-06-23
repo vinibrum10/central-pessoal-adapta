@@ -2,7 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Target, ListChecks, Clock,
   Wallet, Settings, Menu, X, Moon, Sun, BookOpen, LogOut,
-  ChevronLeft, ChevronRight, Users, Layers, ChevronDown,
+  ChevronLeft, ChevronRight, Users, Layers, ChevronDown, Languages,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -34,19 +34,28 @@ const gestaoNavItems: NavItem[] = [
   { to: '/agenda', label: 'Agenda e Tempo', icon: Clock },
 ];
 
+const estudoNavItems: NavItem[] = [
+  { to: '/estudo/leitura', label: 'Leitura Diária', icon: BookOpen, aliases: ['/leitura'] },
+  { to: '/estudo/ingles', label: 'Inglês', icon: Languages },
+];
+
 const topNavItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
 ];
 
-const bottomNavItems = [
+const mainNavItems = [
   { to: '/orcamento', label: 'Orçamento', icon: Wallet },
-  { to: '/leitura', label: 'Leitura Diária', icon: BookOpen },
+];
+
+const bottomNavItems = [
   { to: '/configuracoes', label: 'Configurações', icon: Settings },
 ];
 
 const navItems = [
   ...topNavItems,
   ...gestaoNavItems,
+  ...mainNavItems,
+  ...estudoNavItems,
   ...bottomNavItems,
 ];
 
@@ -70,9 +79,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
     [item.to, ...(item.aliases ?? [])].some(pathMatches);
 
   const isGestaoActive = gestaoNavItems.some(isNavItemActive);
+  const isEstudoActive = estudoNavItems.some(isNavItemActive);
 
   const [gestaoOpen, setGestaoOpen] = useState(() =>
     gestaoNavItems.some(isNavItemActive)
+  );
+  const [estudoOpen, setEstudoOpen] = useState(() =>
+    estudoNavItems.some(isNavItemActive)
   );
 
   useEffect(() => {
@@ -82,6 +95,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (gestaoNavItems.some(isNavItemActive)) {
       setGestaoOpen(true);
+    }
+    if (estudoNavItems.some(isNavItemActive)) {
+      setEstudoOpen(true);
     }
   }, [location.pathname]);
 
@@ -194,6 +210,83 @@ export function Layout({ children }: { children: React.ReactNode }) {
               {gestaoOpen && (
                 <div className="ml-3 mt-0.5 pl-3 border-l-2 border-surface-200 dark:border-surface-700 space-y-0.5">
                   {gestaoNavItems.map((item) => {
+                    const { to, label, icon: Icon } = item;
+                    const active = isNavItemActive(item);
+                    return (
+                      <NavLink
+                        key={to}
+                        to={to}
+                        className={`
+                          flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium
+                          transition-all duration-150
+                          ${active
+                            ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/30'
+                            : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-surface-900 dark:hover:text-white'
+                          }
+                        `}
+                      >
+                        <Icon size={16} className="flex-shrink-0" />
+                        {label}
+                      </NavLink>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {mainNavItems.map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              title={collapsed ? label : undefined}
+              className={({ isActive }) => `
+                flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+                transition-all duration-150
+                ${collapsed ? 'justify-center' : ''}
+                ${isActive
+                  ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/30'
+                  : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-surface-900 dark:hover:text-white'
+                }
+              `}
+            >
+              <Icon size={18} className="flex-shrink-0" />
+              {!collapsed && label}
+            </NavLink>
+          ))}
+
+          {collapsed ? (
+            <button
+              onClick={() => { setCollapsed(false); setEstudoOpen(true); }}
+              title="Estudo"
+              className={`w-full flex items-center justify-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+                isEstudoActive
+                  ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/30'
+                  : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-surface-900 dark:hover:text-white'
+              }`}
+            >
+              <BookOpen size={18} className="flex-shrink-0" />
+            </button>
+          ) : (
+            <div>
+              <button
+                onClick={() => setEstudoOpen(o => !o)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+                  isEstudoActive
+                    ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/20'
+                    : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-surface-900 dark:hover:text-white'
+                }`}
+              >
+                <BookOpen size={18} className="flex-shrink-0" />
+                <span className="flex-1 text-left">Estudo</span>
+                <ChevronDown
+                  size={14}
+                  className={`transition-transform duration-150 ${estudoOpen ? 'rotate-180' : ''}`}
+                />
+              </button>
+              {estudoOpen && (
+                <div className="ml-3 mt-0.5 pl-3 border-l-2 border-surface-200 dark:border-surface-700 space-y-0.5">
+                  {estudoNavItems.map((item) => {
                     const { to, label, icon: Icon } = item;
                     const active = isNavItemActive(item);
                     return (
@@ -369,6 +462,61 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 )}
               </div>
 
+              {mainNavItems.map(({ to, label, icon: Icon }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  onClick={() => setSidebarOpen(false)}
+                  className={({ isActive }) => `
+                    flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
+                    ${isActive ? 'bg-primary-600 text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700'}
+                  `}
+                >
+                  <Icon size={18} />
+                  {label}
+                </NavLink>
+              ))}
+
+              <div>
+                <button
+                  onClick={() => setEstudoOpen(o => !o)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                    isEstudoActive
+                      ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/20'
+                      : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700'
+                  }`}
+                >
+                  <BookOpen size={18} />
+                  <span className="flex-1 text-left">Estudo</span>
+                  <ChevronDown
+                    size={14}
+                    className={`transition-transform duration-150 ${estudoOpen ? 'rotate-180' : ''}`}
+                  />
+                </button>
+                {estudoOpen && (
+                  <div className="ml-3 mt-0.5 pl-3 border-l-2 border-surface-200 dark:border-surface-700 space-y-0.5">
+                    {estudoNavItems.map((item) => {
+                      const { to, label, icon: Icon } = item;
+                      const active = isNavItemActive(item);
+                      return (
+                        <NavLink
+                          key={to}
+                          to={to}
+                          onClick={() => setSidebarOpen(false)}
+                          className={`
+                            flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all
+                            ${active ? 'bg-primary-600 text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700'}
+                          `}
+                        >
+                          <Icon size={16} />
+                          {label}
+                        </NavLink>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               {bottomNavItems.map(({ to, label, icon: Icon }) => (
                 <NavLink
                   key={to}
@@ -460,6 +608,30 @@ export function Layout({ children }: { children: React.ReactNode }) {
           >
             <Layers size={18} />
             <span className="text-[9px] font-medium leading-tight text-center">Gestão</span>
+          </button>
+          {mainNavItems.map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              className={({ isActive }) => `
+                flex-1 flex flex-col items-center py-2 gap-0.5
+                ${isActive ? 'text-primary-600' : 'text-surface-400'}
+              `}
+            >
+              <Icon size={18} />
+              <span className="text-[9px] font-medium leading-tight text-center">{label.split(' ')[0]}</span>
+            </NavLink>
+          ))}
+          <button
+            type="button"
+            onClick={() => {
+              setEstudoOpen(true);
+              setSidebarOpen(true);
+            }}
+            className={`flex-1 flex flex-col items-center py-2 gap-0.5 ${isEstudoActive ? 'text-primary-600' : 'text-surface-400'}`}
+          >
+            <BookOpen size={18} />
+            <span className="text-[9px] font-medium leading-tight text-center">Estudo</span>
           </button>
           {bottomNavItems.map(({ to, label, icon: Icon }) => (
             <NavLink
