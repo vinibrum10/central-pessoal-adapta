@@ -1,6 +1,6 @@
 import type { EnglishLevel, YouTubeEnglishVideo } from '../types/englishStudy';
 
-const YOUTUBE_API_KEY = (import.meta.env.VITE_YOUTUBE_API_KEY || import.meta.env.VITE_GOOGLE_API_KEY) as string | undefined;
+const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY as string | undefined;
 const YOUTUBE_SEARCH_API = 'https://www.googleapis.com/youtube/v3/search';
 
 export interface BuscarVideosInglesParams {
@@ -15,7 +15,7 @@ export function isYouTubeEnglishConfigured(): boolean {
 }
 
 export function getYouTubeEnglishConfigMessage(): string {
-  return 'YouTube não configurado. Configure VITE_YOUTUBE_API_KEY ou VITE_GOOGLE_API_KEY para buscar vídeos de listening.';
+  return 'YouTube não configurado. Configure VITE_YOUTUBE_API_KEY para buscar vídeos de listening.';
 }
 
 function mapDuracao(duracao: BuscarVideosInglesParams['duracao']) {
@@ -38,10 +38,13 @@ export async function buscarVideosIngles(params: BuscarVideosInglesParams): Prom
   const search = new URLSearchParams({
     part: 'snippet',
     type: 'video',
-    maxResults: '8',
+    maxResults: '10',
     q: termo,
     relevanceLanguage: 'en',
-    safeSearch: 'moderate',
+    regionCode: 'US',
+    safeSearch: 'strict',
+    videoCaption: 'closedCaption',
+    videoEmbeddable: 'true',
     key: YOUTUBE_API_KEY!,
   });
 
@@ -63,10 +66,15 @@ export async function buscarVideosIngles(params: BuscarVideosInglesParams): Prom
   };
 
   if (!response.ok) {
-    throw new Error(body.error?.message ?? `Erro ${response.status} ao buscar vídeos no YouTube.`);
+    if (response.status === 400 || response.status === 403) {
+      const message = body.error?.message?.toLowerCase() ?? '';
+      if (message.includes('quota')) throw new Error('Quota do YouTube excedida. Tente novamente mais tarde ou revise a cota no Google Cloud.');
+      if (message.includes('key') || message.includes('api key')) throw new Error('Chave do YouTube inválida ou sem permissão para YouTube Data API v3.');
+    }
+    throw new Error(body.error?.message ?? `YouTube indisponível no momento. Erro ${response.status}.`);
   }
 
-  return (body.items ?? [])
+  const videos = (body.items ?? [])
     .filter(item => item.id?.videoId)
     .map(item => {
       const videoId = item.id!.videoId!;
@@ -79,4 +87,6 @@ export async function buscarVideosIngles(params: BuscarVideosInglesParams): Prom
         url: `https://www.youtube.com/watch?v=${videoId}`,
       };
     });
+  if (videos.length === 0) throw new Error('Nenhum vídeo encontrado para essa busca.');
+  return videos;
 }
