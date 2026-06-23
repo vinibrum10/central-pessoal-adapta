@@ -31,6 +31,7 @@ const USER_EMAIL_KEY = 'ms_graph_user_email';
 const CONSENT_ERROR_CODE = 'INSTITUTIONAL_CONSENT_REQUIRED';
 const INTERACTION_PROGRESS_CODE = 'MICROSOFT_INTERACTION_IN_PROGRESS';
 const RECONNECT_REQUIRED_CODE = 'MICROSOFT_RECONNECT_REQUIRED';
+const LOGIN_TIMEOUT_CODE = 'MICROSOFT_LOGIN_TIMEOUT';
 const UNIASSELVI_TENANT_ID = '28ee1771-192d-4a6a-9d2d-d43859ae1aef';
 
 let msalApp: PublicClientApplication | null = null;
@@ -69,12 +70,20 @@ function getMsalApp(): PublicClientApplication {
 async function ensureMsalReady(): Promise<PublicClientApplication> {
   const app = getMsalApp();
   if (!msalInit) {
-    msalInit = app.initialize().then(() => {
+    msalInit = app.initialize().then(async () => {
+      try {
+        const redirectResult = await app.handleRedirectPromise();
+        if (redirectResult?.account) {
+          setMicrosoftAccount(app, redirectResult.account);
+          return;
+        }
+      } catch (error) {
+        throw normalizeMsError(error);
+      }
+
       const account = app.getActiveAccount() ?? app.getAllAccounts()[0] ?? null;
       if (account) {
-        app.setActiveAccount(account);
-        localStorage.setItem(CONNECTED_KEY, 'true');
-        localStorage.setItem(USER_EMAIL_KEY, account.username);
+        setMicrosoftAccount(app, account);
       }
     });
   }
@@ -126,6 +135,15 @@ function isInteractionInProgressError(error: unknown): boolean {
   );
 }
 
+function isTimedOutError(error: unknown): boolean {
+  const authError = error as { errorCode?: string; message?: string };
+  const message = authError.message ?? String(error);
+  return (
+    authError.errorCode === BrowserAuthErrorCodes.timedOut ||
+    message.includes('timed_out')
+  );
+}
+
 function clearMsalInteractionStatus(): void {
   for (const storage of [localStorage, sessionStorage]) {
     for (let i = storage.length - 1; i >= 0; i -= 1) {
@@ -143,7 +161,14 @@ function normalizeMsError(error: unknown): Error {
     clearMsalInteractionStatus();
     return new Error(INTERACTION_PROGRESS_CODE);
   }
+  if (isTimedOutError(error)) return new Error(LOGIN_TIMEOUT_CODE);
   return error instanceof Error ? error : new Error(String(error));
+}
+
+function setMicrosoftAccount(app: PublicClientApplication, account: AccountInfo): void {
+  app.setActiveAccount(account);
+  localStorage.setItem(CONNECTED_KEY, 'true');
+  localStorage.setItem(USER_EMAIL_KEY, account.username);
 }
 
 async function getAccessToken(): Promise<string> {
@@ -164,20 +189,26 @@ async function getAccessToken(): Promise<string> {
   }
 }
 
-export async function conectarMicrosoftCalendar(): Promise<void> {
+export async function prepararMicrosoftCalendar(): Promise<boolean> {
   const app = await ensureMsalReady();
+  const account = getActiveAccount(app);
+  if (account) {
+    setMicrosoftAccount(app, account);
+    return true;
+  }
+  return false;
+}
 
+export async function conectarMicrosoftCalendar(): Promise<boolean> {
+  const app = await ensureMsalReady();
+  clearMsalInteractionStatus();
   try {
-    const result = await app.loginPopup({
+    await app.loginRedirect({
       scopes: SCOPES,
       prompt: 'select_account',
-      overrideInteractionInProgress: true,
+      redirectStartPage: window.location.href,
     });
-    if (!result.account) throw new Error('Conta Microsoft não retornada.');
-
-    app.setActiveAccount(result.account);
-    localStorage.setItem(CONNECTED_KEY, 'true');
-    localStorage.setItem(USER_EMAIL_KEY, result.account.username);
+    return false;
   } catch (error) {
     throw normalizeMsError(error);
   }

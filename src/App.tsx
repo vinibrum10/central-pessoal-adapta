@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { useEffect } from 'react';
 import { AppProvider } from './hooks/useApp';
 import { AuthProvider } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -12,8 +13,15 @@ import { LeituraDiariaPage } from './pages/LeituraDiaria';
 import { ConfiguracoesPage } from './pages/Configuracoes';
 import { UsuariosPage } from './pages/Usuarios';
 import { RedefinirSenhaPage } from './pages/RedefinirSenha';
+import { prepararMicrosoftCalendar } from './services/microsoftCalendar';
 
 function App() {
+  useEffect(() => {
+    void prepararMicrosoftCalendar().catch(() => {
+      // A página de Agenda mostra mensagens acionáveis quando o usuário sincroniza.
+    });
+  }, []);
+
   return (
     <AuthProvider>
       <AppProvider>
