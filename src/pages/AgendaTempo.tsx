@@ -684,6 +684,8 @@ export function AgendaTempoPage() {
       return 'Sessão Microsoft precisa ser reconectada. Clique em Sair e conecte novamente.';
     if (msg === 'MICROSOFT_LOGIN_TIMEOUT')
       return 'O login Microsoft demorou demais para responder. Tente conectar novamente e conclua o login na página da Microsoft.';
+    if (msg === 'MICROSOFT_ACCESS_DENIED')
+      return 'A conexão Microsoft foi cancelada, negada ou bloqueada pelo servidor. A sessão local foi reiniciada; tente conectar novamente.';
     if (msg.includes('expirada')) return 'Sessão Microsoft expirada. Clique em Reconectar.';
     if (msg.includes('Popup bloqueado')) return 'Popup bloqueado pelo navegador. Clique no ícone de popup na barra de endereços e permita popups para este site.';
     return msg;
