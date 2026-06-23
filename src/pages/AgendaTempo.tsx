@@ -675,6 +675,10 @@ export function AgendaTempoPage() {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg === 'INSTITUTIONAL_CONSENT_REQUIRED')
       return 'A Uniasselvi pode exigir aprovação do administrador para permitir acesso ao calendário via Microsoft Graph.';
+    if (msg === 'MICROSOFT_INTERACTION_IN_PROGRESS')
+      return 'A autenticação Microsoft estava presa em andamento. Feche popups de login abertos e tente conectar novamente.';
+    if (msg === 'MICROSOFT_RECONNECT_REQUIRED')
+      return 'Sessão Microsoft precisa ser reconectada. Clique em Sair e conecte novamente.';
     if (msg.includes('expirada')) return 'Sessão Microsoft expirada. Clique em Reconectar.';
     if (msg.includes('Popup bloqueado')) return 'Popup bloqueado pelo navegador. Clique no ícone de popup na barra de endereços e permita popups para este site.';
     return msg;
