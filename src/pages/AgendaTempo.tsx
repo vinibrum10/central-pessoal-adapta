@@ -35,7 +35,7 @@ import {
 import {
   isMicrosoftConfigured, isMicrosoftConectado,
   getMensagemNaoConfigurado as msMsg,
-  conectarMicrosoftCalendar, desconectarMicrosoftCalendar,
+  conectarMicrosoftCalendar, desconectarMicrosoftCalendar, prepararMicrosoftCalendar,
   sincronizarMicrosoftCalendar,
 } from '../services/microsoftCalendar';
 
@@ -629,7 +629,10 @@ export function AgendaTempoPage() {
           }
         }
       }
-      if (isMicrosoftConfigured() && isMicrosoftConectado()) {
+      const microsoftPronto = isMicrosoftConfigured()
+        ? await prepararMicrosoftCalendar().catch(() => false)
+        : false;
+      if (microsoftPronto && isMicrosoftConectado()) {
         try {
           const eventos = await sincronizarMicrosoftCalendar(range30.ini, range30.fim);
           if (!cancelado) {
@@ -679,6 +682,8 @@ export function AgendaTempoPage() {
       return 'A autenticação Microsoft estava presa em andamento. Feche popups de login abertos e tente conectar novamente.';
     if (msg === 'MICROSOFT_RECONNECT_REQUIRED')
       return 'Sessão Microsoft precisa ser reconectada. Clique em Sair e conecte novamente.';
+    if (msg === 'MICROSOFT_LOGIN_TIMEOUT')
+      return 'O login Microsoft demorou demais para responder. Tente conectar novamente e conclua o login na página da Microsoft.';
     if (msg.includes('expirada')) return 'Sessão Microsoft expirada. Clique em Reconectar.';
     if (msg.includes('Popup bloqueado')) return 'Popup bloqueado pelo navegador. Clique no ícone de popup na barra de endereços e permita popups para este site.';
     return msg;
@@ -687,7 +692,8 @@ export function AgendaTempoPage() {
   const handleConectarMs = async () => {
     setCarregandoMs(true); setErroConexao(null);
     try {
-      await conectarMicrosoftCalendar();
+      const conectado = await conectarMicrosoftCalendar();
+      if (!conectado) return;
       const eventos = await sincronizarMicrosoftCalendar(range30.ini, range30.fim);
       setData(d => ({ ...d, eventosAgenda: [...d.eventosAgenda.filter(e => e.fonte !== 'microsoft'), ...eventos] }));
       setSincMsEm(new Date().toISOString());
