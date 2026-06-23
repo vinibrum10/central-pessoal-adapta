@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from 'react-router-dom';
+﻿import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Target, ListChecks, Clock,
   Wallet, Settings, Menu, X, Moon, Sun, BookOpen, LogOut,
@@ -14,7 +14,6 @@ function AppIcon({ size = 18 }: { size?: number }) {
   );
 }
 import { useState, useEffect } from 'react';
-import { AlertTriangle, X as XIcon } from 'lucide-react';
 import { useApp } from '../hooks/useApp';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -51,7 +50,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try { return localStorage.getItem(SIDEBAR_KEY) === 'true'; } catch { return false; }
   });
-  const { data, tema, toggleTema, storageWarning, clearStorageWarning, exportData } = useApp();
+  const { data, tema, toggleTema } = useApp();
   const { user, signOut, supabaseAtivo, role } = useAuth();
   const location = useLocation();
 
