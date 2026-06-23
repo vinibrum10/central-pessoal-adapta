@@ -1,7 +1,9 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+﻿import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import type { AppData, Tarefa, FaixaTarefa, StatusTarefa, Meta, FrequenciaRevisao, StatusMeta, EventoAgenda, ConfiguracaoAgenda, ClassificacaoPrazoMeta, SugestaoCalendario } from '../types';
 import { calcularClassificacaoPrazo, processarRotinas } from '../utils';
 import { dadosDemonstracaoInicial } from '../data/dadosDemonstracao';
+import { useAuth } from '../contexts/AuthContext';
+import { loadAppData, saveAppData } from '../services/appDataRepository';
 
 const STORAGE_KEY = 'adapta-central-pessoal-v1';
 
@@ -233,6 +235,22 @@ function migrarDados(raw: Record<string, unknown>): AppData {
   };
 }
 
+function hasRealLocalData(): boolean {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) return false;
+    const raw = JSON.parse(stored) as Record<string, unknown>;
+    const metas = Array.isArray(raw.metas) ? raw.metas : [];
+    const tarefas = Array.isArray(raw.tarefas) ? raw.tarefas : [];
+    const receitas = Array.isArray(raw.receitas) ? raw.receitas : [];
+    return metas.length > 0 || tarefas.length > 0 || receitas.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+export type SyncStatus = 'idle' | 'loading' | 'needs-migration' | 'synced' | 'error';
+
 interface AppContextType {
   data: AppData;
   setData: (data: AppData | ((prev: AppData) => AppData)) => void;
@@ -242,11 +260,16 @@ interface AppContextType {
   importData: (jsonString: string) => boolean;
   tema: 'claro' | 'escuro';
   toggleTema: () => void;
+  syncStatus: SyncStatus;
+  migrateLocalToSupabase: () => Promise<boolean>;
+  dismissMigrationPrompt: () => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  const { user, supabaseAtivo, loading: authLoading } = useAuth();
+
   const [data, setDataState] = useState<AppData>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -271,6 +294,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return 'escuro';
   });
 
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
+  const supabaseLoadedRef = useRef(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     if (tema === 'escuro') {
       document.documentElement.classList.add('dark');
@@ -279,12 +306,57 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [tema]);
 
+  // Load from Supabase once auth is ready
+  useEffect(() => {
+    if (authLoading) return;
+    if (!supabaseAtivo || !user) return;
+    if (supabaseLoadedRef.current) return;
+
+    supabaseLoadedRef.current = true;
+    setSyncStatus('loading');
+
+    loadAppData(user.id).then(remoteData => {
+      if (remoteData) {
+        // Supabase has data — it's the source of truth
+        const migrado = migrarDados(remoteData as unknown as Record<string, unknown>);
+        const comRotinas = { ...migrado, tarefas: processarRotinas(migrado.tarefas) };
+        setDataState(comRotinas);
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(comRotinas)); } catch { /* ignore */ }
+        setSyncStatus('synced');
+      } else {
+        // No Supabase record yet
+        if (hasRealLocalData()) {
+          setSyncStatus('needs-migration');
+        } else {
+          setSyncStatus('synced');
+        }
+      }
+    }).catch(() => {
+      setSyncStatus('error');
+    });
+  }, [authLoading, supabaseAtivo, user]);
+
+  // Debounce save to Supabase on data changes
+  useEffect(() => {
+    if (!supabaseAtivo || !user?.id) return;
+    if (syncStatus === 'loading' || syncStatus === 'idle' || syncStatus === 'needs-migration') return;
+
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveAppData(user.id, data).catch(() => {
+        /* silent — localStorage is still in sync */
+      });
+    }, 2000);
+
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [data, supabaseAtivo, user?.id, syncStatus]);
+
   const setData = useCallback((value: AppData | ((prev: AppData) => AppData)) => {
     setDataState(prev => {
       const next = value instanceof Function ? value(prev) : value;
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      } catch { /* ignore */ }
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
       return next;
     });
   }, []);
@@ -300,7 +372,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const resetToDemo = useCallback(() => {
     setDataState(dadosDemonstracaoInicial);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(dadosDemonstracaoInicial));
-  }, []);
+    if (supabaseAtivo && user?.id) {
+      saveAppData(user.id, dadosDemonstracaoInicial).catch(() => { /* ignore */ });
+    }
+  }, [supabaseAtivo, user?.id]);
 
   const clearAll = useCallback(() => {
     const empty: AppData = {
@@ -323,7 +398,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
     setDataState(empty);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(empty));
-  }, []);
+    if (supabaseAtivo && user?.id) {
+      saveAppData(user.id, empty).catch(() => { /* ignore */ });
+    }
+  }, [supabaseAtivo, user?.id]);
 
   const exportData = useCallback(() => {
     const json = JSON.stringify(data, null, 2);
@@ -342,14 +420,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const migrado = migrarDados(raw);
       setDataState(migrado);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(migrado));
+      if (supabaseAtivo && user?.id) {
+        saveAppData(user.id, migrado).catch(() => { /* ignore */ });
+      }
       return true;
     } catch {
       return false;
     }
+  }, [supabaseAtivo, user?.id]);
+
+  const migrateLocalToSupabase = useCallback(async (): Promise<boolean> => {
+    if (!supabaseAtivo || !user?.id) return false;
+    try {
+      await saveAppData(user.id, data);
+      setSyncStatus('synced');
+      return true;
+    } catch {
+      return false;
+    }
+  }, [supabaseAtivo, user?.id, data]);
+
+  const dismissMigrationPrompt = useCallback(() => {
+    setSyncStatus('synced');
   }, []);
 
   return (
-    <AppContext.Provider value={{ data, setData, resetToDemo, clearAll, exportData, importData, tema, toggleTema }}>
+    <AppContext.Provider value={{
+      data, setData, resetToDemo, clearAll, exportData, importData,
+      tema, toggleTema,
+      syncStatus, migrateLocalToSupabase, dismissMigrationPrompt,
+    }}>
       {children}
     </AppContext.Provider>
   );
@@ -360,3 +460,4 @@ export function useApp() {
   if (!ctx) throw new Error('useApp must be used within AppProvider');
   return ctx;
 }
+'

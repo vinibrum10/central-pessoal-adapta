@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from 'react-router-dom';
+﻿import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Target, ListChecks, Clock,
   Wallet, Settings, Menu, X, Moon, Sun, BookOpen, LogOut,
@@ -16,6 +16,7 @@ function AppIcon({ size = 18 }: { size?: number }) {
 import { useState, useEffect } from 'react';
 import { useApp } from '../hooks/useApp';
 import { useAuth } from '../contexts/AuthContext';
+import { MigrationBanner } from '../components/MigrationBanner';
 
 const SIDEBAR_KEY = 'adapta-sidebar-collapsed';
 
@@ -276,8 +277,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-          {children}
+        <main className="flex-1 overflow-y-auto">
+          <MigrationBanner />
+          <div className="p-4 lg:p-6">
+            {children}
+          </div>
         </main>
 
         {/* Bottom nav mobile */}
@@ -301,3 +305,4 @@ export function Layout({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+'
