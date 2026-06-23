@@ -1,4 +1,4 @@
-﻿import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Target, ListChecks, Clock,
   Wallet, Settings, Menu, X, Moon, Sun, BookOpen, LogOut,
@@ -418,36 +418,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <h1 className="font-semibold text-surface-900 dark:text-white">{currentPage?.label ?? 'Sistema de Gestão Pessoal'}</h1>
         </div>
 
-        {storageWarning && (
-          <div className="mx-4 mt-3 flex items-start gap-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700/60 rounded-xl p-3 text-xs text-amber-800 dark:text-amber-300">
-            <AlertTriangle size={15} className="flex-shrink-0 mt-0.5 text-amber-500" />
-            <span className="flex-1">{storageWarning}</span>
-            <button onClick={exportData} className="underline font-semibold whitespace-nowrap">Exportar backup</button>
-            <button onClick={clearStorageWarning} className="ml-2 text-amber-400 hover:text-amber-600"><XIcon size={14} /></button>
-          </div>
-        )}
-
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-          {children}
-        </main>
-
-        <nav className="lg:hidden flex bg-white dark:bg-surface-800 border-t border-surface-200 dark:border-surface-700 flex-shrink-0">
-          {topNavItems.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end
-              className={({ isActive }) => `
-                flex-1 flex flex-col items-center py-2 gap-0.5
-                ${isActive ? 'text-primary-600' : 'text-surface-400'}
-              `}
-            >
-              <Icon size={18} />
-              <span className="text-[9px] font-medium leading-tight text-center">{label.split(' ')[0]}</span>
-            </NavLink>
-          ))}
-          <button
-            onClick={() => { setSidebarOpen(true); setGestaoOpen(true); }}
+        
             className={`flex-1 flex flex-col items-center py-2 gap-0.5 ${isGestaoActive ? 'text-primary-600' : 'text-surface-400'}`}
           >
             <Layers size={18} />
