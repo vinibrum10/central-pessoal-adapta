@@ -12,6 +12,7 @@ import type {
 
 const TABLE = 'english_study_data';
 const LOCAL_KEY = 'english_study_data_local';
+const SETUP_ERROR_CODES = new Set(['42P01', 'PGRST205', 'PGRST116']);
 
 export const defaultDailyPlanTitles = [
   'Fazer 10 minutos de listening',
@@ -59,6 +60,15 @@ function shouldUseLocal(userId?: string | null): boolean {
   return modoLocalAtivo || !isSupabaseConfigured || !userId;
 }
 
+function isSetupMissingError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  const message = (error.message ?? '').toLowerCase();
+  return SETUP_ERROR_CODES.has(error.code ?? '')
+    || message.includes(TABLE)
+    || message.includes('could not find the table')
+    || message.includes('relation') && message.includes('does not exist');
+}
+
 export async function getEnglishStudyData(userId?: string | null): Promise<EnglishStudyData> {
   if (shouldUseLocal(userId)) return readLocal();
 
@@ -68,7 +78,10 @@ export async function getEnglishStudyData(userId?: string | null): Promise<Engli
     .eq('user_id', userId!)
     .maybeSingle();
 
-  if (error) throw error;
+  if (error) {
+    if (isSetupMissingError(error)) return readLocal();
+    throw error;
+  }
   return normalizeData(data?.data as Partial<EnglishStudyData> | null);
 }
 
@@ -84,7 +97,13 @@ export async function saveEnglishStudyData(userId: string | null | undefined, da
       { user_id: userId!, data, updated_at: new Date().toISOString() },
       { onConflict: 'user_id' },
     );
-  if (error) throw error;
+  if (error) {
+    if (isSetupMissingError(error)) {
+      saveLocal(data);
+      return;
+    }
+    throw error;
+  }
 }
 
 async function mutate(userId: string | null | undefined, updater: (data: EnglishStudyData) => EnglishStudyData): Promise<EnglishStudyData> {
