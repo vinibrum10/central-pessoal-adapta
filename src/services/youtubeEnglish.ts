@@ -1,6 +1,6 @@
 import type { EnglishLevel, YouTubeEnglishVideo } from '../types/englishStudy';
 
-const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY as string | undefined;
+const YOUTUBE_API_KEY = (import.meta.env.VITE_YOUTUBE_API_KEY || import.meta.env.VITE_GOOGLE_API_KEY) as string | undefined;
 const YOUTUBE_SEARCH_API = 'https://www.googleapis.com/youtube/v3/search';
 
 export interface BuscarVideosInglesParams {
@@ -15,7 +15,7 @@ export function isYouTubeEnglishConfigured(): boolean {
 }
 
 export function getYouTubeEnglishConfigMessage(): string {
-  return 'YouTube não configurado. Configure VITE_YOUTUBE_API_KEY para buscar vídeos de listening.';
+  return 'YouTube não configurado. Configure VITE_YOUTUBE_API_KEY ou VITE_GOOGLE_API_KEY para buscar vídeos de listening.';
 }
 
 function mapDuracao(duracao: BuscarVideosInglesParams['duracao']) {

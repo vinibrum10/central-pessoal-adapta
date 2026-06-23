@@ -176,9 +176,9 @@ Usuários seguintes entram como `pendente` e precisam ser aprovados pelo admin e
 ## 11 · Inglês
 
 1. Habilite **YouTube Data API v3** no Google Cloud Console.
-2. Crie uma API key restrita por domínio/origem e configure `VITE_YOUTUBE_API_KEY`.
+2. Crie uma API key restrita por domínio/origem e configure `VITE_YOUTUBE_API_KEY`. Se `VITE_GOOGLE_API_KEY` já tiver YouTube Data API habilitada, ela também é aceita como fallback.
 3. Crie uma pasta no Google Drive para materiais de inglês e copie o ID da URL.
-4. Configure `VITE_ENGLISH_DRIVE_FOLDER_ID`.
+4. Configure `VITE_ENGLISH_DRIVE_FOLDER_ID`. Se não houver uma pasta separada, o app usa `VITE_GOOGLE_DRIVE_FOLDER_ID` como fallback.
 5. Rode a migration `supabase/migrations/20260623_english_study_data.sql`.
 6. No app: **Estudo → Inglês**.
 
