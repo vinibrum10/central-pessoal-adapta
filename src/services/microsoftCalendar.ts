@@ -15,6 +15,7 @@
 
 /// <reference types="vite/client" />
 import {
+  BrowserAuthErrorCodes,
   BrowserCacheLocation,
   InteractionRequiredAuthError,
   PublicClientApplication,
@@ -28,6 +29,8 @@ const SCOPES = ['User.Read', 'Calendars.Read'];
 const CONNECTED_KEY = 'ms_graph_connected';
 const USER_EMAIL_KEY = 'ms_graph_user_email';
 const CONSENT_ERROR_CODE = 'INSTITUTIONAL_CONSENT_REQUIRED';
+const INTERACTION_PROGRESS_CODE = 'MICROSOFT_INTERACTION_IN_PROGRESS';
+const RECONNECT_REQUIRED_CODE = 'MICROSOFT_RECONNECT_REQUIRED';
 const UNIASSELVI_TENANT_ID = '28ee1771-192d-4a6a-9d2d-d43859ae1aef';
 
 let msalApp: PublicClientApplication | null = null;
@@ -114,8 +117,32 @@ function isConsentError(error: unknown): boolean {
   );
 }
 
+function isInteractionInProgressError(error: unknown): boolean {
+  const authError = error as { errorCode?: string; message?: string };
+  const message = authError.message ?? String(error);
+  return (
+    authError.errorCode === BrowserAuthErrorCodes.interactionInProgress ||
+    message.includes('interaction_in_progress')
+  );
+}
+
+function clearMsalInteractionStatus(): void {
+  for (const storage of [localStorage, sessionStorage]) {
+    for (let i = storage.length - 1; i >= 0; i -= 1) {
+      const key = storage.key(i);
+      if (key?.includes('interaction.status')) {
+        storage.removeItem(key);
+      }
+    }
+  }
+}
+
 function normalizeMsError(error: unknown): Error {
   if (isConsentError(error)) return new Error(CONSENT_ERROR_CODE);
+  if (isInteractionInProgressError(error)) {
+    clearMsalInteractionStatus();
+    return new Error(INTERACTION_PROGRESS_CODE);
+  }
   return error instanceof Error ? error : new Error(String(error));
 }
 
@@ -132,23 +159,7 @@ async function getAccessToken(): Promise<string> {
     const result = await app.acquireTokenSilent({ account, scopes: SCOPES });
     return result.accessToken;
   } catch (error) {
-    if (error instanceof InteractionRequiredAuthError || isConsentError(error)) {
-      try {
-        const result = await app.acquireTokenPopup({
-          account,
-          scopes: SCOPES,
-          prompt: 'select_account',
-        });
-        if (result.account) {
-          app.setActiveAccount(result.account);
-          localStorage.setItem(CONNECTED_KEY, 'true');
-          localStorage.setItem(USER_EMAIL_KEY, result.account.username);
-        }
-        return result.accessToken;
-      } catch (popupError) {
-        throw normalizeMsError(popupError);
-      }
-    }
+    if (error instanceof InteractionRequiredAuthError) throw new Error(RECONNECT_REQUIRED_CODE);
     throw normalizeMsError(error);
   }
 }
@@ -160,6 +171,7 @@ export async function conectarMicrosoftCalendar(): Promise<void> {
     const result = await app.loginPopup({
       scopes: SCOPES,
       prompt: 'select_account',
+      overrideInteractionInProgress: true,
     });
     if (!result.account) throw new Error('Conta Microsoft não retornada.');
 
