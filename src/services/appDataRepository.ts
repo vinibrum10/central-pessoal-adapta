@@ -1,4 +1,4 @@
-﻿import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { AppData } from '../types';
 
 export async function loadAppData(userId: string): Promise<AppData | null> {
@@ -22,4 +22,3 @@ export async function saveAppData(userId: string, appData: AppData): Promise<voi
     );
   if (error) throw error;
 }
-'

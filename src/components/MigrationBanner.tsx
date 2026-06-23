@@ -1,4 +1,4 @@
-﻿import { UploadCloud, Download, X } from 'lucide-react';
+import { UploadCloud, Download, X } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../hooks/useApp';
 
@@ -61,4 +61,3 @@ export function MigrationBanner() {
     </div>
   );
 }
-'

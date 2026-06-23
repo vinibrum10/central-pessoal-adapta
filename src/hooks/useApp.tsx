@@ -1,4 +1,4 @@
-﻿import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import type { AppData, Tarefa, FaixaTarefa, StatusTarefa, Meta, FrequenciaRevisao, StatusMeta, EventoAgenda, ConfiguracaoAgenda, ClassificacaoPrazoMeta, SugestaoCalendario } from '../types';
 import { calcularClassificacaoPrazo, processarRotinas } from '../utils';
 import { dadosDemonstracaoInicial } from '../data/dadosDemonstracao';
@@ -460,4 +460,3 @@ export function useApp() {
   if (!ctx) throw new Error('useApp must be used within AppProvider');
   return ctx;
 }
-'

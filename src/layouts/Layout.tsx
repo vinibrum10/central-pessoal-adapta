@@ -1,4 +1,4 @@
-﻿import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Target, ListChecks, Clock,
   Wallet, Settings, Menu, X, Moon, Sun, BookOpen, LogOut,
@@ -305,4 +305,3 @@ export function Layout({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
-'
