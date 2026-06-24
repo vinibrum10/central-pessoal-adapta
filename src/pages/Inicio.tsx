@@ -167,12 +167,18 @@ export function InicioPage() {
   const mesAtual = hoje.getMonth();
   const anoAtual = hoje.getFullYear();
 
-  // Finanças
+  // Finanças — usa string parsing para evitar bug de fuso horário com datas ISO
   const receitasMes = data.receitas
-    .filter(r => new Date(r.data).getMonth() === mesAtual && new Date(r.data).getFullYear() === anoAtual)
+    .filter(r => {
+      const mesData = Number(r.data.slice(5, 7)) - 1;
+      const anoData = Number(r.data.slice(0, 4));
+      const mesRef = (r.mesReferencia ?? mesData + 1) - 1;
+      const anoRef = r.anoReferencia ?? anoData;
+      return mesRef === mesAtual && anoRef === anoAtual;
+    })
     .reduce((acc, r) => acc + r.valor, 0);
   const despesasMes = data.despesas
-    .filter(d => new Date(d.data).getMonth() === mesAtual && new Date(d.data).getFullYear() === anoAtual)
+    .filter(d => Number(d.data.slice(5, 7)) - 1 === mesAtual && Number(d.data.slice(0, 4)) === anoAtual)
     .reduce((acc, d) => acc + d.valor, 0);
   const saldoMes = receitasMes - despesasMes;
   const minutosDisponiveis = calcularMinutosDisponiveis(data.blocosTempo);
