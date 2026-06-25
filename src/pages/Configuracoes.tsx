@@ -51,7 +51,7 @@ export function ConfiguracoesPage() {
   };
 
   const handleRestaurarCor = () => {
-    const padrao = '#4f46e5';
+    const padrao = '#e11d2e';
     setCorSelecionada(padrao);
     salvarCorTema(padrao);
     aplicarCorTema(padrao);

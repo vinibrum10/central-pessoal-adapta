@@ -213,7 +213,7 @@ export function InicioPage() {
       nome: mm.meta.nome.length > 24 ? mm.meta.nome.slice(0, 24) + '…' : mm.meta.nome,
       atendimento: mm.percentualAtendimento,
       grau: mm.meta.grau,
-      fill: mm.percentualAtendimento >= 70 ? '#22c55e' : mm.percentualAtendimento >= 30 ? '#3b82f6' : '#ef4444',
+      fill: mm.percentualAtendimento >= 70 ? '#22c55e' : mm.percentualAtendimento >= 30 ? '#e11d2e' : '#ef4444',
     })),
     [rankingCompleto]
   );
@@ -534,7 +534,7 @@ export function InicioPage() {
                             <div
                               className={`h-full rounded-full transition-all ${
                                 mm.percentualAtendimento >= 70 ? 'bg-emerald-500' :
-                                mm.percentualAtendimento >= 30 ? 'bg-blue-500' : 'bg-red-500'
+                                mm.percentualAtendimento >= 30 ? 'bg-primary-500' : 'bg-red-500'
                               }`}
                               style={{ width: `${mm.percentualAtendimento}%` }}
                             />
@@ -586,7 +586,7 @@ export function InicioPage() {
                   <div className="flex items-center gap-2">
                     <div className="flex-1 h-2 bg-surface-100 dark:bg-surface-700 rounded-full overflow-hidden">
                       <div
-                        className={`h-full rounded-full ${mm.percentualAtendimento >= 70 ? 'bg-emerald-500' : mm.percentualAtendimento >= 30 ? 'bg-blue-500' : 'bg-red-500'}`}
+                        className={`h-full rounded-full ${mm.percentualAtendimento >= 70 ? 'bg-emerald-500' : mm.percentualAtendimento >= 30 ? 'bg-primary-500' : 'bg-red-500'}`}
                         style={{ width: `${mm.percentualAtendimento}%` }}
                       />
                     </div>

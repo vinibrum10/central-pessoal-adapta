@@ -15,6 +15,8 @@ export interface PaletaPredefinida {
 }
 
 export const PALETA_PREDEFINIDA: PaletaPredefinida[] = [
+  { nome: 'adapta', hex: '#e11d2e', label: 'ADAPTA' },
+  { nome: 'grafite', hex: '#2a2a2a', label: 'Grafite' },
   { nome: 'roxo', hex: '#4f46e5', label: 'Roxo' },
   { nome: 'azul', hex: '#2563eb', label: 'Azul' },
   { nome: 'verde', hex: '#16a34a', label: 'Verde' },
@@ -72,9 +74,9 @@ export function salvarCorTema(hex: string): void {
 }
 
 export function carregarCorTema(): string {
-  return localStorage.getItem(LS_KEY) ?? '#4f46e5';
+  return localStorage.getItem(LS_KEY) ?? '#e11d2e';
 }
 
 export function obterPaletaPorNome(nome: string): string {
-  return PALETA_PREDEFINIDA.find(p => p.nome === nome)?.hex ?? '#4f46e5';
+  return PALETA_PREDEFINIDA.find(p => p.nome === nome)?.hex ?? '#e11d2e';
 }

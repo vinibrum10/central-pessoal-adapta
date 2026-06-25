@@ -168,7 +168,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 transition-all duration-150
                 ${collapsed ? 'justify-center' : ''}
                 ${isActive
-                  ? 'bg-surface-950 text-white shadow-sm dark:bg-white dark:text-surface-950'
+                  ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/20 dark:bg-primary-500 dark:text-white'
                   : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100/80 dark:hover:bg-white/10 hover:text-surface-950 dark:hover:text-white'
                 }
               `}
@@ -184,7 +184,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               title="Gestão"
               className={`w-full flex items-center justify-center px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
                 isGestaoActive
-                  ? 'bg-surface-950 text-white dark:bg-white dark:text-surface-950'
+                  ? 'bg-primary-600 text-white dark:bg-primary-500 dark:text-white'
                   : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100/80 dark:hover:bg-white/10 hover:text-surface-950 dark:hover:text-white'
               }`}
             >
@@ -220,7 +220,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                           flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium
                           transition-all duration-150
                           ${active
-                            ? 'bg-surface-950 text-white shadow-sm dark:bg-white dark:text-surface-950'
+                            ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/20 dark:bg-primary-500 dark:text-white'
                             : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100/80 dark:hover:bg-white/10 hover:text-surface-950 dark:hover:text-white'
                           }
                         `}
@@ -245,7 +245,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 transition-all duration-150
                 ${collapsed ? 'justify-center' : ''}
                 ${isActive
-                  ? 'bg-surface-950 text-white shadow-sm dark:bg-white dark:text-surface-950'
+                  ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/20 dark:bg-primary-500 dark:text-white'
                   : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100/80 dark:hover:bg-white/10 hover:text-surface-950 dark:hover:text-white'
                 }
               `}
@@ -261,7 +261,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               title="Estudo"
               className={`w-full flex items-center justify-center px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
                 isEstudoActive
-                  ? 'bg-surface-950 text-white dark:bg-white dark:text-surface-950'
+                  ? 'bg-primary-600 text-white dark:bg-primary-500 dark:text-white'
                   : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100/80 dark:hover:bg-white/10 hover:text-surface-950 dark:hover:text-white'
               }`}
             >
@@ -297,7 +297,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                           flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium
                           transition-all duration-150
                           ${active
-                            ? 'bg-surface-950 text-white shadow-sm dark:bg-white dark:text-surface-950'
+                            ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/20 dark:bg-primary-500 dark:text-white'
                             : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100/80 dark:hover:bg-white/10 hover:text-surface-950 dark:hover:text-white'
                           }
                         `}
@@ -322,7 +322,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 transition-all duration-150
                 ${collapsed ? 'justify-center' : ''}
                 ${isActive
-                  ? 'bg-surface-950 text-white shadow-sm dark:bg-white dark:text-surface-950'
+                  ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/20 dark:bg-primary-500 dark:text-white'
                   : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100/80 dark:hover:bg-white/10 hover:text-surface-950 dark:hover:text-white'
                 }
               `}
@@ -345,7 +345,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     transition-all duration-150
                     ${collapsed ? 'justify-center' : ''}
                     ${isActive
-                      ? 'bg-surface-950 text-white shadow-sm dark:bg-white dark:text-surface-950'
+                      ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/20 dark:bg-primary-500 dark:text-white'
                       : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100/80 dark:hover:bg-white/10 hover:text-surface-950 dark:hover:text-white'
                     }
                   `}
@@ -414,7 +414,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   onClick={() => setSidebarOpen(false)}
                   className={({ isActive }) => `
                     flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
-                    ${isActive ? 'bg-surface-950 text-white dark:bg-white dark:text-surface-950' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
+                    ${isActive ? 'bg-primary-600 text-white dark:bg-primary-500 dark:text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
                   `}
                 >
                   <Icon size={18} />
@@ -450,7 +450,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                           onClick={() => setSidebarOpen(false)}
                           className={`
                             flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all
-                            ${active ? 'bg-surface-950 text-white dark:bg-white dark:text-surface-950' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
+                            ${active ? 'bg-primary-600 text-white dark:bg-primary-500 dark:text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
                           `}
                         >
                           <Icon size={16} />
@@ -469,7 +469,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   onClick={() => setSidebarOpen(false)}
                   className={({ isActive }) => `
                     flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
-                    ${isActive ? 'bg-surface-950 text-white dark:bg-white dark:text-surface-950' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
+                    ${isActive ? 'bg-primary-600 text-white dark:bg-primary-500 dark:text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
                   `}
                 >
                   <Icon size={18} />
@@ -505,7 +505,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                           onClick={() => setSidebarOpen(false)}
                           className={`
                             flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all
-                            ${active ? 'bg-surface-950 text-white dark:bg-white dark:text-surface-950' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
+                            ${active ? 'bg-primary-600 text-white dark:bg-primary-500 dark:text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
                           `}
                         >
                           <Icon size={16} />
@@ -524,7 +524,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   onClick={() => setSidebarOpen(false)}
                   className={({ isActive }) => `
                     flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
-                    ${isActive ? 'bg-surface-950 text-white dark:bg-white dark:text-surface-950' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
+                    ${isActive ? 'bg-primary-600 text-white dark:bg-primary-500 dark:text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
                   `}
                 >
                   <Icon size={18} />
@@ -542,7 +542,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       onClick={() => setSidebarOpen(false)}
                       className={({ isActive }) => `
                         flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
-                        ${isActive ? 'bg-surface-950 text-white dark:bg-white dark:text-surface-950' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
+                        ${isActive ? 'bg-primary-600 text-white dark:bg-primary-500 dark:text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
                       `}
                     >
                       <Icon size={18} />

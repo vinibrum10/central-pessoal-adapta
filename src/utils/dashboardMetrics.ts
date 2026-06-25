@@ -199,8 +199,8 @@ export function obterAcoesPorStatus(metas: Meta[], tarefas: Tarefa[]): AcaoPorSt
   const concluido = acoes.filter(t => t.status === 'concluído').length;
 
   return [
-    { name: 'Não iniciado', value: naoIniciado, fill: '#64748b' },
-    { name: 'Em andamento', value: emAndamento, fill: '#3b82f6' },
+    { name: 'Não iniciado', value: naoIniciado, fill: '#73736b' },
+    { name: 'Em andamento', value: emAndamento, fill: '#e11d2e' },
     { name: 'Concluído', value: concluido, fill: '#22c55e' },
   ].filter(d => d.value > 0);
 }
@@ -214,15 +214,15 @@ export function obterAcoesPorFaixa(metas: Meta[], tarefas: Tarefa[]): AcaoPorFai
   return [
     { name: 'Urgente', sigla: 'UG', value: contFaixa('urgente'), fill: '#ef4444' },
     { name: 'Alto Impacto', sigla: 'AI', value: contFaixa('alto impacto'), fill: '#f59e0b' },
-    { name: 'Médio Impacto', sigla: 'MI', value: contFaixa('médio impacto'), fill: '#3b82f6' },
-    { name: 'Baixo Impacto', sigla: 'BI', value: contFaixa('baixo impacto'), fill: '#64748b' },
+    { name: 'Médio Impacto', sigla: 'MI', value: contFaixa('médio impacto'), fill: '#e11d2e' },
+    { name: 'Baixo Impacto', sigla: 'BI', value: contFaixa('baixo impacto'), fill: '#73736b' },
   ];
 }
 
 export function obterMetasPorCategoria(metas: Meta[]): MetaPorCategoria[] {
   const ativas = metas.filter(m => m.status === 'ativa');
   const categorias = ['Profissão', 'Estudos', 'Finanças', 'Projetos', 'Desenvolvimento Pessoal'];
-  const cores = ['#3b82f6', '#22c55e', '#10b981', '#8b5cf6', '#f59e0b'];
+  const cores = ['#e11d2e', '#22c55e', '#10b981', '#8a0f18', '#f59e0b'];
 
   return categorias.map((cat, i) => ({
     name: cat === 'Desenvolvimento Pessoal' ? 'Desenv. Pessoal' : cat,
