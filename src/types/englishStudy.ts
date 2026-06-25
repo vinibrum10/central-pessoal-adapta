@@ -69,6 +69,62 @@ export interface SavedEnglishVideo {
   savedAt: string;
 }
 
+export type EnglishCefrLevel = 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
+
+export type EnglishQuizDifficulty = 'easy' | 'medium' | 'hard';
+
+export interface EnglishQuizQuestion {
+  id: string;
+  type: 'multiple_choice';
+  question: string;
+  options: string[];
+  correctIndex: number;
+  explanation: string;
+  skill: string;
+  difficulty: EnglishQuizDifficulty;
+}
+
+export interface GeneratedEnglishQuiz {
+  videoId: string;
+  title: string;
+  level: string;
+  questionCount: number;
+  generatedAt: string;
+  source: 'transcript' | 'summary' | 'metadata';
+  warning?: string;
+  questions: EnglishQuizQuestion[];
+}
+
+export interface EnglishQuizAttempt {
+  date: string;
+  videoId: string;
+  answers: number[];
+  correctCount: number;
+  totalQuestions: number;
+  scorePercent: number;
+  passed: boolean;
+  completedAt?: string;
+}
+
+export type EnglishDailyQuizStatus = 'locked' | 'available' | 'generating' | 'answered' | 'completed';
+
+export interface EnglishDailyStudy {
+  date: string;
+  videoId: string;
+  title: string;
+  durationSeconds: number;
+  watchedSeconds: number[];
+  progressPercent: number;
+  quizStatus: EnglishDailyQuizStatus;
+  quizGenerated: boolean;
+  quizCompleted: boolean;
+  quizScore?: number;
+  quizTotal?: number;
+  quizScorePercent?: number;
+  completed: boolean;
+  completedAt?: string;
+}
+
 export interface EnglishStudyData {
   dailyPlan: DailyPlanItem[];
   sessions: StudySession[];
@@ -76,6 +132,9 @@ export interface EnglishStudyData {
   phrases: PhraseItem[];
   speakingPractices: SpeakingPractice[];
   savedVideos: SavedEnglishVideo[];
+  dailyStudies: EnglishDailyStudy[];
+  generatedQuizzes: GeneratedEnglishQuiz[];
+  quizAttempts: EnglishQuizAttempt[];
 }
 
 export interface YouTubeEnglishVideo {

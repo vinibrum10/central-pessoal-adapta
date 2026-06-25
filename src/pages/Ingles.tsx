@@ -1,85 +1,48 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  BookOpen,
-  Check,
-  Edit2,
-  ExternalLink,
-  FileText,
-  Headphones,
-  Mic,
-  Plus,
-  RefreshCw,
-  Search,
-  Trash2,
-} from 'lucide-react';
-import { addDays } from 'date-fns';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { BookOpen, CheckCircle2, History, RotateCcw, Settings, Video } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Card, CardBody, CardHeader } from '../components/Card';
-import { Input, Select, Textarea } from '../components/FormFields';
 import { Modal } from '../components/Modal';
 import { useAuth } from '../contexts/AuthContext';
-import {
-  addSpeakingPractice,
-  addStudySession,
-  deletePhraseItem,
-  deleteVocabularyItem,
-  getEnglishStudyData,
-  saveEnglishStudyData,
-  savePhraseItem,
-  saveVideo,
-  saveVocabularyItem,
-  toggleDailyPlanItem,
-} from '../services/englishStudyStorage';
-import {
-  getClaudeEnglishConfigMessage,
-  pedirAjudaClaude,
-  type ClaudeEnglishResult,
-} from '../services/claudeEnglish';
-import {
-  buscarVideosIngles,
-  getYouTubeEnglishConfigMessage,
-  isYouTubeEnglishConfigured,
-  type BuscarVideosInglesParams,
-} from '../services/youtubeEnglish';
-import {
-  getEnglishDriveConfigMessage,
-  isEnglishDriveConfigured,
-  listarMateriaisIngles,
-} from '../services/googleDriveEnglish';
-import { formatarDataCompleta, gerarId, hojeISO } from '../utils';
+import { dailyEnglishVideos, getDailyEnglishVideoById, type DailyEnglishVideo } from '../data/englishDailyVideos';
+import { generateEnglishQuiz } from '../services/englishQuizApi';
+import { getEnglishStudyData, saveEnglishStudyData } from '../services/englishStudyStorage';
+import { gerarId, hojeISO } from '../utils';
 import type {
-  EnglishDriveMaterial,
-  EnglishLevel,
+  EnglishQuizAttempt,
+  EnglishDailyStudy,
   EnglishStudyData,
-  PhraseItem,
-  ReviewStatus,
-  SavedEnglishVideo,
-  SpeakingPractice,
+  GeneratedEnglishQuiz,
   StudySession,
-  StudySource,
-  VocabularyItem,
-  YouTubeEnglishVideo,
 } from '../types/englishStudy';
 
-type SpeechRecognitionInstance = {
-  lang: string;
-  interimResults: boolean;
-  continuous: boolean;
-  start: () => void;
-  stop: () => void;
-  onresult: ((event: { results: ArrayLike<{ 0: { transcript: string } }> }) => void) | null;
-  onerror: (() => void) | null;
-  onend: (() => void) | null;
+type YouTubePlayerState = -1 | 0 | 1 | 2 | 3 | 5;
+
+type YouTubePlayer = {
+  getCurrentTime: () => number;
+  getDuration: () => number;
+  destroy: () => void;
 };
 
-type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
+type YouTubePlayerConstructor = new (
+  elementId: string,
+  options: {
+    videoId: string;
+    playerVars?: Record<string, string | number>;
+    events?: {
+      onReady?: (event: { target: YouTubePlayer }) => void;
+      onStateChange?: (event: { data: YouTubePlayerState }) => void;
+      onError?: () => void;
+    };
+  },
+) => YouTubePlayer;
 
-const speakingPrompts = [
-  'Tell me about your work routine this week.',
-  'Describe one challenge you solved recently.',
-  'Explain why learning English matters for your career.',
-  'Talk about a meeting or class you attended today.',
-];
+declare global {
+  interface Window {
+    YT?: { Player: YouTubePlayerConstructor; PlayerState?: { PLAYING: 1; PAUSED: 2; ENDED: 0 } };
+    onYouTubeIframeAPIReady?: () => void;
+  }
+}
 
 const emptyStudyData: EnglishStudyData = {
   dailyPlan: [],
@@ -88,635 +51,652 @@ const emptyStudyData: EnglishStudyData = {
   phrases: [],
   speakingPractices: [],
   savedVideos: [],
+  dailyStudies: [],
+  generatedQuizzes: [],
+  quizAttempts: [],
 };
 
-const nextReviewDate = (days: number) => addDays(new Date(), days).toISOString().slice(0, 10);
-const splitLines = (value: string) => value.split('\n').map(v => v.trim()).filter(Boolean);
+const passingScorePercent = 60;
+const unlockPercent = 80;
 
-function todayData(data: EnglishStudyData) {
+function formatTime(seconds: number) {
+  const safeSeconds = Math.max(0, Math.floor(seconds || 0));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainder = safeSeconds % 60;
+  return `${minutes}:${String(remainder).padStart(2, '0')}`;
+}
+
+function uniqueSortedSeconds(seconds: number[]) {
+  return Array.from(new Set(seconds.filter(second => Number.isFinite(second) && second >= 0))).sort((a, b) => a - b);
+}
+
+function createDailyStudy(date: string, video: DailyEnglishVideo): EnglishDailyStudy {
+  return {
+    date,
+    videoId: video.videoId,
+    title: video.title,
+    durationSeconds: video.durationSeconds,
+    watchedSeconds: [],
+    progressPercent: 0,
+    quizStatus: 'locked',
+    quizGenerated: false,
+    quizCompleted: false,
+    completed: false,
+  };
+}
+
+function getTodayStudy(data: EnglishStudyData, video: DailyEnglishVideo) {
   const today = hojeISO();
-  const sessions = data.sessions.filter(s => s.date === today);
-  const minutes = sessions.reduce((acc, session) => acc + (Number(session.minutes) || 0), 0);
-  const pendingReviews = [
-    ...data.vocabulary.filter(v => v.status !== 'dominado' && v.nextReviewAt <= today),
-    ...data.phrases.filter(p => p.status !== 'dominado' && p.nextReviewAt <= today),
-  ].length;
-
-  const studiedDates = new Set(data.sessions.filter(s => s.minutes > 0).map(s => s.date));
-  let streak = 0;
-  let cursor = new Date();
-  while (studiedDates.has(cursor.toISOString().slice(0, 10))) {
-    streak += 1;
-    cursor = addDays(cursor, -1);
-  }
-  return { sessions: sessions.length, minutes, pendingReviews, streak };
+  const savedStudy = data.dailyStudies.find(study => study.date === today);
+  if (!savedStudy) return createDailyStudy(today, video);
+  return {
+    ...createDailyStudy(today, getDailyEnglishVideoById(savedStudy.videoId)),
+    ...savedStudy,
+    watchedSeconds: Array.isArray(savedStudy.watchedSeconds) ? savedStudy.watchedSeconds : [],
+    quizStatus: savedStudy.quizStatus === 'generating' ? 'available' : savedStudy.quizStatus,
+    quizGenerated: Boolean(savedStudy.quizGenerated),
+    quizCompleted: Boolean(savedStudy.quizCompleted),
+    completed: Boolean(savedStudy.completed),
+  };
 }
 
-function MetricCard({ label, value }: { label: string; value: string }) {
-  return (
-    <Card>
-      <CardBody className="py-4">
-        <p className="text-xs uppercase tracking-wide text-surface-500 dark:text-surface-400">{label}</p>
-        <p className="text-2xl font-bold text-surface-900 dark:text-white mt-1">{value}</p>
-      </CardBody>
-    </Card>
-  );
+function mergeDailyStudy(data: EnglishStudyData, study: EnglishDailyStudy): EnglishStudyData {
+  const exists = data.dailyStudies.some(item => item.date === study.date);
+  return {
+    ...data,
+    dailyStudies: exists
+      ? data.dailyStudies.map(item => item.date === study.date ? study : item)
+      : [study, ...data.dailyStudies],
+  };
 }
 
-function ClaudeResultBox({ result }: { result: ClaudeEnglishResult | null }) {
-  if (!result) return null;
-  return (
-    <div className="rounded-xl border border-primary-200 bg-primary-50 p-4 text-sm dark:border-primary-900/40 dark:bg-primary-900/20">
-      <p className="font-semibold text-surface-900 dark:text-white mb-2">Resposta do Claude</p>
-      {result.correction && <p className="text-surface-700 dark:text-surface-200"><strong>Correção:</strong> {result.correction}</p>}
-      {result.naturalVersion && <p className="text-surface-700 dark:text-surface-200 mt-1"><strong>Versão natural:</strong> {result.naturalVersion}</p>}
-      {result.explanationPt && <p className="text-surface-700 dark:text-surface-200 mt-1"><strong>Explicação:</strong> {result.explanationPt}</p>}
-      {!!result.alternatives?.length && (
-        <p className="text-surface-700 dark:text-surface-200 mt-1"><strong>Alternativas:</strong> {result.alternatives.join(' | ')}</p>
-      )}
-      {!!result.vocabulary?.length && (
-        <p className="text-surface-700 dark:text-surface-200 mt-1"><strong>Vocabulário:</strong> {result.vocabulary.join(', ')}</p>
-      )}
-      {!!result.phrases?.length && (
-        <p className="text-surface-700 dark:text-surface-200 mt-1"><strong>Frases:</strong> {result.phrases.join(' | ')}</p>
-      )}
-    </div>
-  );
+function mergeGeneratedQuiz(data: EnglishStudyData, quiz: GeneratedEnglishQuiz): EnglishStudyData {
+  const exists = data.generatedQuizzes.some(item => item.videoId === quiz.videoId);
+  return {
+    ...data,
+    generatedQuizzes: exists
+      ? data.generatedQuizzes.map(item => item.videoId === quiz.videoId ? quiz : item)
+      : [quiz, ...data.generatedQuizzes],
+  };
+}
+
+function addQuizAttempt(data: EnglishStudyData, attempt: EnglishQuizAttempt): EnglishStudyData {
+  return {
+    ...data,
+    quizAttempts: [attempt, ...data.quizAttempts],
+  };
+}
+
+function getGoalStatus(study: EnglishDailyStudy) {
+  if (study.completed) return 'Concluída';
+  if (study.watchedSeconds.length > 0 || study.quizScorePercent !== undefined) return 'Em andamento';
+  return 'Não iniciada';
+}
+
+function getQuizStatusLabel(study: EnglishDailyStudy, hasQuiz: boolean) {
+  if (study.completed) return 'concluído';
+  if (study.quizStatus === 'generating') return 'gerando';
+  if (study.quizCompleted) return 'respondido';
+  if (study.quizStatus === 'locked') return 'bloqueado';
+  if (hasQuiz || study.quizGenerated) return 'disponível';
+  return 'disponível';
+}
+
+function getWeekSummary(data: EnglishStudyData) {
+  const today = new Date(`${hojeISO()}T00:00:00`);
+  const weekStart = new Date(today);
+  weekStart.setDate(today.getDate() - today.getDay());
+
+  const weekStudies = data.dailyStudies.filter(study => {
+    const date = new Date(`${study.date}T00:00:00`);
+    return date >= weekStart && date <= today;
+  });
+
+  const studiedDays = weekStudies.filter(study => study.watchedSeconds.length > 0 || study.completed).length;
+  const minutes = Math.round(weekStudies.reduce((sum, study) => sum + study.watchedSeconds.length, 0) / 60);
+  const completedVideos = weekStudies.filter(study => study.completed).length;
+
+  return { studiedDays, minutes, completedVideos };
 }
 
 export function InglesPage() {
   const { user } = useAuth();
   const userId = user?.id ?? null;
+  const playerContainerId = useMemo(() => `youtube-player-${gerarId()}`, []);
+  const playerRef = useRef<YouTubePlayer | null>(null);
+  const intervalRef = useRef<number | null>(null);
+  const latestStudyRef = useRef<EnglishDailyStudy | null>(null);
+  const latestDataRef = useRef<EnglishStudyData>(emptyStudyData);
+
   const [data, setData] = useState<EnglishStudyData>(emptyStudyData);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [youtubeParams, setYoutubeParams] = useState<BuscarVideosInglesParams>({
-    query: '',
-    nivel: 'intermediário',
-    duracao: 'qualquer',
-    tema: '',
-  });
-  const [videos, setVideos] = useState<YouTubeEnglishVideo[]>([]);
-  const [materiais, setMateriais] = useState<EnglishDriveMaterial[]>([]);
-  const [listeningSummary, setListeningSummary] = useState('');
-  const [claudeResult, setClaudeResult] = useState<ClaudeEnglishResult | null>(null);
-  const [claudeLoading, setClaudeLoading] = useState(false);
-  const [sessionModal, setSessionModal] = useState<{ open: boolean; source: StudySource; title: string; url?: string }>({
-    open: false,
-    source: 'manual',
-    title: '',
-  });
-  const [sessionForm, setSessionForm] = useState({
-    minutes: 15,
-    level: 'intermediário' as EnglishLevel,
-    understoodPercent: 70,
-    newWords: '',
-    usefulPhrases: '',
-    notes: '',
-  });
-  const [vocabForm, setVocabForm] = useState<Partial<VocabularyItem>>({ difficulty: 'intermediário', status: 'revisar', category: 'Geral' });
-  const [phraseForm, setPhraseForm] = useState<Partial<PhraseItem>>({ status: 'revisar', context: 'Geral' });
-  const [vocabFilter, setVocabFilter] = useState<ReviewStatus | 'todos'>('todos');
-  const [phraseFilter, setPhraseFilter] = useState<ReviewStatus | 'todos'>('todos');
-  const [speakingOpen, setSpeakingOpen] = useState(false);
-  const [speakingPrompt, setSpeakingPrompt] = useState(speakingPrompts[0]);
-  const [speakingText, setSpeakingText] = useState('');
-  const [listening, setListening] = useState(false);
-  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+  const [playerStatus, setPlayerStatus] = useState<'loading' | 'ready' | 'playing' | 'paused' | 'unavailable' | 'error'>('loading');
+  const [isPlayerPlaying, setIsPlayerPlaying] = useState(false);
+  const [answers, setAnswers] = useState<Record<number, number>>({});
+  const [quizLoading, setQuizLoading] = useState(false);
+  const [quizMessage, setQuizMessage] = useState('');
+  const [shortcutModal, setShortcutModal] = useState<'Biblioteca' | 'Histórico' | 'Configurações' | null>(null);
+
+  const initialVideo = useMemo(() => getDailyEnglishVideoById(getTodayStudy(data, dailyEnglishVideos[0]).videoId), [data]);
+  const todayStudy = useMemo(() => getTodayStudy(data, initialVideo), [data, initialVideo]);
+  const currentVideo = useMemo(() => getDailyEnglishVideoById(todayStudy.videoId), [todayStudy.videoId]);
+  const generatedQuiz = useMemo(
+    () => data.generatedQuizzes.find(quiz => quiz.videoId === currentVideo.videoId),
+    [currentVideo.videoId, data.generatedQuizzes],
+  );
+  const watchedCount = todayStudy.watchedSeconds.length;
+  const progressPercent = Math.min(100, Math.round(todayStudy.progressPercent));
+  const quizAvailable = todayStudy.quizStatus !== 'locked';
+  const quizCompleted = todayStudy.quizCompleted || todayStudy.quizStatus === 'completed';
+  const quizPercent = todayStudy.quizScorePercent ?? (todayStudy.quizTotal ? Math.round(((todayStudy.quizScore ?? 0) / todayStudy.quizTotal) * 100) : 0);
+  const weekSummary = useMemo(() => getWeekSummary(data), [data]);
+
+  const saveStudy = useCallback(async (study: EnglishDailyStudy, session?: StudySession) => {
+    const nextData = mergeDailyStudy(latestDataRef.current, study);
+    const withSession = session ? { ...nextData, sessions: [session, ...nextData.sessions] } : nextData;
+    latestDataRef.current = withSession;
+    setData(withSession);
+    await saveEnglishStudyData(userId, withSession);
+  }, [userId]);
+
+  const saveData = useCallback(async (nextData: EnglishStudyData) => {
+    latestDataRef.current = nextData;
+    setData(nextData);
+    await saveEnglishStudyData(userId, nextData);
+  }, [userId]);
 
   useEffect(() => {
     let mounted = true;
     getEnglishStudyData(userId)
-      .then(studyData => { if (mounted) setData(studyData); })
-      .catch(err => setError(err instanceof Error ? err.message : 'Erro ao carregar dados de inglês.'))
-      .finally(() => { if (mounted) setLoading(false); });
+      .then(studyData => {
+        if (!mounted) return;
+        const normalizedData = {
+          ...emptyStudyData,
+          ...studyData,
+          dailyStudies: studyData.dailyStudies ?? [],
+          generatedQuizzes: studyData.generatedQuizzes ?? [],
+          quizAttempts: studyData.quizAttempts ?? [],
+        };
+        const study = getTodayStudy(normalizedData, dailyEnglishVideos[0]);
+        setData(mergeDailyStudy(normalizedData, study));
+      })
+      .catch(err => setError(err instanceof Error ? err.message : 'Erro ao carregar o estudo diário.'))
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
     return () => { mounted = false; };
   }, [userId]);
 
-  const summary = useMemo(() => todayData(data), [data]);
-  const pendingReviews = useMemo(() => {
-    const today = hojeISO();
-    return {
-      vocabulary: data.vocabulary.filter(v => v.status !== 'dominado' && v.nextReviewAt <= today),
-      phrases: data.phrases.filter(p => p.status !== 'dominado' && p.nextReviewAt <= today),
-    };
+  useEffect(() => {
+    latestStudyRef.current = todayStudy;
+  }, [todayStudy]);
+
+  useEffect(() => {
+    latestDataRef.current = data;
   }, [data]);
 
-  const filteredVocabulary = data.vocabulary.filter(item => vocabFilter === 'todos' || item.status === vocabFilter);
-  const filteredPhrases = data.phrases.filter(item => phraseFilter === 'todos' || item.status === phraseFilter);
+  useEffect(() => {
+    if (loading) return;
+    let cancelled = false;
 
-  async function refresh(next: EnglishStudyData) {
-    setData(next);
-  }
-
-  async function handleSaveData(next: EnglishStudyData) {
-    await saveEnglishStudyData(userId, next);
-    setData(next);
-  }
-
-  async function handleTogglePlan(itemId: string) {
-    const item = data.dailyPlan.find(p => p.id === itemId);
-    if (!item) return;
-    const next = await toggleDailyPlanItem(userId, item);
-    refresh(next);
-  }
-
-  async function handleSearchVideos() {
-    setError('');
-    try {
-      const result = await buscarVideosIngles(youtubeParams);
-      setVideos(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao buscar vídeos.');
-    }
-  }
-
-  async function handleClaude(mode: 'speaking_feedback' | 'phrase_suggestion' | 'listening_review', input: string) {
-    setError('');
-    setClaudeResult(null);
-    const cleanInput = input.trim();
-    if (!cleanInput) {
-      setError('Informe um texto para o Claude analisar.');
-      return;
-    }
-    try {
-      setClaudeLoading(true);
-      const result = await pedirAjudaClaude({
-        mode,
-        input: cleanInput,
-        context: { level: 'intermediario', goal: 'fluencia e trabalho nos EUA' },
+    function createPlayer() {
+      if (cancelled || !window.YT?.Player) return;
+      playerRef.current?.destroy();
+      setPlayerStatus('loading');
+      setIsPlayerPlaying(false);
+      playerRef.current = new window.YT.Player(playerContainerId, {
+        videoId: currentVideo.videoId,
+        playerVars: {
+          modestbranding: 1,
+          rel: 0,
+          playsinline: 1,
+          enablejsapi: 1,
+        },
+        events: {
+          onReady: event => {
+            const duration = Math.floor(event.target.getDuration() || currentVideo.durationSeconds);
+            setPlayerStatus('ready');
+            const study = latestStudyRef.current;
+            if (study && duration > 0 && Math.abs(study.durationSeconds - duration) > 1) {
+              const nextStudy = recalculateStudy({ ...study, durationSeconds: duration });
+              void saveStudy(nextStudy);
+            }
+          },
+          onStateChange: event => {
+            setIsPlayerPlaying(event.data === 1);
+            if (event.data === 1) setPlayerStatus('playing');
+            if (event.data === 2 || event.data === 0) setPlayerStatus('paused');
+          },
+          onError: () => setPlayerStatus('unavailable'),
+        },
       });
-      setClaudeResult(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : getClaudeEnglishConfigMessage());
-    } finally {
-      setClaudeLoading(false);
     }
-  }
 
-  async function handleLoadDrive() {
-    setError('');
-    try {
-      setMateriais(await listarMateriaisIngles());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao listar materiais.');
+    if (window.YT?.Player) {
+      createPlayer();
+    } else {
+      const existingScript = document.querySelector<HTMLScriptElement>('script[src="https://www.youtube.com/iframe_api"]');
+      window.onYouTubeIframeAPIReady = createPlayer;
+      if (!existingScript) {
+        const tag = document.createElement('script');
+        tag.src = 'https://www.youtube.com/iframe_api';
+        tag.onerror = () => setPlayerStatus('error');
+        document.body.appendChild(tag);
+      }
     }
-  }
 
-  async function handleSaveVideo(video: YouTubeEnglishVideo) {
-    const saved: SavedEnglishVideo = {
-      id: gerarId(),
-      youtubeId: video.id,
-      title: video.title,
-      channelTitle: video.channelTitle,
-      url: video.url,
-      thumbnailUrl: video.thumbnailUrl,
-      savedAt: hojeISO(),
+    return () => {
+      cancelled = true;
+      setIsPlayerPlaying(false);
+      if (intervalRef.current) window.clearInterval(intervalRef.current);
+      intervalRef.current = null;
+      playerRef.current?.destroy();
+      playerRef.current = null;
     };
-    refresh(await saveVideo(userId, saved));
-  }
+  }, [currentVideo.videoId, currentVideo.durationSeconds, loading, playerContainerId, saveStudy]);
 
-  async function handleSaveSession() {
-    const session: StudySession = {
-      id: gerarId(),
-      date: hojeISO(),
-      source: sessionModal.source,
-      title: sessionModal.title || 'Estudo de inglês',
-      url: sessionModal.url,
-      minutes: Number(sessionForm.minutes) || 0,
-      level: sessionForm.level,
-      understoodPercent: Number(sessionForm.understoodPercent) || 0,
-      newWords: splitLines(sessionForm.newWords),
-      usefulPhrases: splitLines(sessionForm.usefulPhrases),
-      notes: sessionForm.notes,
-    };
-    refresh(await addStudySession(userId, session));
-    setSessionModal({ open: false, source: 'manual', title: '' });
-  }
-
-  async function handleSaveVocabulary() {
-    if (!vocabForm.word || !vocabForm.translation) return;
-    const now = hojeISO();
-    const item: VocabularyItem = {
-      id: vocabForm.id ?? gerarId(),
-      word: vocabForm.word,
-      translation: vocabForm.translation,
-      example: vocabForm.example,
-      category: vocabForm.category || 'Geral',
-      difficulty: vocabForm.difficulty ?? 'intermediário',
-      status: vocabForm.status ?? 'revisar',
-      nextReviewAt: vocabForm.nextReviewAt || now,
-      createdAt: vocabForm.createdAt ?? now,
-      updatedAt: now,
-      reviewCount: vocabForm.reviewCount ?? 0,
-    };
-    refresh(await saveVocabularyItem(userId, item));
-    setVocabForm({ difficulty: 'intermediário', status: 'revisar', category: 'Geral' });
-  }
-
-  async function handleSavePhrase() {
-    if (!phraseForm.phrase || !phraseForm.meaning) return;
-    const now = hojeISO();
-    const item: PhraseItem = {
-      id: phraseForm.id ?? gerarId(),
-      phrase: phraseForm.phrase,
-      meaning: phraseForm.meaning,
-      context: phraseForm.context || 'Geral',
-      usageExample: phraseForm.usageExample,
-      status: phraseForm.status ?? 'revisar',
-      nextReviewAt: phraseForm.nextReviewAt || now,
-      createdAt: phraseForm.createdAt ?? now,
-      updatedAt: now,
-      reviewCount: phraseForm.reviewCount ?? 0,
-    };
-    refresh(await savePhraseItem(userId, item));
-    setPhraseForm({ status: 'revisar', context: 'Geral' });
-  }
-
-  async function updateVocabReview(item: VocabularyItem, status: ReviewStatus, days: number) {
-    await saveVocabularyItem(userId, {
-      ...item,
-      status,
-      nextReviewAt: nextReviewDate(days),
-      reviewCount: item.reviewCount + 1,
-      updatedAt: hojeISO(),
-    }).then(refresh);
-  }
-
-  async function updatePhraseReview(item: PhraseItem, status: ReviewStatus, days: number) {
-    await savePhraseItem(userId, {
-      ...item,
-      status,
-      nextReviewAt: nextReviewDate(days),
-      reviewCount: item.reviewCount + 1,
-      updatedAt: hojeISO(),
-    }).then(refresh);
-  }
-
-  function startSpeechRecognition() {
-    const win = window as Window & {
-      SpeechRecognition?: SpeechRecognitionConstructor;
-      webkitSpeechRecognition?: SpeechRecognitionConstructor;
-    };
-    const Recognition = win.SpeechRecognition ?? win.webkitSpeechRecognition;
-    if (!Recognition) {
-      setError('Reconhecimento de voz indisponível neste navegador. Use o campo manual.');
+  useEffect(() => {
+    if (!isPlayerPlaying || document.visibilityState !== 'visible') {
+      if (intervalRef.current) window.clearInterval(intervalRef.current);
+      intervalRef.current = null;
       return;
     }
-    const recognition = new Recognition();
-    recognition.lang = 'en-US';
-    recognition.interimResults = false;
-    recognition.continuous = true;
-    recognition.onresult = event => {
-      const text = Array.from(event.results).map(result => result[0].transcript).join(' ');
-      setSpeakingText(prev => `${prev} ${text}`.trim());
+
+    intervalRef.current = window.setInterval(() => {
+      const player = playerRef.current;
+      const study = latestStudyRef.current;
+      if (!player || !study || document.visibilityState !== 'visible') return;
+
+      const second = Math.floor(player.getCurrentTime());
+      const duration = Math.floor(player.getDuration() || study.durationSeconds || currentVideo.durationSeconds);
+      if (second < 0 || second >= duration) return;
+
+      const watchedSeconds = uniqueSortedSeconds([...study.watchedSeconds, second]);
+      if (watchedSeconds.length === study.watchedSeconds.length) return;
+
+      const nextStudy = recalculateStudy({ ...study, durationSeconds: duration, watchedSeconds });
+      latestStudyRef.current = nextStudy;
+      void saveStudy(nextStudy);
+    }, 1000);
+
+    return () => {
+      if (intervalRef.current) window.clearInterval(intervalRef.current);
+      intervalRef.current = null;
     };
-    recognition.onerror = () => setError('Não foi possível capturar o áudio. Você pode registrar manualmente.');
-    recognition.onend = () => setListening(false);
-    recognitionRef.current = recognition;
-    setListening(true);
-    recognition.start();
+  }, [currentVideo.durationSeconds, isPlayerPlaying, saveStudy]);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState !== 'visible') setIsPlayerPlaying(false);
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
+
+  function recalculateStudy(study: EnglishDailyStudy): EnglishDailyStudy {
+    const duration = Math.max(1, study.durationSeconds);
+    const watchedSeconds = uniqueSortedSeconds(study.watchedSeconds);
+    const progress = Math.min(100, (watchedSeconds.length / duration) * 100);
+    const quizStatus = study.quizStatus === 'locked' && progress >= unlockPercent ? 'available' : study.quizStatus;
+    return {
+      ...study,
+      watchedSeconds,
+      progressPercent: progress,
+      quizStatus,
+    };
   }
 
-  function stopSpeechRecognition() {
-    recognitionRef.current?.stop();
-    setListening(false);
+  async function handleChangeVideo() {
+    const currentIndex = dailyEnglishVideos.findIndex(video => video.videoId === todayStudy.videoId);
+    const nextVideo = dailyEnglishVideos[(currentIndex + 1) % dailyEnglishVideos.length];
+    const nextStudy = createDailyStudy(hojeISO(), nextVideo);
+    setAnswers({});
+    setQuizMessage('');
+    await saveStudy(nextStudy);
   }
 
-  async function handleSaveSpeaking() {
-    if (!speakingText.trim()) return;
-    const practice: SpeakingPractice = {
-      id: gerarId(),
+  async function handleGenerateQuiz() {
+    if (!quizAvailable || quizLoading) return;
+    if (generatedQuiz) {
+      const nextStudy: EnglishDailyStudy = {
+        ...todayStudy,
+        quizStatus: 'available',
+        quizGenerated: true,
+      };
+      await saveStudy(nextStudy);
+      return;
+    }
+
+    setError('');
+    setQuizMessage('');
+    setQuizLoading(true);
+    const generatingStudy: EnglishDailyStudy = {
+      ...todayStudy,
+      quizStatus: 'generating',
+    };
+    await saveStudy(generatingStudy);
+
+    try {
+      const quiz = await generateEnglishQuiz({
+        videoId: currentVideo.videoId,
+        title: currentVideo.title,
+        channel: currentVideo.channel,
+        level: currentVideo.cefrLevel,
+        theme: currentVideo.theme,
+        durationSeconds: todayStudy.durationSeconds,
+        transcript: currentVideo.transcript,
+        summary: currentVideo.summary,
+        questionCount: 5,
+      });
+
+      const nextStudy: EnglishDailyStudy = {
+        ...generatingStudy,
+        quizStatus: 'available',
+        quizGenerated: true,
+      };
+      await saveData(mergeDailyStudy(mergeGeneratedQuiz(latestDataRef.current, quiz), nextStudy));
+      setQuizMessage(quiz.warning ?? 'Questionário gerado com IA.');
+    } catch (err) {
+      const nextStudy: EnglishDailyStudy = {
+        ...generatingStudy,
+        quizStatus: 'available',
+        quizGenerated: false,
+      };
+      await saveStudy(nextStudy);
+      setError(err instanceof Error ? err.message : 'Falha de rede ao gerar questionário.');
+    } finally {
+      setQuizLoading(false);
+    }
+  }
+
+  async function handleSubmitQuiz() {
+    if (!quizAvailable || !generatedQuiz) return;
+    const allAnswered = generatedQuiz.questions.every((_, index) => answers[index] !== undefined);
+    if (!allAnswered) {
+      setQuizMessage('Responda todas as perguntas antes de enviar.');
+      return;
+    }
+
+    const score = generatedQuiz.questions.reduce((total, question, index) => total + (answers[index] === question.correctIndex ? 1 : 0), 0);
+    const percent = Math.round((score / generatedQuiz.questions.length) * 100);
+    const passed = percent >= passingScorePercent;
+    const completed = passed && todayStudy.progressPercent >= unlockPercent;
+    const nextStudy: EnglishDailyStudy = {
+      ...todayStudy,
+      quizScore: score,
+      quizTotal: generatedQuiz.questions.length,
+      quizScorePercent: percent,
+      quizStatus: passed ? 'completed' : 'answered',
+      quizGenerated: true,
+      quizCompleted: true,
+      completed,
+      completedAt: completed ? new Date().toISOString() : todayStudy.completedAt,
+    };
+    const attempt: EnglishQuizAttempt = {
       date: hojeISO(),
-      prompt: speakingPrompt,
-      transcript: speakingText.trim(),
-      minutes: 5,
+      videoId: currentVideo.videoId,
+      answers: generatedQuiz.questions.map((_, index) => answers[index]),
+      correctCount: score,
+      totalQuestions: generatedQuiz.questions.length,
+      scorePercent: percent,
+      passed,
+      completedAt: new Date().toISOString(),
     };
-    const nextData = await addSpeakingPractice(userId, practice);
-    const session: StudySession = {
-      id: gerarId(),
-      date: hojeISO(),
-      source: 'speaking',
-      title: `Speaking: ${speakingPrompt}`,
-      minutes: 5,
-      level: 'intermediário',
-      understoodPercent: 100,
-      newWords: [],
-      usefulPhrases: [],
-      notes: speakingText.trim(),
-    };
-    await handleSaveData({ ...nextData, sessions: [session, ...nextData.sessions] });
-    setSpeakingOpen(false);
-    setSpeakingText('');
+
+    const session: StudySession | undefined = completed && !todayStudy.completed
+      ? {
+          id: gerarId(),
+          date: hojeISO(),
+          source: 'youtube',
+          title: currentVideo.title,
+          url: `https://www.youtube.com/watch?v=${currentVideo.videoId}`,
+          minutes: Math.round(todayStudy.watchedSeconds.length / 60),
+          level: currentVideo.level,
+          understoodPercent: percent,
+          newWords: [],
+          usefulPhrases: [],
+          notes: 'Meta diária de Inglês Diário concluída.',
+        }
+      : undefined;
+
+    setQuizMessage(passed ? 'Questionário aprovado. Meta diária concluída.' : 'Resultado abaixo de 60%. Revise e refaça o questionário.');
+    await saveData(addQuizAttempt(mergeDailyStudy(latestDataRef.current, nextStudy), attempt));
+    if (session) {
+      const withSession = { ...latestDataRef.current, sessions: [session, ...latestDataRef.current.sessions] };
+      await saveData(withSession);
+    }
   }
 
-  if (loading) return <p className="text-sm text-surface-500 dark:text-surface-400">Carregando central de inglês...</p>;
+  async function handleRetryQuiz() {
+    setAnswers({});
+    setQuizMessage('');
+    const nextStudy: EnglishDailyStudy = {
+      ...todayStudy,
+      quizStatus: 'available',
+      quizCompleted: false,
+      quizScore: undefined,
+      quizTotal: undefined,
+      quizScorePercent: undefined,
+      completed: false,
+      completedAt: undefined,
+    };
+    await saveStudy(nextStudy);
+  }
+
+  if (loading) {
+    return <p className="text-sm text-surface-500 dark:text-surface-400">Carregando Inglês Diário...</p>;
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-4xl space-y-5">
       <div>
-        <h1 className="text-2xl font-bold text-surface-900 dark:text-white">Inglês</h1>
+        <h1 className="text-2xl font-bold text-surface-900 dark:text-white">Inglês Diário</h1>
         <p className="text-sm text-surface-500 dark:text-surface-400 mt-1">
-          Área prática para listening, vocabulário, speaking, frases úteis e revisões.
+          Assista 1 vídeo curto por dia e responda ao questionário para concluir sua meta.
         </p>
       </div>
 
       {error && (
-        <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700 dark:border-danger-900/40 dark:bg-danger-900/20 dark:text-danger-300">
+        <div className="rounded-lg border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700 dark:border-danger-900/40 dark:bg-danger-900/20 dark:text-danger-300">
           {error}
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-        <MetricCard label="Tempo hoje" value={`${summary.minutes} min`} />
-        <MetricCard label="Sessões hoje" value={`${summary.sessions}`} />
-        <MetricCard label="Para revisar" value={`${summary.pendingReviews}`} />
-        <MetricCard label="Sequência" value={`${summary.streak} dia(s)`} />
-      </div>
-
       <Card>
-        <CardHeader title="Plano de hoje" icon={<Check size={18} />} />
-        <CardBody className="space-y-2">
-          {data.dailyPlan.map(item => (
-            <label key={item.id} className="flex items-center gap-3 rounded-lg border border-surface-200 dark:border-surface-700 p-3">
-              <input
-                type="checkbox"
-                checked={item.done}
-                onChange={() => handleTogglePlan(item.id)}
-                className="w-4 h-4 rounded border-surface-300 text-primary-600 focus:ring-primary-500"
-              />
-              <span className={`text-sm ${item.done ? 'line-through text-surface-400' : 'text-surface-800 dark:text-surface-100'}`}>{item.title}</span>
-            </label>
-          ))}
+        <CardHeader title="Meta de hoje" icon={<CheckCircle2 size={18} />} />
+        <CardBody>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <SummaryItem label="Status da meta" value={getGoalStatus(todayStudy)} />
+            <SummaryItem label="Progresso do vídeo" value={`${progressPercent}%`} />
+            <SummaryItem label="Questionário" value={getQuizStatusLabel(todayStudy, Boolean(generatedQuiz))} />
+          </div>
+          <div className="mt-4 rounded-lg bg-surface-50 p-4 text-sm text-surface-700 dark:bg-surface-900/40 dark:text-surface-200">
+            Tempo assistido: <strong>{formatTime(watchedCount)}</strong> · Progresso: <strong>{progressPercent}%</strong> · Pontuação:{' '}
+            <strong>{todayStudy.quizTotal ? `${todayStudy.quizScore}/${todayStudy.quizTotal} (${quizPercent}%)` : 'pendente'}</strong>
+          </div>
         </CardBody>
       </Card>
 
       <Card>
-        <CardHeader title="Listening Hub" icon={<Headphones size={18} />} action={!isYouTubeEnglishConfigured() ? <span className="text-xs text-warning-600">{getYouTubeEnglishConfigMessage()}</span> : undefined} />
+        <CardHeader
+          title="Vídeo do dia"
+          icon={<Video size={18} />}
+          action={<Button size="sm" variant="secondary" icon={<RotateCcw size={14} />} onClick={handleChangeVideo}>Trocar vídeo</Button>}
+        />
         <CardBody className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-            <Input id="youtube-query" label="Busca" value={youtubeParams.query} onChange={e => setYoutubeParams(p => ({ ...p, query: e.target.value }))} placeholder="entrevista, trabalho, reunião..." />
-            <Select id="youtube-level" label="Nível" value={youtubeParams.nivel} onChange={e => setYoutubeParams(p => ({ ...p, nivel: e.target.value as BuscarVideosInglesParams['nivel'] }))}>
-              <option value="todos">Todos</option>
-              <option value="iniciante">Iniciante</option>
-              <option value="intermediário">Intermediário</option>
-              <option value="avançado">Avançado</option>
-            </Select>
-            <Select id="youtube-duration" label="Duração" value={youtubeParams.duracao} onChange={e => setYoutubeParams(p => ({ ...p, duracao: e.target.value as BuscarVideosInglesParams['duracao'] }))}>
-              <option value="qualquer">Qualquer</option>
-              <option value="curta">Curta</option>
-              <option value="media">Média</option>
-              <option value="longa">Longa</option>
-            </Select>
-            <Input id="youtube-theme" label="Tema" value={youtubeParams.tema} onChange={e => setYoutubeParams(p => ({ ...p, tema: e.target.value }))} placeholder="career, tech..." />
-            <div className="flex items-end">
-              <Button className="w-full" icon={<Search size={16} />} onClick={handleSearchVideos}>Buscar</Button>
-            </div>
+          <div className="aspect-video w-full overflow-hidden rounded-lg bg-surface-900">
+            <div id={playerContainerId} className="h-full w-full" />
           </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            {videos.map(video => (
-              <div key={video.id} className="flex gap-3 rounded-xl border border-surface-200 dark:border-surface-700 p-3">
-                {video.thumbnailUrl && <img src={video.thumbnailUrl} alt="" className="w-28 h-20 object-cover rounded-lg" />}
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-surface-900 dark:text-white line-clamp-2">{video.title}</p>
-                  <p className="text-xs text-surface-500 dark:text-surface-400 mt-1">{video.channelTitle}</p>
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    <Button size="sm" variant="secondary" icon={<ExternalLink size={14} />} onClick={() => window.open(video.url, '_blank')}>Abrir</Button>
-                    <Button size="sm" variant="ghost" onClick={() => handleSaveVideo(video)}>Salvar</Button>
-                    <Button size="sm" onClick={() => setSessionModal({ open: true, source: 'youtube', title: video.title, url: video.url })}>Registrar estudo</Button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="rounded-xl border border-surface-200 dark:border-surface-700 p-3 space-y-3">
-            <Textarea
-              id="listening-summary"
-              label="O que eu entendi"
-              value={listeningSummary}
-              onChange={e => setListeningSummary(e.target.value)}
-              placeholder="Escreva um resumo em inglês ou português para o Claude revisar."
-            />
-            <Button
-              variant="secondary"
-              loading={claudeLoading}
-              onClick={() => handleClaude('listening_review', listeningSummary)}
-            >
-              Analisar meu resumo com Claude
-            </Button>
-          </div>
-          <ClaudeResultBox result={claudeResult} />
-        </CardBody>
-      </Card>
 
-      <Card>
-        <CardHeader title="Materiais do Google Drive" icon={<FileText size={18} />} action={!isEnglishDriveConfigured() ? <span className="text-xs text-warning-600">{getEnglishDriveConfigMessage()}</span> : undefined} />
-        <CardBody className="space-y-4">
-          <Button variant="secondary" icon={<RefreshCw size={16} />} onClick={handleLoadDrive}>Listar materiais</Button>
+          {playerStatus === 'loading' && <StateNote>Carregando vídeo...</StateNote>}
+          {playerStatus === 'unavailable' && <StateNote>Vídeo indisponível. Use "Trocar vídeo" para escolher outro.</StateNote>}
+          {playerStatus === 'error' && <StateNote>Erro ao carregar player do YouTube. Verifique sua conexão e tente novamente.</StateNote>}
+
+          <div>
+            <h2 className="text-lg font-semibold text-surface-900 dark:text-white">{currentVideo.title}</h2>
+            <p className="mt-1 text-sm text-surface-500 dark:text-surface-400">
+              {currentVideo.channel} · {formatTime(todayStudy.durationSeconds)} · {currentVideo.level} · {currentVideo.theme}
+            </p>
+          </div>
+
           <div className="space-y-2">
-            {materiais.map(material => (
-              <div key={material.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-surface-200 dark:border-surface-700 p-3">
-                <div>
-                  <p className="text-sm font-medium text-surface-900 dark:text-white">{material.name}</p>
-                  <p className="text-xs text-surface-500 dark:text-surface-400">Atualizado em {formatarDataCompleta(material.modifiedTime.slice(0, 10))}</p>
-                </div>
-                <div className="flex gap-2">
-                  {material.webViewLink && <Button size="sm" variant="secondary" onClick={() => window.open(material.webViewLink, '_blank')}>Abrir</Button>}
-                  <Button size="sm" onClick={() => setSessionModal({ open: true, source: 'drive', title: material.name, url: material.webViewLink })}>Registrar como estudado</Button>
-                </div>
-              </div>
-            ))}
+            <div className="h-3 overflow-hidden rounded-full bg-surface-100 dark:bg-surface-700">
+              <div className="h-full rounded-full bg-primary-600 transition-all" style={{ width: `${progressPercent}%` }} />
+            </div>
+            <div className="flex flex-col gap-1 text-sm text-surface-600 dark:text-surface-300 sm:flex-row sm:items-center sm:justify-between">
+              <span>Tempo assistido: {formatTime(watchedCount)} / {formatTime(todayStudy.durationSeconds)}</span>
+              <span>Progresso: {progressPercent}%</span>
+            </div>
           </div>
         </CardBody>
       </Card>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader title="Vocabulário" icon={<BookOpen size={18} />} />
-          <CardBody className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Input id="vocab-word" label="Palavra" value={vocabForm.word ?? ''} onChange={e => setVocabForm(v => ({ ...v, word: e.target.value }))} />
-              <Input id="vocab-translation" label="Tradução" value={vocabForm.translation ?? ''} onChange={e => setVocabForm(v => ({ ...v, translation: e.target.value }))} />
-              <Input id="vocab-category" label="Categoria" value={vocabForm.category ?? ''} onChange={e => setVocabForm(v => ({ ...v, category: e.target.value }))} />
-              <Select id="vocab-difficulty" label="Dificuldade" value={vocabForm.difficulty ?? 'intermediário'} onChange={e => setVocabForm(v => ({ ...v, difficulty: e.target.value as EnglishLevel }))}>
-                <option value="iniciante">Iniciante</option>
-                <option value="intermediário">Intermediário</option>
-                <option value="avançado">Avançado</option>
-              </Select>
-              <Input id="vocab-example" label="Exemplo" value={vocabForm.example ?? ''} onChange={e => setVocabForm(v => ({ ...v, example: e.target.value }))} className="md:col-span-2" />
+      <Card>
+        <CardHeader title="Questionário" icon={<BookOpen size={18} />} />
+        <CardBody className="space-y-4">
+          {!quizAvailable && (
+            <StateNote>Assista pelo menos 80% do vídeo para liberar o questionário.</StateNote>
+          )}
+
+          {quizAvailable && !generatedQuiz && !quizLoading && (
+            <div className="space-y-3">
+              <StateNote>Questionário liberado. Gere perguntas com IA para responder e concluir sua meta.</StateNote>
+              <Button className="w-full sm:w-auto" loading={quizLoading} onClick={handleGenerateQuiz}>
+                Gerar questionário com IA
+              </Button>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button icon={<Plus size={16} />} onClick={handleSaveVocabulary}>{vocabForm.id ? 'Salvar edição' : 'Adicionar palavra'}</Button>
-              <Select id="vocab-filter" label="Filtro" value={vocabFilter} onChange={e => setVocabFilter(e.target.value as ReviewStatus | 'todos')} className="min-w-40">
-                <option value="todos">Todos</option>
-                <option value="novo">Novo</option>
-                <option value="revisar">Revisar</option>
-                <option value="dominado">Dominado</option>
-              </Select>
-            </div>
+          )}
+
+          {(quizLoading || todayStudy.quizStatus === 'generating') && (
+            <StateNote>Gerando perguntas com IA...</StateNote>
+          )}
+
+          {quizAvailable && generatedQuiz && (
+            <>
+              {generatedQuiz.warning && <StateNote>{generatedQuiz.warning}</StateNote>}
+              <div className="space-y-4">
+                {generatedQuiz.questions.map((question, questionIndex) => (
+                  <fieldset key={question.id} className="rounded-lg border border-surface-200 p-4 dark:border-surface-700">
+                    <legend className="px-1 text-sm font-semibold text-surface-900 dark:text-white">{question.question}</legend>
+                    <div className="mt-3 space-y-2">
+                      {question.options.map((option, optionIndex) => (
+                        <label key={option} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-surface-200 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-700">
+                          <input
+                            type="radio"
+                            name={`question-${questionIndex}`}
+                            checked={answers[questionIndex] === optionIndex}
+                            onChange={() => setAnswers(prev => ({ ...prev, [questionIndex]: optionIndex }))}
+                            disabled={quizCompleted}
+                            className="h-4 w-4 text-primary-600 focus:ring-primary-500"
+                          />
+                          <span>{option}</span>
+                        </label>
+                      ))}
+                    </div>
+                    {quizCompleted && (
+                      <p className="mt-3 text-xs text-surface-500 dark:text-surface-400">
+                        {question.explanation}
+                      </p>
+                    )}
+                  </fieldset>
+                ))}
+              </div>
+
+              {todayStudy.quizTotal && (
+                <div className="rounded-lg bg-surface-50 p-4 text-sm text-surface-700 dark:bg-surface-900/40 dark:text-surface-200">
+                  Acertos: <strong>{todayStudy.quizScore}/{todayStudy.quizTotal}</strong> · Percentual: <strong>{quizPercent}%</strong> · Status:{' '}
+                  <strong>{quizPercent >= passingScorePercent ? 'aprovado' : 'revisar'}</strong>
+                </div>
+              )}
+
+              {quizMessage && <StateNote>{quizMessage}</StateNote>}
+
+              {!quizCompleted && (
+                <Button className="w-full sm:w-auto" onClick={handleSubmitQuiz}>
+                  Enviar questionário
+                </Button>
+              )}
+
+              {quizCompleted && quizPercent < passingScorePercent && (
+                <Button className="w-full sm:w-auto" variant="secondary" onClick={handleRetryQuiz}>
+                  Refazer questionário
+                </Button>
+              )}
+            </>
+          )}
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader title="Semana" icon={<History size={18} />} />
+        <CardBody>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <SummaryItem label="Dias estudados" value={`${weekSummary.studiedDays}`} />
+            <SummaryItem label="Minutos estudados" value={`${weekSummary.minutes}`} />
+            <SummaryItem label="Vídeos concluídos" value={`${weekSummary.completedVideos}`} />
+          </div>
+        </CardBody>
+      </Card>
+
+      <div className="flex flex-col gap-2 pb-4 sm:flex-row sm:justify-center">
+        <Button variant="ghost" icon={<BookOpen size={16} />} onClick={() => setShortcutModal('Biblioteca')}>Biblioteca</Button>
+        <Button variant="ghost" icon={<History size={16} />} onClick={() => setShortcutModal('Histórico')}>Histórico</Button>
+        <Button variant="ghost" icon={<Settings size={16} />} onClick={() => setShortcutModal('Configurações')}>Configurações</Button>
+      </div>
+
+      <Modal isOpen={shortcutModal !== null} onClose={() => setShortcutModal(null)} title={shortcutModal ?? ''} size="md">
+        <div className="space-y-3">
+          {shortcutModal === 'Biblioteca' && dailyEnglishVideos.map(video => (
+            <button
+              key={video.videoId}
+              onClick={() => {
+                void saveStudy(createDailyStudy(hojeISO(), video));
+                setShortcutModal(null);
+              }}
+              className="w-full rounded-lg border border-surface-200 p-3 text-left text-sm hover:bg-surface-50 dark:border-surface-700 dark:hover:bg-surface-700"
+            >
+              <span className="block font-medium text-surface-900 dark:text-white">{video.title}</span>
+              <span className="text-surface-500 dark:text-surface-400">{video.level} · {video.theme}</span>
+            </button>
+          ))}
+
+          {shortcutModal === 'Histórico' && (
             <div className="space-y-2">
-              {filteredVocabulary.map(item => (
-                <div key={item.id} className="rounded-lg border border-surface-200 dark:border-surface-700 p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-surface-900 dark:text-white">{item.word} <span className="font-normal text-surface-500">- {item.translation}</span></p>
-                      <p className="text-xs text-surface-500 dark:text-surface-400">{item.category} · {item.status} · próxima revisão {formatarDataCompleta(item.nextReviewAt)}</p>
-                      {item.example && <p className="text-sm text-surface-600 dark:text-surface-300 mt-1">{item.example}</p>}
-                    </div>
-                    <div className="flex gap-1">
-                      <Button size="sm" variant="ghost" icon={<Edit2 size={14} />} onClick={() => setVocabForm(item)}>Editar</Button>
-                      <Button size="sm" variant="ghost" icon={<Trash2 size={14} />} onClick={() => deleteVocabularyItem(userId, item.id).then(refresh)}>Excluir</Button>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    <Button size="sm" variant="secondary" onClick={() => updateVocabReview(item, 'revisar', 2)}>Revisar depois</Button>
-                    <Button size="sm" variant="success" onClick={() => updateVocabReview(item, 'dominado', 14)}>Dominei</Button>
-                  </div>
+              {data.dailyStudies.length === 0 && <p className="text-sm text-surface-500 dark:text-surface-400">Nenhum estudo registrado ainda.</p>}
+              {data.dailyStudies.slice(0, 10).map(study => (
+                <div key={`${study.date}-${study.videoId}`} className="rounded-lg border border-surface-200 p-3 text-sm dark:border-surface-700">
+                  <p className="font-medium text-surface-900 dark:text-white">{study.date} · {study.completed ? 'Concluído' : 'Em andamento'}</p>
+                  <p className="text-surface-500 dark:text-surface-400">{study.title} · {Math.round(study.progressPercent)}%</p>
                 </div>
               ))}
             </div>
-          </CardBody>
-        </Card>
+          )}
 
-        <Card>
-          <CardHeader title="Frases úteis" icon={<FileText size={18} />} />
-          <CardBody className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Input id="phrase" label="Frase" value={phraseForm.phrase ?? ''} onChange={e => setPhraseForm(p => ({ ...p, phrase: e.target.value }))} />
-              <Input id="phrase-meaning" label="Significado" value={phraseForm.meaning ?? ''} onChange={e => setPhraseForm(p => ({ ...p, meaning: e.target.value }))} />
-              <Input id="phrase-context" label="Contexto" value={phraseForm.context ?? ''} onChange={e => setPhraseForm(p => ({ ...p, context: e.target.value }))} />
-              <Input id="phrase-example" label="Exemplo de uso" value={phraseForm.usageExample ?? ''} onChange={e => setPhraseForm(p => ({ ...p, usageExample: e.target.value }))} />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button icon={<Plus size={16} />} onClick={handleSavePhrase}>{phraseForm.id ? 'Salvar edição' : 'Adicionar frase'}</Button>
-              <Button
-                variant="secondary"
-                loading={claudeLoading}
-                onClick={() => handleClaude('phrase_suggestion', phraseForm.phrase ?? '')}
-              >
-                Gerar frase com Claude
-              </Button>
-              <Select id="phrase-filter" label="Filtro" value={phraseFilter} onChange={e => setPhraseFilter(e.target.value as ReviewStatus | 'todos')} className="min-w-40">
-                <option value="todos">Todos</option>
-                <option value="novo">Novo</option>
-                <option value="revisar">Revisar</option>
-                <option value="dominado">Dominado</option>
-              </Select>
-            </div>
-            <ClaudeResultBox result={claudeResult} />
-            <div className="space-y-2">
-              {filteredPhrases.map(item => (
-                <div key={item.id} className="rounded-lg border border-surface-200 dark:border-surface-700 p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-surface-900 dark:text-white">{item.phrase}</p>
-                      <p className="text-xs text-surface-500 dark:text-surface-400">{item.meaning} · {item.context} · {item.status}</p>
-                      {item.usageExample && <p className="text-sm text-surface-600 dark:text-surface-300 mt-1">{item.usageExample}</p>}
-                    </div>
-                    <div className="flex gap-1">
-                      <Button size="sm" variant="ghost" icon={<Edit2 size={14} />} onClick={() => setPhraseForm(item)}>Editar</Button>
-                      <Button size="sm" variant="ghost" icon={<Trash2 size={14} />} onClick={() => deletePhraseItem(userId, item.id).then(refresh)}>Excluir</Button>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    <Button size="sm" variant="secondary" onClick={() => updatePhraseReview(item, 'revisar', 2)}>Revisar depois</Button>
-                    <Button size="sm" variant="success" onClick={() => updatePhraseReview(item, 'dominado', 14)}>Dominei</Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardBody>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader title="Speaking" icon={<Mic size={18} />} action={<Button size="sm" onClick={() => setSpeakingOpen(true)}>Praticar agora</Button>} />
-          <CardBody className="space-y-2">
-            {speakingPrompts.map(prompt => (
-              <button key={prompt} onClick={() => { setSpeakingPrompt(prompt); setSpeakingOpen(true); }} className="w-full text-left rounded-lg border border-surface-200 dark:border-surface-700 p-3 text-sm text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700">
-                {prompt}
-              </button>
-            ))}
-          </CardBody>
-        </Card>
-
-        <Card>
-          <CardHeader title="Revisões pendentes" icon={<RefreshCw size={18} />} />
-          <CardBody className="space-y-3">
-            {[...pendingReviews.vocabulary, ...pendingReviews.phrases].length === 0 && (
-              <p className="text-sm text-surface-500 dark:text-surface-400">Nada pendente para hoje.</p>
-            )}
-            {pendingReviews.vocabulary.map(item => (
-              <div key={item.id} className="rounded-lg border border-surface-200 dark:border-surface-700 p-3">
-                <p className="text-sm font-semibold text-surface-900 dark:text-white">{item.word} - {item.translation}</p>
-                <div className="flex gap-2 mt-2">
-                  <Button size="sm" variant="secondary" onClick={() => updateVocabReview(item, 'revisar', 1)}>Revisar amanhã</Button>
-                  <Button size="sm" variant="success" onClick={() => updateVocabReview(item, 'dominado', 14)}>Marcar dominado</Button>
-                </div>
-              </div>
-            ))}
-            {pendingReviews.phrases.map(item => (
-              <div key={item.id} className="rounded-lg border border-surface-200 dark:border-surface-700 p-3">
-                <p className="text-sm font-semibold text-surface-900 dark:text-white">{item.phrase}</p>
-                <p className="text-xs text-surface-500 dark:text-surface-400">{item.meaning}</p>
-                <div className="flex gap-2 mt-2">
-                  <Button size="sm" variant="secondary" onClick={() => updatePhraseReview(item, 'revisar', 1)}>Revisar amanhã</Button>
-                  <Button size="sm" variant="success" onClick={() => updatePhraseReview(item, 'dominado', 14)}>Marcar dominado</Button>
-                </div>
-              </div>
-            ))}
-          </CardBody>
-        </Card>
-      </div>
-
-      <Modal isOpen={sessionModal.open} onClose={() => setSessionModal({ open: false, source: 'manual', title: '' })} title="Registrar estudo" size="lg">
-        <div className="space-y-4">
-          <p className="text-sm font-medium text-surface-900 dark:text-white">{sessionModal.title}</p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <Input id="session-minutes" label="Minutos" type="number" min={0} value={sessionForm.minutes} onChange={e => setSessionForm(f => ({ ...f, minutes: Number(e.target.value) }))} />
-            <Select id="session-level" label="Nível" value={sessionForm.level} onChange={e => setSessionForm(f => ({ ...f, level: e.target.value as EnglishLevel }))}>
-              <option value="iniciante">Iniciante</option>
-              <option value="intermediário">Intermediário</option>
-              <option value="avançado">Avançado</option>
-            </Select>
-            <Input id="session-understood" label="Compreensão %" type="number" min={0} max={100} value={sessionForm.understoodPercent} onChange={e => setSessionForm(f => ({ ...f, understoodPercent: Number(e.target.value) }))} />
-          </div>
-          <Textarea id="session-words" label="Palavras novas" value={sessionForm.newWords} onChange={e => setSessionForm(f => ({ ...f, newWords: e.target.value }))} hint="Uma por linha" />
-          <Textarea id="session-phrases" label="Frases úteis" value={sessionForm.usefulPhrases} onChange={e => setSessionForm(f => ({ ...f, usefulPhrases: e.target.value }))} hint="Uma por linha" />
-          <Textarea id="session-notes" label="Notas" value={sessionForm.notes} onChange={e => setSessionForm(f => ({ ...f, notes: e.target.value }))} />
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setSessionModal({ open: false, source: 'manual', title: '' })}>Cancelar</Button>
-            <Button onClick={handleSaveSession}>Salvar</Button>
-          </div>
+          {shortcutModal === 'Configurações' && (
+            <p className="text-sm text-surface-600 dark:text-surface-300">
+              Meta atual: assistir pelo menos 80% de trechos únicos e acertar 60% do questionário.
+            </p>
+          )}
         </div>
       </Modal>
+    </div>
+  );
+}
 
-      <Modal isOpen={speakingOpen} onClose={() => setSpeakingOpen(false)} title="Prática de speaking" size="lg">
-        <div className="space-y-4">
-          <Select id="speaking-prompt" label="Pergunta" value={speakingPrompt} onChange={e => setSpeakingPrompt(e.target.value)}>
-            {speakingPrompts.map(prompt => <option key={prompt} value={prompt}>{prompt}</option>)}
-          </Select>
-          <Textarea id="speaking-text" label="Resposta ou transcrição" value={speakingText} onChange={e => setSpeakingText(e.target.value)} rows={6} />
-          <div className="flex flex-wrap justify-between gap-2">
-            <Button variant="secondary" icon={<Mic size={16} />} onClick={listening ? stopSpeechRecognition : startSpeechRecognition}>
-              {listening ? 'Parar gravação' : 'Usar microfone'}
-            </Button>
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                loading={claudeLoading}
-                onClick={() => handleClaude('speaking_feedback', speakingText)}
-              >
-                Corrigir com Claude
-              </Button>
-              <Button variant="secondary" onClick={() => setSpeakingOpen(false)}>Cancelar</Button>
-              <Button onClick={handleSaveSpeaking}>Salvar prática</Button>
-            </div>
-          </div>
-          <ClaudeResultBox result={claudeResult} />
-        </div>
-      </Modal>
+function SummaryItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-surface-200 p-4 dark:border-surface-700">
+      <p className="text-xs uppercase tracking-wide text-surface-500 dark:text-surface-400">{label}</p>
+      <p className="mt-1 text-lg font-semibold text-surface-900 dark:text-white">{value}</p>
+    </div>
+  );
+}
+
+function StateNote({ children }: { children: string }) {
+  return (
+    <div className="rounded-lg border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-600 dark:border-surface-700 dark:bg-surface-900/40 dark:text-surface-300">
+      {children}
     </div>
   );
 }
