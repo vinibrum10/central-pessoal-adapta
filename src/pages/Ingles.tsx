@@ -21,6 +21,7 @@ type YouTubePlayerState = -1 | 0 | 1 | 2 | 3 | 5;
 type YouTubePlayer = {
   getCurrentTime: () => number;
   getDuration: () => number;
+  getPlayerState: () => YouTubePlayerState;
   destroy: () => void;
 };
 
@@ -167,12 +168,13 @@ export function InglesPage() {
   const intervalRef = useRef<number | null>(null);
   const latestStudyRef = useRef<EnglishDailyStudy | null>(null);
   const latestDataRef = useRef<EnglishStudyData>(emptyStudyData);
+  const isTrackingRef = useRef(false);
 
   const [data, setData] = useState<EnglishStudyData>(emptyStudyData);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [playerStatus, setPlayerStatus] = useState<'loading' | 'ready' | 'playing' | 'paused' | 'unavailable' | 'error'>('loading');
-  const [isPlayerPlaying, setIsPlayerPlaying] = useState(false);
+  const [, setIsPlayerPlaying] = useState(false);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [quizLoading, setQuizLoading] = useState(false);
   const [quizMessage, setQuizMessage] = useState('');
@@ -205,6 +207,63 @@ export function InglesPage() {
     setData(nextData);
     await saveEnglishStudyData(userId, nextData);
   }, [userId]);
+
+  const stopWatchTimer = useCallback(() => {
+    isTrackingRef.current = false;
+    if (intervalRef.current) {
+      window.clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  }, []);
+
+  const persistStudyProgress = useCallback((study: EnglishDailyStudy) => {
+    const nextData = mergeDailyStudy(latestDataRef.current, study);
+    latestDataRef.current = nextData;
+    latestStudyRef.current = study;
+    setData(nextData);
+    void saveEnglishStudyData(userId, nextData);
+  }, [userId]);
+
+  const trackCurrentPlayerSecond = useCallback(() => {
+    const player = playerRef.current;
+    const study = latestStudyRef.current;
+    if (!player || !study || document.visibilityState !== 'visible') return;
+
+    const currentTime = player.getCurrentTime();
+    const durationFromPlayer = player.getDuration();
+    const duration = Math.floor(durationFromPlayer || study.durationSeconds || currentVideo.durationSeconds);
+    const currentSecond = Math.floor(currentTime);
+
+    if (
+      !Number.isFinite(currentSecond)
+      || !Number.isFinite(duration)
+      || currentSecond < 0
+      || duration <= 0
+      || currentSecond >= duration
+    ) {
+      return;
+    }
+
+    const watchedSecondsSet = new Set(study.watchedSeconds);
+    if (watchedSecondsSet.has(currentSecond)) return;
+
+    const watchedSeconds = uniqueSortedSeconds([...watchedSecondsSet, currentSecond]);
+    const nextStudy = recalculateStudy({
+      ...study,
+      durationSeconds: duration,
+      watchedSeconds,
+    });
+    persistStudyProgress(nextStudy);
+  }, [currentVideo.durationSeconds, persistStudyProgress]);
+
+  const startWatchTimer = useCallback(() => {
+    if (document.visibilityState !== 'visible') return;
+    if (isTrackingRef.current) return;
+
+    isTrackingRef.current = true;
+    trackCurrentPlayerSecond();
+    intervalRef.current = window.setInterval(trackCurrentPlayerSecond, 1000);
+  }, [trackCurrentPlayerSecond]);
 
   useEffect(() => {
     let mounted = true;
@@ -243,6 +302,7 @@ export function InglesPage() {
     function createPlayer() {
       if (cancelled || !window.YT?.Player) return;
       playerRef.current?.destroy();
+      stopWatchTimer();
       setPlayerStatus('loading');
       setIsPlayerPlaying(false);
       playerRef.current = new window.YT.Player(playerContainerId, {
@@ -264,11 +324,21 @@ export function InglesPage() {
             }
           },
           onStateChange: event => {
-            setIsPlayerPlaying(event.data === 1);
-            if (event.data === 1) setPlayerStatus('playing');
+            if (event.data === 1) {
+              setIsPlayerPlaying(true);
+              setPlayerStatus('playing');
+              startWatchTimer();
+              return;
+            }
+
+            setIsPlayerPlaying(false);
+            stopWatchTimer();
             if (event.data === 2 || event.data === 0) setPlayerStatus('paused');
           },
-          onError: () => setPlayerStatus('unavailable'),
+          onError: () => {
+            stopWatchTimer();
+            setPlayerStatus('unavailable');
+          },
         },
       });
     }
@@ -289,50 +359,28 @@ export function InglesPage() {
     return () => {
       cancelled = true;
       setIsPlayerPlaying(false);
-      if (intervalRef.current) window.clearInterval(intervalRef.current);
-      intervalRef.current = null;
+      stopWatchTimer();
       playerRef.current?.destroy();
       playerRef.current = null;
     };
-  }, [currentVideo.videoId, currentVideo.durationSeconds, loading, playerContainerId, saveStudy]);
-
-  useEffect(() => {
-    if (!isPlayerPlaying || document.visibilityState !== 'visible') {
-      if (intervalRef.current) window.clearInterval(intervalRef.current);
-      intervalRef.current = null;
-      return;
-    }
-
-    intervalRef.current = window.setInterval(() => {
-      const player = playerRef.current;
-      const study = latestStudyRef.current;
-      if (!player || !study || document.visibilityState !== 'visible') return;
-
-      const second = Math.floor(player.getCurrentTime());
-      const duration = Math.floor(player.getDuration() || study.durationSeconds || currentVideo.durationSeconds);
-      if (second < 0 || second >= duration) return;
-
-      const watchedSeconds = uniqueSortedSeconds([...study.watchedSeconds, second]);
-      if (watchedSeconds.length === study.watchedSeconds.length) return;
-
-      const nextStudy = recalculateStudy({ ...study, durationSeconds: duration, watchedSeconds });
-      latestStudyRef.current = nextStudy;
-      void saveStudy(nextStudy);
-    }, 1000);
-
-    return () => {
-      if (intervalRef.current) window.clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    };
-  }, [currentVideo.durationSeconds, isPlayerPlaying, saveStudy]);
+  }, [currentVideo.videoId, currentVideo.durationSeconds, loading, playerContainerId, saveStudy, startWatchTimer, stopWatchTimer]);
 
   useEffect(() => {
     const handleVisibility = () => {
-      if (document.visibilityState !== 'visible') setIsPlayerPlaying(false);
+      if (document.visibilityState !== 'visible') {
+        setIsPlayerPlaying(false);
+        stopWatchTimer();
+        return;
+      }
+
+      if (playerRef.current?.getPlayerState() === 1) {
+        setIsPlayerPlaying(true);
+        startWatchTimer();
+      }
     };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, []);
+  }, [startWatchTimer, stopWatchTimer]);
 
   function recalculateStudy(study: EnglishDailyStudy): EnglishDailyStudy {
     const duration = Math.max(1, study.durationSeconds);
@@ -348,6 +396,8 @@ export function InglesPage() {
   }
 
   async function handleChangeVideo() {
+    stopWatchTimer();
+    setIsPlayerPlaying(false);
     const currentIndex = dailyEnglishVideos.findIndex(video => video.videoId === todayStudy.videoId);
     const nextVideo = dailyEnglishVideos[(currentIndex + 1) % dailyEnglishVideos.length];
     const nextStudy = createDailyStudy(hojeISO(), nextVideo);
