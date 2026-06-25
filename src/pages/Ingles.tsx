@@ -3,6 +3,8 @@ import { BookOpen, CheckCircle2, History, RotateCcw, Settings, Video } from 'luc
 import { Button } from '../components/Button';
 import { Card, CardBody, CardHeader } from '../components/Card';
 import { Modal } from '../components/Modal';
+import { Badge, ProgressBar } from '../components/Badge';
+import { MetricCard, PageHeader } from '../components/DesignSystem';
 import { useAuth } from '../contexts/AuthContext';
 import { dailyEnglishVideos, getDailyEnglishVideoById, type DailyEnglishVideo } from '../data/englishDailyVideos';
 import { generateEnglishQuiz } from '../services/englishQuizApi';
@@ -539,13 +541,12 @@ export function InglesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold text-surface-900 dark:text-white">Inglês Diário</h1>
-        <p className="text-sm text-surface-500 dark:text-surface-400 mt-1">
-          Assista 1 vídeo curto por dia e responda ao questionário para concluir sua meta.
-        </p>
-      </div>
+    <div className="mx-auto max-w-5xl page-stack">
+      <PageHeader
+        eyebrow="Estudos"
+        title="Inglês Diário"
+        subtitle="Assista 1 vídeo curto, responda ao questionário e conclua sua meta diária."
+      />
 
       {error && (
         <div className="rounded-lg border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700 dark:border-danger-900/40 dark:bg-danger-900/20 dark:text-danger-300">
@@ -554,28 +555,14 @@ export function InglesPage() {
       )}
 
       <Card>
-        <CardHeader title="Meta de hoje" icon={<CheckCircle2 size={18} />} />
-        <CardBody>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <SummaryItem label="Status da meta" value={getGoalStatus(todayStudy)} />
-            <SummaryItem label="Progresso do vídeo" value={`${progressPercent}%`} />
-            <SummaryItem label="Questionário" value={getQuizStatusLabel(todayStudy, Boolean(generatedQuiz))} />
-          </div>
-          <div className="mt-4 rounded-lg bg-surface-50 p-4 text-sm text-surface-700 dark:bg-surface-900/40 dark:text-surface-200">
-            Tempo assistido: <strong>{formatTime(watchedCount)}</strong> · Progresso: <strong>{progressPercent}%</strong> · Pontuação:{' '}
-            <strong>{todayStudy.quizTotal ? `${todayStudy.quizScore}/${todayStudy.quizTotal} (${quizPercent}%)` : 'pendente'}</strong>
-          </div>
-        </CardBody>
-      </Card>
-
-      <Card>
         <CardHeader
-          title="Vídeo do dia"
+          title="Aula de hoje"
+          subtitle="Um vídeo curto, progresso real e questionário para fixar."
           icon={<Video size={18} />}
           action={<Button size="sm" variant="secondary" icon={<RotateCcw size={14} />} onClick={handleChangeVideo}>Trocar vídeo</Button>}
         />
         <CardBody className="space-y-4">
-          <div className="aspect-video w-full overflow-hidden rounded-lg bg-surface-900">
+          <div className="aspect-video w-full overflow-hidden rounded-lg bg-surface-950 shadow-sm">
             <div id={playerContainerId} className="h-full w-full" />
           </div>
 
@@ -584,19 +571,31 @@ export function InglesPage() {
           {playerStatus === 'error' && <StateNote>Erro ao carregar player do YouTube. Verifique sua conexão e tente novamente.</StateNote>}
 
           <div>
-            <h2 className="text-lg font-semibold text-surface-900 dark:text-white">{currentVideo.title}</h2>
-            <p className="mt-1 text-sm text-surface-500 dark:text-surface-400">
-              {currentVideo.channel} · {formatTime(todayStudy.durationSeconds)} · {currentVideo.level} · {currentVideo.theme}
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-semibold tracking-tight text-surface-950 dark:text-white">{currentVideo.title}</h2>
+              <Badge variant={todayStudy.completed ? 'success' : quizAvailable ? 'primary' : 'default'}>{getGoalStatus(todayStudy)}</Badge>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2 text-sm text-surface-500 dark:text-surface-400">
+              <span>{currentVideo.channel}</span>
+              <span>•</span>
+              <span>{formatTime(todayStudy.durationSeconds)}</span>
+              <span>•</span>
+              <span>{currentVideo.level}</span>
+              <span>•</span>
+              <span>{currentVideo.theme}</span>
+            </div>
           </div>
 
-          <div className="space-y-2">
-            <div className="h-3 overflow-hidden rounded-full bg-surface-100 dark:bg-surface-700">
-              <div className="h-full rounded-full bg-primary-600 transition-all" style={{ width: `${progressPercent}%` }} />
-            </div>
+          <div className="rounded-lg border border-surface-200 bg-surface-50/80 p-4 dark:border-white/10 dark:bg-white/5">
+            <ProgressBar value={progressPercent} showLabel height="md" />
             <div className="flex flex-col gap-1 text-sm text-surface-600 dark:text-surface-300 sm:flex-row sm:items-center sm:justify-between">
               <span>Tempo assistido: {formatTime(watchedCount)} / {formatTime(todayStudy.durationSeconds)}</span>
               <span>Progresso: {progressPercent}%</span>
+            </div>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <SummaryItem label="Meta" value={`${unlockPercent}% do vídeo`} />
+              <SummaryItem label="Questionário" value={getQuizStatusLabel(todayStudy, Boolean(generatedQuiz))} />
+              <SummaryItem label="Nota" value={todayStudy.quizTotal ? `${todayStudy.quizScore}/${todayStudy.quizTotal} (${quizPercent}%)` : 'pendente'} />
             </div>
           </div>
         </CardBody>
@@ -678,16 +677,11 @@ export function InglesPage() {
         </CardBody>
       </Card>
 
-      <Card>
-        <CardHeader title="Semana" icon={<History size={18} />} />
-        <CardBody>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <SummaryItem label="Dias estudados" value={`${weekSummary.studiedDays}`} />
-            <SummaryItem label="Minutos estudados" value={`${weekSummary.minutes}`} />
-            <SummaryItem label="Vídeos concluídos" value={`${weekSummary.completedVideos}`} />
-          </div>
-        </CardBody>
-      </Card>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <MetricCard label="Dias estudados" value={weekSummary.studiedDays} icon={<History size={18} />} tone="primary" />
+        <MetricCard label="Minutos estudados" value={weekSummary.minutes} icon={<Video size={18} />} tone="success" />
+        <MetricCard label="Vídeos concluídos" value={weekSummary.completedVideos} icon={<CheckCircle2 size={18} />} tone="neutral" />
+      </div>
 
       <div className="flex flex-col gap-2 pb-4 sm:flex-row sm:justify-center">
         <Button variant="ghost" icon={<BookOpen size={16} />} onClick={() => setShortcutModal('Biblioteca')}>Biblioteca</Button>
@@ -736,16 +730,16 @@ export function InglesPage() {
 
 function SummaryItem({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-surface-200 p-4 dark:border-surface-700">
-      <p className="text-xs uppercase tracking-wide text-surface-500 dark:text-surface-400">{label}</p>
-      <p className="mt-1 text-lg font-semibold text-surface-900 dark:text-white">{value}</p>
+    <div className="rounded-lg border border-surface-200 bg-white/70 p-3 dark:border-white/10 dark:bg-white/5">
+      <p className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-surface-950 dark:text-white">{value}</p>
     </div>
   );
 }
 
 function StateNote({ children }: { children: string }) {
   return (
-    <div className="rounded-lg border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-600 dark:border-surface-700 dark:bg-surface-900/40 dark:text-surface-300">
+    <div className="rounded-lg border border-surface-200 bg-surface-50/80 px-4 py-3 text-sm text-surface-600 dark:border-white/10 dark:bg-white/5 dark:text-surface-300">
       {children}
     </div>
   );

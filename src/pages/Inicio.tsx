@@ -23,6 +23,7 @@ import {
   siglaFaixaDash, corFaixaDash, type SaudeMeta,
 } from '../utils/dashboardMetrics';
 import { Button } from '../components/Button';
+import { PageHeader } from '../components/DesignSystem';
 
 // ============================================================
 // TIPOS
@@ -43,24 +44,24 @@ function KpiCard({
   icon?: React.ReactNode;
 }) {
   const paleta = {
-    blue: 'from-blue-700 to-blue-600',
-    green: 'from-emerald-700 to-emerald-600',
-    yellow: 'from-amber-600 to-amber-500',
-    red: 'from-red-700 to-red-600',
-    purple: 'from-violet-700 to-violet-600',
-    gray: 'from-slate-700 to-slate-600',
+    blue: 'bg-primary-50 text-primary-700 ring-primary-100 dark:bg-primary-500/10 dark:text-primary-300 dark:ring-primary-500/20',
+    green: 'bg-success-50 text-success-700 ring-success-100 dark:bg-success-500/10 dark:text-success-300 dark:ring-success-500/20',
+    yellow: 'bg-warning-50 text-warning-600 ring-warning-100 dark:bg-warning-500/10 dark:text-warning-300 dark:ring-warning-500/20',
+    red: 'bg-danger-50 text-danger-700 ring-danger-100 dark:bg-danger-500/10 dark:text-danger-300 dark:ring-danger-500/20',
+    purple: 'bg-surface-100 text-surface-700 ring-surface-200 dark:bg-white/10 dark:text-surface-200 dark:ring-white/10',
+    gray: 'bg-surface-100 text-surface-700 ring-surface-200 dark:bg-white/10 dark:text-surface-200 dark:ring-white/10',
   };
-  const grad = paleta[cor ?? 'blue'];
+  const tone = paleta[cor ?? 'blue'];
 
   return (
-    <div className={`relative overflow-hidden rounded-xl bg-gradient-to-br ${grad} px-4 py-3 text-white shadow-md`}>
+    <div className="relative overflow-hidden rounded-lg border border-surface-200/80 bg-white/90 px-4 py-3 shadow-sm shadow-surface-200/50 dark:border-white/10 dark:bg-surface-900/70 dark:shadow-black/20">
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-wider opacity-70 leading-tight truncate">{label}</p>
-          <p className="mt-1 text-2xl font-extrabold leading-none">{value}</p>
-          {sub && <p className="mt-0.5 text-[10px] opacity-55 leading-tight truncate">{sub}</p>}
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400 leading-tight truncate">{label}</p>
+          <p className="mt-1 text-2xl font-semibold tracking-tight leading-none text-surface-950 dark:text-white">{value}</p>
+          {sub && <p className="mt-1 text-[10px] text-surface-500 dark:text-surface-400 leading-tight truncate">{sub}</p>}
         </div>
-        {icon && <div className="opacity-15 flex-shrink-0">{icon}</div>}
+        {icon && <div className={`flex-shrink-0 rounded-lg p-2 ring-1 ${tone}`}>{icon}</div>}
       </div>
     </div>
   );
@@ -70,10 +71,6 @@ function KpiCard({
 // GAUGE DE EFICIÊNCIA
 // ============================================================
 function EficienciaCard({ eficiencia, qtd }: { eficiencia: number; qtd: number }) {
-  const bg =
-    eficiencia >= 85 ? 'from-emerald-700 to-emerald-600' :
-    eficiencia >= 60 ? 'from-amber-600 to-amber-500' :
-    'from-red-700 to-red-600';
   const strokeColor =
     eficiencia >= 85 ? '#86efac' :
     eficiencia >= 60 ? '#fde68a' :
@@ -88,12 +85,12 @@ function EficienciaCard({ eficiencia, qtd }: { eficiencia: number; qtd: number }
   const offset = circ * (1 - eficiencia / 100);
 
   return (
-    <div className={`relative overflow-hidden rounded-xl bg-gradient-to-br ${bg} px-4 py-3 text-white shadow-md`}>
-      <p className="text-[10px] font-semibold uppercase tracking-wider opacity-70">Eficiência de Foco</p>
+    <div className="relative overflow-hidden rounded-lg border border-surface-200/80 bg-white/90 px-4 py-3 shadow-sm shadow-surface-200/50 dark:border-white/10 dark:bg-surface-900/70 dark:shadow-black/20">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400">Eficiência de Foco</p>
       <div className="flex items-center gap-3 mt-1">
         <div className="relative flex-shrink-0 w-14 h-14">
           <svg width="56" height="56" viewBox="0 0 56 56" className="-rotate-90">
-            <circle cx="28" cy="28" r={r} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="7" />
+            <circle cx="28" cy="28" r={r} fill="none" stroke="rgba(148,163,184,0.22)" strokeWidth="7" />
             <circle
               cx="28" cy="28" r={r} fill="none"
               stroke={strokeColor}
@@ -104,12 +101,12 @@ function EficienciaCard({ eficiencia, qtd }: { eficiencia: number; qtd: number }
             />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-base font-extrabold">{eficiencia}%</span>
+            <span className="text-base font-bold text-surface-950 dark:text-white">{eficiencia}%</span>
           </div>
         </div>
         <div className="min-w-0">
-          <p className="text-sm font-bold leading-tight">{label}</p>
-          <p className="text-[10px] opacity-60 mt-0.5">{qtd} ativa{qtd !== 1 ? 's' : ''} · ideal ≤3</p>
+          <p className="text-sm font-semibold leading-tight text-surface-950 dark:text-white">{label}</p>
+          <p className="text-[10px] text-surface-500 dark:text-surface-400 mt-0.5">{qtd} ativa{qtd !== 1 ? 's' : ''} · ideal ≤3</p>
         </div>
       </div>
     </div>
@@ -232,30 +229,24 @@ export function InicioPage() {
   ];
 
   return (
-    <div className="space-y-6 max-w-screen-2xl mx-auto animate-fade-in pb-10">
+    <div className="page-stack max-w-screen-2xl mx-auto animate-fade-in pb-10">
 
       {/* ── CABEÇALHO ── */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-extrabold text-surface-900 dark:text-white tracking-tight">
-            Dashboard de Metas
-          </h2>
-          <p className="text-sm text-surface-500 dark:text-surface-400 mt-1">
-            Visão executiva das suas metas, ações e eficiência de foco.
-          </p>
-          <p className="text-xs text-surface-400 dark:text-surface-500 mt-0.5 capitalize">
-            {format(hoje, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
-          </p>
-        </div>
-        <div className="flex gap-2 flex-shrink-0">
+      <PageHeader
+        eyebrow={format(hoje, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+        title="Hoje"
+        subtitle="Seu painel para foco do dia, metas, ações e sinais financeiros importantes."
+        action={
+          <>
           <Button size="sm" variant="secondary" onClick={() => navigate('/metas')} icon={<Target size={14} />}>
             Metas
           </Button>
           <Button size="sm" onClick={() => navigate('/plano')} icon={<ListChecks size={14} />}>
-            Ver Plano de Ação
+            Ver tarefas
           </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* ── KPIs — 4 GRUPOS ── */}
       <div className="space-y-3">

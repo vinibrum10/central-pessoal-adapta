@@ -14,22 +14,22 @@ interface InputProps extends FieldProps, Omit<InputHTMLAttributes<HTMLInputEleme
 
 export function Input({ label, error, required, hint, id, className = '', ...props }: InputProps) {
   return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-sm font-medium text-surface-700 dark:text-surface-300">
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={id} className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
         {label} {required && <span className="text-danger-500">*</span>}
       </label>
       <input
         id={id}
         {...props}
         className={`
-          w-full px-3 py-2 rounded-lg border text-sm
-          bg-white dark:bg-surface-900
-          border-surface-300 dark:border-surface-600
+          w-full rounded-lg border px-3.5 py-2.5 text-sm shadow-sm
+          bg-white/90 dark:bg-surface-950/50
+          border-surface-200 dark:border-surface-700
           text-surface-900 dark:text-white
           placeholder:text-surface-400 dark:placeholder:text-surface-500
-          focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+          focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500
           disabled:opacity-50 disabled:cursor-not-allowed
-          transition-colors
+          transition-all
           ${error ? 'border-danger-500 focus:ring-danger-500' : ''}
           ${className}
         `}
@@ -47,8 +47,8 @@ interface TextareaProps extends FieldProps, Omit<TextareaHTMLAttributes<HTMLText
 
 export function Textarea({ label, error, required, hint, id, className = '', ...props }: TextareaProps) {
   return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-sm font-medium text-surface-700 dark:text-surface-300">
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={id} className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
         {label} {required && <span className="text-danger-500">*</span>}
       </label>
       <textarea
@@ -56,13 +56,13 @@ export function Textarea({ label, error, required, hint, id, className = '', ...
         rows={3}
         {...props}
         className={`
-          w-full px-3 py-2 rounded-lg border text-sm resize-none
-          bg-white dark:bg-surface-900
-          border-surface-300 dark:border-surface-600
+          w-full rounded-lg border px-3.5 py-2.5 text-sm resize-none shadow-sm
+          bg-white/90 dark:bg-surface-950/50
+          border-surface-200 dark:border-surface-700
           text-surface-900 dark:text-white
           placeholder:text-surface-400 dark:placeholder:text-surface-500
-          focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
-          transition-colors
+          focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500
+          transition-all
           ${error ? 'border-danger-500' : ''}
           ${className}
         `}
@@ -81,20 +81,20 @@ interface SelectProps extends FieldProps, Omit<SelectHTMLAttributes<HTMLSelectEl
 
 export function Select({ label, error, required, hint, id, className = '', children, ...props }: SelectProps) {
   return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-sm font-medium text-surface-700 dark:text-surface-300">
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={id} className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
         {label} {required && <span className="text-danger-500">*</span>}
       </label>
       <select
         id={id}
         {...props}
         className={`
-          w-full px-3 py-2 rounded-lg border text-sm
-          bg-white dark:bg-surface-900
-          border-surface-300 dark:border-surface-600
+          w-full rounded-lg border px-3.5 py-2.5 text-sm shadow-sm
+          bg-white/90 dark:bg-surface-950/50
+          border-surface-200 dark:border-surface-700
           text-surface-900 dark:text-white
-          focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
-          transition-colors
+          focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500
+          transition-all
           ${error ? 'border-danger-500' : ''}
           ${className}
         `}
@@ -115,12 +115,12 @@ interface CheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'id'
 
 export function Checkbox({ id, label, className = '', ...props }: CheckboxProps) {
   return (
-    <label htmlFor={id} className={`flex items-center gap-2.5 cursor-pointer ${className}`}>
+    <label htmlFor={id} className={`flex min-h-10 cursor-pointer items-center gap-2.5 rounded-lg px-1 ${className}`}>
       <input
         type="checkbox"
         id={id}
         {...props}
-        className="w-4 h-4 rounded border-surface-300 dark:border-surface-600 text-primary-600 focus:ring-primary-500"
+        className="h-4 w-4 rounded border-surface-300 text-primary-600 focus:ring-primary-500 dark:border-surface-600"
       />
       <span className="text-sm text-surface-700 dark:text-surface-300">{label}</span>
     </label>

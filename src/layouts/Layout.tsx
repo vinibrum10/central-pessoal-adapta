@@ -30,17 +30,17 @@ type NavItem = {
 
 const gestaoNavItems: NavItem[] = [
   { to: '/metas', label: 'Metas', icon: Target },
-  { to: '/plano-acao', label: 'Plano de Ação', icon: ListChecks, aliases: ['/plano'] },
-  { to: '/agenda', label: 'Agenda e Tempo', icon: Clock },
+  { to: '/plano-acao', label: 'Tarefas', icon: ListChecks, aliases: ['/plano'] },
+  { to: '/agenda', label: 'Agenda', icon: Clock },
 ];
 
 const estudoNavItems: NavItem[] = [
   { to: '/estudo/leitura', label: 'Leitura Diária', icon: BookOpen, aliases: ['/leitura'] },
-  { to: '/estudo/ingles', label: 'Inglês', icon: Languages },
+  { to: '/estudo/ingles', label: 'Inglês Diário', icon: Languages },
 ];
 
 const topNavItems = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/', label: 'Hoje', icon: LayoutDashboard },
 ];
 
 const mainNavItems = [
@@ -106,27 +106,27 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="flex h-screen bg-surface-50 dark:bg-surface-900 overflow-hidden">
+    <div className="flex h-screen overflow-hidden text-surface-900 dark:text-white">
       {/* === SIDEBAR DESKTOP === */}
       <aside
-        className={`hidden lg:flex flex-col bg-white dark:bg-surface-800 border-r border-surface-200 dark:border-surface-700 flex-shrink-0 transition-all duration-200 ${collapsed ? 'w-16' : 'w-64'}`}
+        className={`hidden lg:flex flex-col border-r border-surface-200/70 bg-white/80 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-surface-950/70 flex-shrink-0 transition-all duration-200 ${collapsed ? 'w-16' : 'w-72'}`}
       >
-        <div className={`border-b border-surface-200 dark:border-surface-700 flex items-center ${collapsed ? 'justify-center p-3' : 'justify-between p-5'}`}>
+        <div className={`border-b border-surface-200/70 dark:border-white/10 flex items-center ${collapsed ? 'justify-center p-3' : 'justify-between p-5'}`}>
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 bg-primary-600 rounded-xl flex items-center justify-center shadow-lg shadow-primary-600/30 flex-shrink-0">
+            <div className="w-9 h-9 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center shadow-lg shadow-primary-600/20 flex-shrink-0">
               <AppIcon size={18} />
             </div>
             {!collapsed && (
               <div className="min-w-0">
-                <p className="font-bold text-sm text-surface-900 dark:text-white leading-tight">SGP</p>
-                <p className="text-xs text-surface-400 dark:text-surface-500">Gestão Pessoal</p>
+                <p className="font-semibold text-sm text-surface-950 dark:text-white leading-tight">Central ADAPTA</p>
+                <p className="text-xs text-surface-400 dark:text-surface-500">Gestão pessoal</p>
               </div>
             )}
           </div>
           {!collapsed && (
             <button
               onClick={() => setCollapsed(true)}
-              className="p-2 rounded-lg bg-surface-100 dark:bg-surface-700 hover:bg-surface-200 dark:hover:bg-surface-600 text-surface-600 dark:text-surface-300 flex-shrink-0 transition-colors"
+              className="p-2 rounded-lg text-surface-500 hover:bg-surface-100 dark:hover:bg-white/10 dark:text-surface-400 flex-shrink-0 transition-colors"
               title="Recolher menu"
             >
               <ChevronLeft size={15} />
@@ -135,10 +135,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         {collapsed && (
-          <div className="flex justify-center py-2 border-b border-surface-200 dark:border-surface-700">
+          <div className="flex justify-center py-2 border-b border-surface-200/70 dark:border-white/10">
             <button
               onClick={() => setCollapsed(false)}
-              className="p-2 rounded-lg bg-surface-100 dark:bg-surface-700 hover:bg-surface-200 dark:hover:bg-surface-600 text-surface-600 dark:text-surface-300 transition-colors"
+              className="p-2 rounded-lg text-surface-500 hover:bg-surface-100 dark:hover:bg-white/10 dark:text-surface-400 transition-colors"
               title="Expandir menu"
             >
               <ChevronRight size={15} />
@@ -147,16 +147,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
         )}
 
         {!collapsed && (
-          <div className="px-4 py-3 border-b border-surface-200 dark:border-surface-700">
+          <div className="px-5 py-4 border-b border-surface-200/70 dark:border-white/10">
             <p className="text-xs text-surface-400 dark:text-surface-500">Bem-vindo,</p>
-            <p className="font-semibold text-sm text-surface-900 dark:text-white">{data.configuracoes.nomeUsuario}</p>
+            <p className="font-semibold text-sm text-surface-950 dark:text-white">{data.configuracoes.nomeUsuario}</p>
             {supabaseAtivo && user && (
               <p className="text-[10px] text-surface-400 dark:text-surface-500 truncate">{user.email}</p>
             )}
           </div>
         )}
 
-        <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
+        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
           {topNavItems.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
@@ -164,12 +164,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
               end
               title={collapsed ? label : undefined}
               className={({ isActive }) => `
-                flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+                flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
                 transition-all duration-150
                 ${collapsed ? 'justify-center' : ''}
                 ${isActive
-                  ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/30'
-                  : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-surface-900 dark:hover:text-white'
+                  ? 'bg-surface-950 text-white shadow-sm dark:bg-white dark:text-surface-950'
+                  : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100/80 dark:hover:bg-white/10 hover:text-surface-950 dark:hover:text-white'
                 }
               `}
             >
@@ -182,10 +182,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <button
               onClick={() => { setCollapsed(false); setGestaoOpen(true); }}
               title="Gestão"
-              className={`w-full flex items-center justify-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+              className={`w-full flex items-center justify-center px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
                 isGestaoActive
-                  ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/30'
-                  : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-surface-900 dark:hover:text-white'
+                  ? 'bg-surface-950 text-white dark:bg-white dark:text-surface-950'
+                  : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100/80 dark:hover:bg-white/10 hover:text-surface-950 dark:hover:text-white'
               }`}
             >
               <Layers size={18} className="flex-shrink-0" />
@@ -194,10 +194,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div>
               <button
                 onClick={() => setGestaoOpen(o => !o)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
                   isGestaoActive
-                    ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/20'
-                    : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-surface-900 dark:hover:text-white'
+                    ? 'text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-500/10'
+                    : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100/80 dark:hover:bg-white/10 hover:text-surface-950 dark:hover:text-white'
                 }`}
               >
                 <Layers size={18} className="flex-shrink-0" />
@@ -208,7 +208,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 />
               </button>
               {gestaoOpen && (
-                <div className="ml-3 mt-0.5 pl-3 border-l-2 border-surface-200 dark:border-surface-700 space-y-0.5">
+                <div className="ml-3 mt-1 pl-3 border-l border-surface-200 dark:border-white/10 space-y-1">
                   {gestaoNavItems.map((item) => {
                     const { to, label, icon: Icon } = item;
                     const active = isNavItemActive(item);
@@ -217,11 +217,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
                         key={to}
                         to={to}
                         className={`
-                          flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium
+                          flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium
                           transition-all duration-150
                           ${active
-                            ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/30'
-                            : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-surface-900 dark:hover:text-white'
+                            ? 'bg-surface-950 text-white shadow-sm dark:bg-white dark:text-surface-950'
+                            : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100/80 dark:hover:bg-white/10 hover:text-surface-950 dark:hover:text-white'
                           }
                         `}
                       >
@@ -241,12 +241,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
               to={to}
               title={collapsed ? label : undefined}
               className={({ isActive }) => `
-                flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+                flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
                 transition-all duration-150
                 ${collapsed ? 'justify-center' : ''}
                 ${isActive
-                  ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/30'
-                  : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-surface-900 dark:hover:text-white'
+                  ? 'bg-surface-950 text-white shadow-sm dark:bg-white dark:text-surface-950'
+                  : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100/80 dark:hover:bg-white/10 hover:text-surface-950 dark:hover:text-white'
                 }
               `}
             >
@@ -259,10 +259,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <button
               onClick={() => { setCollapsed(false); setEstudoOpen(true); }}
               title="Estudo"
-              className={`w-full flex items-center justify-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+              className={`w-full flex items-center justify-center px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
                 isEstudoActive
-                  ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/30'
-                  : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-surface-900 dark:hover:text-white'
+                  ? 'bg-surface-950 text-white dark:bg-white dark:text-surface-950'
+                  : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100/80 dark:hover:bg-white/10 hover:text-surface-950 dark:hover:text-white'
               }`}
             >
               <BookOpen size={18} className="flex-shrink-0" />
@@ -271,10 +271,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div>
               <button
                 onClick={() => setEstudoOpen(o => !o)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
                   isEstudoActive
-                    ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/20'
-                    : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-surface-900 dark:hover:text-white'
+                    ? 'text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-500/10'
+                    : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100/80 dark:hover:bg-white/10 hover:text-surface-950 dark:hover:text-white'
                 }`}
               >
                 <BookOpen size={18} className="flex-shrink-0" />
@@ -285,7 +285,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 />
               </button>
               {estudoOpen && (
-                <div className="ml-3 mt-0.5 pl-3 border-l-2 border-surface-200 dark:border-surface-700 space-y-0.5">
+                <div className="ml-3 mt-1 pl-3 border-l border-surface-200 dark:border-white/10 space-y-1">
                   {estudoNavItems.map((item) => {
                     const { to, label, icon: Icon } = item;
                     const active = isNavItemActive(item);
@@ -294,11 +294,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
                         key={to}
                         to={to}
                         className={`
-                          flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium
+                          flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium
                           transition-all duration-150
                           ${active
-                            ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/30'
-                            : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-surface-900 dark:hover:text-white'
+                            ? 'bg-surface-950 text-white shadow-sm dark:bg-white dark:text-surface-950'
+                            : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100/80 dark:hover:bg-white/10 hover:text-surface-950 dark:hover:text-white'
                           }
                         `}
                       >
@@ -318,12 +318,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
               to={to}
               title={collapsed ? label : undefined}
               className={({ isActive }) => `
-                flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+                flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
                 transition-all duration-150
                 ${collapsed ? 'justify-center' : ''}
                 ${isActive
-                  ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/30'
-                  : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-surface-900 dark:hover:text-white'
+                  ? 'bg-surface-950 text-white shadow-sm dark:bg-white dark:text-surface-950'
+                  : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100/80 dark:hover:bg-white/10 hover:text-surface-950 dark:hover:text-white'
                 }
               `}
             >
@@ -341,12 +341,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   to={to}
                   title={collapsed ? label : undefined}
                   className={({ isActive }) => `
-                    flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+                    flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
                     transition-all duration-150
                     ${collapsed ? 'justify-center' : ''}
                     ${isActive
-                      ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/30'
-                      : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-surface-900 dark:hover:text-white'
+                      ? 'bg-surface-950 text-white shadow-sm dark:bg-white dark:text-surface-950'
+                      : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100/80 dark:hover:bg-white/10 hover:text-surface-950 dark:hover:text-white'
                     }
                   `}
                 >
@@ -358,11 +358,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
           )}
         </nav>
 
-        <div className="p-3 border-t border-surface-200 dark:border-surface-700 space-y-0.5">
+        <div className="p-3 border-t border-surface-200/70 dark:border-white/10 space-y-1">
           <button
             onClick={toggleTema}
             title={collapsed ? (tema === 'escuro' ? 'Modo Claro' : 'Modo Escuro') : undefined}
-            className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors ${collapsed ? 'justify-center' : ''}`}
+            className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-surface-500 dark:text-surface-400 hover:bg-surface-100/80 dark:hover:bg-white/10 transition-colors ${collapsed ? 'justify-center' : ''}`}
           >
             {tema === 'escuro' ? <Sun size={16} /> : <Moon size={16} />}
             {!collapsed && (tema === 'escuro' ? 'Modo Claro' : 'Modo Escuro')}
@@ -371,7 +371,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <button
               onClick={signOut}
               title={collapsed ? 'Sair' : undefined}
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-danger-500 dark:text-danger-400 hover:bg-danger-50 dark:hover:bg-danger-900/20 transition-colors ${collapsed ? 'justify-center' : ''}`}
+              className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-danger-500 dark:text-danger-400 hover:bg-danger-50 dark:hover:bg-danger-500/10 transition-colors ${collapsed ? 'justify-center' : ''}`}
             >
               <LogOut size={16} />
               {!collapsed && 'Sair'}
@@ -383,24 +383,24 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {/* === SIDEBAR MOBILE (overlay) === */}
       {sidebarOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
-          <aside className="relative w-72 bg-white dark:bg-surface-800 h-full flex flex-col shadow-2xl animate-slide-up">
-            <div className="p-5 border-b border-surface-200 dark:border-surface-700 flex items-center justify-between">
+          <div className="absolute inset-0 bg-surface-950/60 backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
+          <aside className="relative flex h-full w-80 max-w-[86vw] animate-slide-up flex-col border-r border-surface-200 bg-white shadow-2xl dark:border-white/10 dark:bg-surface-950">
+            <div className="p-5 border-b border-surface-200 dark:border-white/10 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 bg-primary-600 rounded-xl flex items-center justify-center">
+                <div className="w-9 h-9 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center">
                   <AppIcon size={18} />
                 </div>
                 <div>
-                  <p className="font-bold text-sm text-surface-900 dark:text-white">SGP</p>
+                  <p className="font-semibold text-sm text-surface-950 dark:text-white">Central ADAPTA</p>
                   <p className="text-xs text-surface-400">Gestão Pessoal</p>
                 </div>
               </div>
-              <button onClick={() => setSidebarOpen(false)} className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700">
+              <button onClick={() => setSidebarOpen(false)} className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-white/10">
                 <X size={18} className="text-surface-500" />
               </button>
             </div>
             {supabaseAtivo && user && (
-              <div className="px-4 py-3 border-b border-surface-200 dark:border-surface-700">
+              <div className="px-5 py-4 border-b border-surface-200 dark:border-white/10">
                 <p className="text-xs text-surface-400">Logado como</p>
                 <p className="text-sm font-medium text-surface-800 dark:text-white truncate">{user.email}</p>
               </div>
@@ -413,8 +413,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   end
                   onClick={() => setSidebarOpen(false)}
                   className={({ isActive }) => `
-                    flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
-                    ${isActive ? 'bg-primary-600 text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700'}
+                    flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
+                    ${isActive ? 'bg-surface-950 text-white dark:bg-white dark:text-surface-950' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
                   `}
                 >
                   <Icon size={18} />
@@ -425,10 +425,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <div>
                 <button
                   onClick={() => setGestaoOpen(o => !o)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
                     isGestaoActive
-                      ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/20'
-                      : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700'
+                      ? 'text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-500/10'
+                      : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'
                   }`}
                 >
                   <Layers size={18} />
@@ -439,7 +439,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   />
                 </button>
                 {gestaoOpen && (
-                  <div className="ml-3 mt-0.5 pl-3 border-l-2 border-surface-200 dark:border-surface-700 space-y-0.5">
+                  <div className="ml-3 mt-1 pl-3 border-l border-surface-200 dark:border-white/10 space-y-1">
                     {gestaoNavItems.map((item) => {
                       const { to, label, icon: Icon } = item;
                       const active = isNavItemActive(item);
@@ -449,8 +449,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                           to={to}
                           onClick={() => setSidebarOpen(false)}
                           className={`
-                            flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all
-                            ${active ? 'bg-primary-600 text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700'}
+                            flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all
+                            ${active ? 'bg-surface-950 text-white dark:bg-white dark:text-surface-950' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
                           `}
                         >
                           <Icon size={16} />
@@ -468,8 +468,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   to={to}
                   onClick={() => setSidebarOpen(false)}
                   className={({ isActive }) => `
-                    flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
-                    ${isActive ? 'bg-primary-600 text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700'}
+                    flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
+                    ${isActive ? 'bg-surface-950 text-white dark:bg-white dark:text-surface-950' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
                   `}
                 >
                   <Icon size={18} />
@@ -480,10 +480,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <div>
                 <button
                   onClick={() => setEstudoOpen(o => !o)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
                     isEstudoActive
-                      ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/20'
-                      : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700'
+                      ? 'text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-500/10'
+                      : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'
                   }`}
                 >
                   <BookOpen size={18} />
@@ -494,7 +494,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   />
                 </button>
                 {estudoOpen && (
-                  <div className="ml-3 mt-0.5 pl-3 border-l-2 border-surface-200 dark:border-surface-700 space-y-0.5">
+                  <div className="ml-3 mt-1 pl-3 border-l border-surface-200 dark:border-white/10 space-y-1">
                     {estudoNavItems.map((item) => {
                       const { to, label, icon: Icon } = item;
                       const active = isNavItemActive(item);
@@ -504,8 +504,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                           to={to}
                           onClick={() => setSidebarOpen(false)}
                           className={`
-                            flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all
-                            ${active ? 'bg-primary-600 text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700'}
+                            flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all
+                            ${active ? 'bg-surface-950 text-white dark:bg-white dark:text-surface-950' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
                           `}
                         >
                           <Icon size={16} />
@@ -523,8 +523,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   to={to}
                   onClick={() => setSidebarOpen(false)}
                   className={({ isActive }) => `
-                    flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
-                    ${isActive ? 'bg-primary-600 text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700'}
+                    flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
+                    ${isActive ? 'bg-surface-950 text-white dark:bg-white dark:text-surface-950' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
                   `}
                 >
                   <Icon size={18} />
@@ -541,8 +541,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       to={to}
                       onClick={() => setSidebarOpen(false)}
                       className={({ isActive }) => `
-                        flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
-                        ${isActive ? 'bg-primary-600 text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700'}
+                        flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
+                        ${isActive ? 'bg-surface-950 text-white dark:bg-white dark:text-surface-950' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
                       `}
                     >
                       <Icon size={18} />
@@ -552,13 +552,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </>
               )}
             </nav>
-            <div className="p-4 border-t border-surface-200 dark:border-surface-700 space-y-1">
-              <button onClick={toggleTema} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors">
+            <div className="p-4 border-t border-surface-200 dark:border-white/10 space-y-1">
+              <button onClick={toggleTema} className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10 transition-colors">
                 {tema === 'escuro' ? <Sun size={16} /> : <Moon size={16} />}
                 {tema === 'escuro' ? 'Modo Claro' : 'Modo Escuro'}
               </button>
               {supabaseAtivo && user && (
-                <button onClick={signOut} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-danger-500 hover:bg-danger-50 dark:hover:bg-danger-900/20 transition-colors">
+                <button onClick={signOut} className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-danger-500 hover:bg-danger-50 dark:hover:bg-danger-500/10 transition-colors">
                   <LogOut size={16} />
                   Sair
                 </button>
@@ -570,34 +570,40 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {/* === MAIN CONTENT === */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-white dark:bg-surface-800 border-b border-surface-200 dark:border-surface-700 flex-shrink-0">
-          <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700">
+        <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-white/85 backdrop-blur-xl dark:bg-surface-950/80 border-b border-surface-200/70 dark:border-white/10 flex-shrink-0">
+          <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-white/10">
             <Menu size={20} className="text-surface-600 dark:text-surface-400" />
           </button>
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-primary-600 rounded-lg flex items-center justify-center">
+            <div className="w-7 h-7 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center">
               <AppIcon size={14} />
             </div>
-            <span className="font-bold text-sm text-surface-900 dark:text-white">SGP</span>
+            <span className="font-semibold text-sm text-surface-950 dark:text-white">ADAPTA</span>
           </div>
-          <button onClick={toggleTema} className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700">
+          <button onClick={toggleTema} className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-white/10">
             {tema === 'escuro' ? <Sun size={18} className="text-surface-500" /> : <Moon size={18} className="text-surface-500" />}
           </button>
         </header>
 
-        <div className="hidden lg:flex items-center px-6 py-4 border-b border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 flex-shrink-0">
-          <h1 className="font-semibold text-surface-900 dark:text-white">{currentPage?.label ?? 'Sistema de Gestão Pessoal'}</h1>
+        <div className="hidden lg:flex items-center justify-between gap-4 px-8 py-4 border-b border-surface-200/70 dark:border-white/10 bg-white/55 dark:bg-surface-950/35 backdrop-blur-xl flex-shrink-0">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-surface-400">Área atual</p>
+            <h1 className="text-sm font-semibold text-surface-950 dark:text-white">{currentPage?.label ?? 'Central Pessoal'}</h1>
+          </div>
+          <div className="hidden xl:flex items-center rounded-lg border border-surface-200 bg-white/70 px-3 py-2 text-xs text-surface-500 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-surface-400">
+            Rotina, finanças e estudos em um só lugar
+          </div>
         </div>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto min-w-0">
           <MigrationBanner />
-          <div className="p-4 lg:p-6">
+          <div className="app-container">
             {children}
           </div>
         </main>
 
-        <nav className="lg:hidden flex bg-white dark:bg-surface-800 border-t border-surface-200 dark:border-surface-700 flex-shrink-0">
+        <nav className="lg:hidden flex bg-white/90 dark:bg-surface-950/90 backdrop-blur-xl border-t border-surface-200/70 dark:border-white/10 flex-shrink-0">
           <button
             type="button"
             onClick={() => {
