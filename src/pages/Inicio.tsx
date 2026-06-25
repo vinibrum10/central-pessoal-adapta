@@ -35,26 +35,36 @@ type FiltroSaude = 'todas' | SaudeMeta;
 // KPI CARD GRADIENTE
 // ============================================================
 function KpiCard({
-  label, value, sub, cor, icon,
+  label, value, sub, cor, icon, accent,
 }: {
   label: string;
   value: string | number;
   sub?: string;
   cor?: 'blue' | 'green' | 'yellow' | 'red' | 'purple' | 'gray';
   icon?: React.ReactNode;
+  /** Borda lateral colorida sutil por categoria */
+  accent?: 'meta' | 'exec' | 'alerta' | 'financas' | 'none';
 }) {
   const paleta = {
-    blue: 'bg-primary-50 text-primary-700 ring-primary-100 dark:bg-primary-500/10 dark:text-primary-300 dark:ring-primary-500/20',
-    green: 'bg-success-50 text-success-700 ring-success-100 dark:bg-success-500/10 dark:text-success-300 dark:ring-success-500/20',
+    blue:   'bg-primary-50 text-primary-700 ring-primary-100 dark:bg-primary-500/10 dark:text-primary-300 dark:ring-primary-500/20',
+    green:  'bg-success-50 text-success-700 ring-success-100 dark:bg-success-500/10 dark:text-success-300 dark:ring-success-500/20',
     yellow: 'bg-warning-50 text-warning-600 ring-warning-100 dark:bg-warning-500/10 dark:text-warning-300 dark:ring-warning-500/20',
-    red: 'bg-danger-50 text-danger-700 ring-danger-100 dark:bg-danger-500/10 dark:text-danger-300 dark:ring-danger-500/20',
+    red:    'bg-danger-50 text-danger-700 ring-danger-100 dark:bg-danger-500/10 dark:text-danger-300 dark:ring-danger-500/20',
     purple: 'bg-surface-100 text-surface-700 ring-surface-200 dark:bg-white/10 dark:text-surface-200 dark:ring-white/10',
-    gray: 'bg-surface-100 text-surface-700 ring-surface-200 dark:bg-white/10 dark:text-surface-200 dark:ring-white/10',
+    gray:   'bg-surface-100 text-surface-700 ring-surface-200 dark:bg-white/10 dark:text-surface-200 dark:ring-white/10',
+  };
+  const accentBorder: Record<string, string> = {
+    meta:     'border-l-[3px] border-l-danger-500 dark:border-l-danger-400',
+    exec:     'border-l-[3px] border-l-primary-500 dark:border-l-primary-400',
+    alerta:   'border-l-[3px] border-l-warning-500 dark:border-l-warning-400',
+    financas: 'border-l-[3px] border-l-success-600 dark:border-l-success-400',
+    none:     '',
   };
   const tone = paleta[cor ?? 'blue'];
+  const accentClass = accentBorder[accent ?? 'none'] ?? '';
 
   return (
-    <div className="relative overflow-hidden rounded-lg border border-surface-200/80 bg-white/90 px-4 py-3 shadow-sm shadow-surface-200/50 dark:border-white/10 dark:bg-surface-900/70 dark:shadow-black/20">
+    <div className={`relative overflow-hidden rounded-lg border border-surface-200/80 bg-white/90 px-4 py-3 shadow-sm shadow-surface-200/50 dark:border-white/10 dark:bg-surface-900/70 dark:shadow-black/20 ${accentClass}`}>
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400 leading-tight truncate">{label}</p>
@@ -85,8 +95,8 @@ function EficienciaCard({ eficiencia, qtd }: { eficiencia: number; qtd: number }
   const offset = circ * (1 - eficiencia / 100);
 
   return (
-    <div className="relative overflow-hidden rounded-lg border border-surface-200/80 bg-white/90 px-4 py-3 shadow-sm shadow-surface-200/50 dark:border-white/10 dark:bg-surface-900/70 dark:shadow-black/20">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400">Eficiência de Foco</p>
+    <div className="relative overflow-hidden rounded-lg border border-surface-200/80 border-l-[3px] border-l-danger-500 bg-white/90 px-4 py-3 shadow-sm shadow-surface-200/50 dark:border-white/10 dark:border-l-danger-400 dark:bg-surface-900/70 dark:shadow-black/20">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400">Foco do dia</p>
       <div className="flex items-center gap-3 mt-1">
         <div className="relative flex-shrink-0 w-14 h-14">
           <svg width="56" height="56" viewBox="0 0 56 56" className="-rotate-90">
@@ -255,8 +265,8 @@ export function InicioPage() {
           <p className="text-[10px] font-bold uppercase tracking-widest text-surface-400 dark:text-surface-500 mb-2 px-0.5">Foco e Metas</p>
           <div className="grid grid-cols-3 gap-3">
             <EficienciaCard eficiencia={resumo.eficienciaFoco} qtd={resumo.metasAtivas} />
-            <KpiCard label="Metas Ativas" value={resumo.metasAtivas} sub={`${resumo.metasFuturo} no futuro`} cor="blue" icon={<Target size={36} />} />
-            <KpiCard label="Planejar Futuro" value={resumo.metasFuturo} sub="Fora do foco atual" cor="purple" icon={<Lightbulb size={36} />} />
+            <KpiCard label="Metas ativas" value={resumo.metasAtivas} sub="Em andamento agora" cor="blue" icon={<Target size={36} />} accent="meta" />
+            <KpiCard label="Metas futuras" value={resumo.metasFuturo} sub="Fora do foco atual" cor="purple" icon={<Lightbulb size={36} />} accent="meta" />
           </div>
         </div>
 
@@ -264,9 +274,9 @@ export function InicioPage() {
         <div>
           <p className="text-[10px] font-bold uppercase tracking-widest text-surface-400 dark:text-surface-500 mb-2 px-0.5">Execução</p>
           <div className="grid grid-cols-3 gap-3">
-            <KpiCard label="Ações Totais" value={resumo.acoesvinculas} sub="Vinculadas a metas ativas" cor="gray" icon={<ListChecks size={36} />} />
-            <KpiCard label="Ações Concluídas" value={resumo.acoesConcluidas} sub={resumo.acoesvinculas > 0 ? `${Math.round((resumo.acoesConcluidas / resumo.acoesvinculas) * 100)}% do total` : '—'} cor="green" icon={<CheckCircle2 size={36} />} />
-            <KpiCard label="Atendimento Médio" value={`${resumo.atendimentoMedio}%`} sub="Média de conclusão" cor={resumo.atendimentoMedio >= 70 ? 'green' : resumo.atendimentoMedio >= 30 ? 'yellow' : 'red'} icon={<TrendingUp size={36} />} />
+            <KpiCard label="Ações totais" value={resumo.acoesvinculas} sub="Vinculadas às metas ativas" cor="gray" icon={<ListChecks size={36} />} accent="exec" />
+            <KpiCard label="Ações concluídas" value={resumo.acoesConcluidas} sub={resumo.acoesvinculas > 0 ? `${Math.round((resumo.acoesConcluidas / resumo.acoesvinculas) * 100)}% do total` : '—'} cor="green" icon={<CheckCircle2 size={36} />} accent="exec" />
+            <KpiCard label="Conclusão das ações" value={`${resumo.atendimentoMedio}%`} sub="Média de progresso" cor={resumo.atendimentoMedio >= 70 ? 'green' : resumo.atendimentoMedio >= 30 ? 'yellow' : 'red'} icon={<TrendingUp size={36} />} accent="exec" />
           </div>
         </div>
 
@@ -274,9 +284,9 @@ export function InicioPage() {
         <div>
           <p className="text-[10px] font-bold uppercase tracking-widest text-surface-400 dark:text-surface-500 mb-2 px-0.5">Alertas</p>
           <div className="grid grid-cols-3 gap-3">
-            <KpiCard label="Metas em Atenção" value={resumo.metasEmAtencao} sub="Crítica ou sem ações" cor={resumo.metasEmAtencao > 0 ? 'red' : 'green'} icon={<AlertTriangle size={36} />} />
-            <KpiCard label="Tarefas Atrasadas" value={tarefasAtrasadas} sub="Prazo já passou" cor={tarefasAtrasadas > 0 ? 'red' : 'green'} icon={<Zap size={36} />} />
-            <KpiCard label="Revisões Atrasadas" value={revisoesAtrasadas} sub="Metas sem revisão" cor={revisoesAtrasadas > 0 ? 'yellow' : 'green'} icon={<RefreshCw size={36} />} />
+            <KpiCard label="Metas em atenção" value={resumo.metasEmAtencao} sub="Crítica ou sem ações" cor={resumo.metasEmAtencao > 0 ? 'red' : 'green'} icon={<AlertTriangle size={36} />} accent="alerta" />
+            <KpiCard label="Tarefas atrasadas" value={tarefasAtrasadas} sub="Prazo já passou" cor={tarefasAtrasadas > 0 ? 'red' : 'green'} icon={<Zap size={36} />} accent="alerta" />
+            <KpiCard label="Revisões atrasadas" value={revisoesAtrasadas} sub="Metas sem revisão recente" cor={revisoesAtrasadas > 0 ? 'yellow' : 'green'} icon={<RefreshCw size={36} />} accent="alerta" />
           </div>
         </div>
 
@@ -285,11 +295,12 @@ export function InicioPage() {
           <p className="text-[10px] font-bold uppercase tracking-widest text-surface-400 dark:text-surface-500 mb-2 px-0.5">Apoio</p>
           <div className="grid grid-cols-2 gap-3">
             <KpiCard
-              label="Saldo do Mês"
+              label="Saldo do mês"
               value={formatarDinheiro(saldoMes)}
-              sub={`R${receitasMes.toLocaleString('pt-BR', { minimumFractionDigits: 0 })} rec · R${despesasMes.toLocaleString('pt-BR', { minimumFractionDigits: 0 })} desp`}
+              sub={`R$ ${receitasMes.toLocaleString('pt-BR', { minimumFractionDigits: 0 })} rec · R$ ${despesasMes.toLocaleString('pt-BR', { minimumFractionDigits: 0 })} desp`}
               cor={saldoMes >= 0 ? 'green' : 'red'}
               icon={saldoMes >= 0 ? <TrendingUp size={36} /> : <TrendingDown size={36} />}
+              accent="financas"
             />
             <div className={`relative overflow-hidden rounded-xl bg-gradient-to-br from-slate-700 to-slate-600 px-4 py-3 text-white shadow-md`}>
               <p className="text-[10px] font-semibold uppercase tracking-wider opacity-70">Tempo hoje</p>

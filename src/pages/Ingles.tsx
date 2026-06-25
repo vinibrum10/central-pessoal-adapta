@@ -689,21 +689,17 @@ export function InglesPage() {
         <Button variant="ghost" icon={<Settings size={16} />} onClick={() => setShortcutModal('Configurações')}>Configurações</Button>
       </div>
 
-      <Modal isOpen={shortcutModal !== null} onClose={() => setShortcutModal(null)} title={shortcutModal ?? ''} size="md">
+      <Modal isOpen={shortcutModal !== null} onClose={() => setShortcutModal(null)} title={shortcutModal ?? ''} size="lg">
         <div className="space-y-3">
-          {shortcutModal === 'Biblioteca' && dailyEnglishVideos.map(video => (
-            <button
-              key={video.videoId}
-              onClick={() => {
+          {shortcutModal === 'Biblioteca' && (
+            <BibliotecaVideos
+              allVideos={dailyEnglishVideos}
+              onSelectVideo={(video) => {
                 void saveStudy(createDailyStudy(hojeISO(), video));
                 setShortcutModal(null);
               }}
-              className="w-full rounded-lg border border-surface-200 p-3 text-left text-sm hover:bg-surface-50 dark:border-surface-700 dark:hover:bg-surface-700"
-            >
-              <span className="block font-medium text-surface-900 dark:text-white">{video.title}</span>
-              <span className="text-surface-500 dark:text-surface-400">{video.level} · {video.theme}</span>
-            </button>
-          ))}
+            />
+          )}
 
           {shortcutModal === 'Histórico' && (
             <div className="space-y-2">
@@ -724,6 +720,160 @@ export function InglesPage() {
           )}
         </div>
       </Modal>
+    </div>
+  );
+}
+
+// ============================================================
+// BIBLIOTECA DE VÍDEOS
+// ============================================================
+type NivelFiltro = 'Iniciante' | 'Intermediário' | 'Avançado';
+type DuracaoFiltro = 'curto' | 'medio' | 'longo';
+
+const NIVEL_CEFR: Record<NivelFiltro, string[]> = {
+  'Iniciante':     ['A1', 'A2'],
+  'Intermediário': ['B1', 'B2'],
+  'Avançado':      ['C1', 'C2'],
+};
+
+const DURACAO_MAX: Record<DuracaoFiltro, number> = {
+  'curto': 300,
+  'medio': 600,
+  'longo': 1200,
+};
+
+const DURACAO_LABEL: Record<DuracaoFiltro, string> = {
+  'curto': 'Curto (até 5 min)',
+  'medio': 'Médio (até 10 min)',
+  'longo': 'Longo (até 20 min)',
+};
+
+const MAX_RESULTADOS = 3;
+
+function BibliotecaVideos({
+  allVideos,
+  onSelectVideo,
+}: {
+  allVideos: DailyEnglishVideo[];
+  onSelectVideo: (v: DailyEnglishVideo) => void;
+}) {
+  const [nivel, setNivel] = useState<NivelFiltro | null>(null);
+  const [duracao, setDuracao] = useState<DuracaoFiltro | null>(null);
+  const [resultados, setResultados] = useState<DailyEnglishVideo[] | null>(null);
+  const [cycleOffset, setCycleOffset] = useState(0);
+
+  const aplicarFiltros = (offset: number) => {
+    const filtered = allVideos.filter(v => {
+      const nivelOk = !nivel || NIVEL_CEFR[nivel].includes(v.cefrLevel);
+      const duracaoOk = !duracao || v.durationSeconds <= DURACAO_MAX[duracao];
+      return nivelOk && duracaoOk;
+    });
+    if (filtered.length === 0) { setResultados([]); return; }
+    const start = offset % filtered.length;
+    const slice = [...filtered.slice(start), ...filtered.slice(0, start)].slice(0, MAX_RESULTADOS);
+    setResultados(slice);
+    setCycleOffset((offset + MAX_RESULTADOS) % Math.max(1, filtered.length));
+  };
+
+  const buscar = () => aplicarFiltros(0);
+  const buscarNovasOpcoes = () => aplicarFiltros(cycleOffset);
+
+  const semFiltros = !nivel && !duracao;
+  const nivelOpts: NivelFiltro[] = ['Iniciante', 'Intermediário', 'Avançado'];
+  const duracaoOpts: DuracaoFiltro[] = ['curto', 'medio', 'longo'];
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400 mb-2">Nível</p>
+        <div className="flex flex-wrap gap-2">
+          {nivelOpts.map(n => (
+            <button
+              key={n}
+              onClick={() => { setNivel(nivel === n ? null : n); setResultados(null); }}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                nivel === n
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-600'
+              }`}
+            >{n}</button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400 mb-2">Duração</p>
+        <div className="flex flex-wrap gap-2">
+          {duracaoOpts.map(d => (
+            <button
+              key={d}
+              onClick={() => { setDuracao(duracao === d ? null : d); setResultados(null); }}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                duracao === d
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-600'
+              }`}
+            >{DURACAO_LABEL[d]}</button>
+          ))}
+        </div>
+      </div>
+
+      <button
+        onClick={buscar}
+        disabled={semFiltros}
+        className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        Buscar vídeos
+      </button>
+
+      {resultados === null && (
+        <p className="text-center text-sm text-surface-400 dark:text-surface-500 py-4">
+          Escolha nível e duração para encontrar vídeos.
+        </p>
+      )}
+
+      {resultados !== null && resultados.length === 0 && (
+        <p className="text-center text-sm text-surface-400 dark:text-surface-500 py-4">
+          Nenhum vídeo encontrado com esses filtros. Tente outra duração ou nível.
+        </p>
+      )}
+
+      {resultados !== null && resultados.length > 0 && (
+        <div className="space-y-2">
+          {resultados.map(video => (
+            <div key={video.videoId} className="flex items-start gap-3 rounded-lg border border-surface-200 p-3 dark:border-surface-700">
+              <img
+                src={`https://img.youtube.com/vi/${video.videoId}/mqdefault.jpg`}
+                alt={video.title}
+                className="w-24 h-16 object-cover rounded-md flex-shrink-0 bg-surface-100 dark:bg-surface-700"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-surface-900 dark:text-white leading-tight line-clamp-2">{video.title}</p>
+                <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">
+                  {video.channel} · {Math.floor(video.durationSeconds / 60)}min · {video.cefrLevel} · {video.theme}
+                </p>
+                <button
+                  onClick={() => onSelectVideo(video)}
+                  className="mt-2 rounded-lg bg-primary-600 px-3 py-1 text-xs font-semibold text-white hover:bg-primary-700 transition-all"
+                >
+                  Usar como aula de hoje
+                </button>
+              </div>
+            </div>
+          ))}
+          <div className="pt-1 border-t border-surface-100 dark:border-surface-700">
+            <button
+              onClick={buscarNovasOpcoes}
+              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 px-4 py-2 text-sm text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700 transition-all"
+            >
+              Buscar novas opções
+            </button>
+            <p className="text-center text-[10px] text-surface-400 dark:text-surface-500 mt-1">
+              Não gostou? Busque novas sugestões com os mesmos filtros.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

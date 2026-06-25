@@ -118,8 +118,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
             {!collapsed && (
               <div className="min-w-0">
-                <p className="font-semibold text-sm text-surface-950 dark:text-white leading-tight">Central ADAPTA</p>
-                <p className="text-xs text-surface-400 dark:text-surface-500">Gestão pessoal</p>
+                <p className="font-semibold text-sm text-surface-950 dark:text-white leading-tight tracking-tight">SGP</p>
+                <p className="text-xs text-surface-400 dark:text-surface-500">Sistema de Gestão Pessoal</p>
               </div>
             )}
           </div>
@@ -391,8 +391,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <AppIcon size={18} />
                 </div>
                 <div>
-                  <p className="font-semibold text-sm text-surface-950 dark:text-white">Central ADAPTA</p>
-                  <p className="text-xs text-surface-400">Gestão Pessoal</p>
+                  <p className="font-semibold text-sm text-surface-950 dark:text-white tracking-tight">SGP</p>
+                  <p className="text-xs text-surface-400">Sistema de Gestão Pessoal</p>
                 </div>
               </div>
               <button onClick={() => setSidebarOpen(false)} className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-white/10">
@@ -578,7 +578,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div className="w-7 h-7 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center">
               <AppIcon size={14} />
             </div>
-            <span className="font-semibold text-sm text-surface-950 dark:text-white">ADAPTA</span>
+            <span className="font-semibold text-sm text-surface-950 dark:text-white tracking-tight">SGP</span>
           </div>
           <button onClick={toggleTema} className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-white/10">
             {tema === 'escuro' ? <Sun size={18} className="text-surface-500" /> : <Moon size={18} className="text-surface-500" />}
@@ -588,10 +588,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div className="hidden lg:flex items-center justify-between gap-4 px-8 py-4 border-b border-surface-200/70 dark:border-white/10 bg-white/55 dark:bg-surface-950/35 backdrop-blur-xl flex-shrink-0">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-surface-400">Área atual</p>
-            <h1 className="text-sm font-semibold text-surface-950 dark:text-white">{currentPage?.label ?? 'Central Pessoal'}</h1>
+            <h1 className="text-sm font-semibold text-surface-950 dark:text-white">{currentPage?.label ?? 'SGP'}</h1>
           </div>
           <div className="hidden xl:flex items-center rounded-lg border border-surface-200 bg-white/70 px-3 py-2 text-xs text-surface-500 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-surface-400">
-            Rotina, finanças e estudos em um só lugar
+            SGP · Sistema de Gestão Pessoal
           </div>
         </div>
 
