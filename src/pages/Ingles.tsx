@@ -4,13 +4,15 @@ import { Button } from '../components/Button';
 import { Card, CardBody, CardHeader } from '../components/Card';
 import { Modal } from '../components/Modal';
 import { useAuth } from '../contexts/AuthContext';
+import { dailyEnglishVideos, getDailyEnglishVideoById, type DailyEnglishVideo } from '../data/englishDailyVideos';
+import { generateEnglishQuiz } from '../services/englishQuizApi';
 import { getEnglishStudyData, saveEnglishStudyData } from '../services/englishStudyStorage';
 import { gerarId, hojeISO } from '../utils';
 import type {
-  EnglishDailyQuizQuestion,
+  EnglishQuizAttempt,
   EnglishDailyStudy,
-  EnglishLevel,
   EnglishStudyData,
+  GeneratedEnglishQuiz,
   StudySession,
 } from '../types/englishStudy';
 
@@ -42,16 +44,6 @@ declare global {
   }
 }
 
-interface DailyEnglishVideo {
-  videoId: string;
-  title: string;
-  channel: string;
-  level: EnglishLevel;
-  theme: string;
-  estimatedDuration: number;
-  quiz: EnglishDailyQuizQuestion[];
-}
-
 const emptyStudyData: EnglishStudyData = {
   dailyPlan: [],
   sessions: [],
@@ -60,110 +52,9 @@ const emptyStudyData: EnglishStudyData = {
   speakingPractices: [],
   savedVideos: [],
   dailyStudies: [],
+  generatedQuizzes: [],
+  quizAttempts: [],
 };
-
-const dailyVideos: DailyEnglishVideo[] = [
-  {
-    videoId: 'n3kNlFMXslo',
-    title: 'How to Introduce Yourself in English',
-    channel: 'English with Emma',
-    level: 'iniciante',
-    theme: 'Apresentação pessoal',
-    estimatedDuration: 360,
-    quiz: [
-      {
-        question: 'Qual é o objetivo principal do vídeo?',
-        options: ['Falar sobre comida', 'Praticar apresentação pessoal', 'Explicar esportes', 'Ensinar pronúncia de cidades'],
-        correctIndex: 1,
-      },
-      {
-        question: 'Qual informação costuma aparecer em uma apresentação pessoal?',
-        options: ['Nome e ocupação', 'Senha do e-mail', 'Número do passaporte', 'Preço de produtos'],
-        correctIndex: 0,
-      },
-      {
-        question: 'Qual frase combina com o tema do vídeo?',
-        options: ['I am from Brazil', 'Turn left at the bank', 'The soup is hot', 'The train was late'],
-        correctIndex: 0,
-      },
-    ],
-  },
-  {
-    videoId: 'qZhl1UDf63s',
-    title: 'Learn English Conversation: Daily Routine',
-    channel: 'English Singsing',
-    level: 'iniciante',
-    theme: 'Rotina diária',
-    estimatedDuration: 300,
-    quiz: [
-      {
-        question: 'Que tipo de vocabulário o vídeo trabalha?',
-        options: ['Rotina diária', 'Finanças avançadas', 'Termos jurídicos', 'Programação'],
-        correctIndex: 0,
-      },
-      {
-        question: 'Qual ação faz parte de uma rotina comum?',
-        options: ['Wake up', 'Export revenue', 'Sue a company', 'Debug memory'],
-        correctIndex: 0,
-      },
-      {
-        question: 'O vídeo é mais útil para praticar:',
-        options: ['Listening do dia a dia', 'Leitura acadêmica', 'Escrita técnica', 'Gramática formal avançada'],
-        correctIndex: 0,
-      },
-    ],
-  },
-  {
-    videoId: 'HAnw168huqA',
-    title: 'English Conversation Practice: At the Restaurant',
-    channel: 'Learn English with EnglishClass101.com',
-    level: 'intermediário',
-    theme: 'Restaurante',
-    estimatedDuration: 420,
-    quiz: [
-      {
-        question: 'Qual situação o vídeo simula?',
-        options: ['Uma conversa em restaurante', 'Uma entrevista de emprego', 'Uma aula de direção', 'Uma reunião médica'],
-        correctIndex: 0,
-      },
-      {
-        question: 'Qual frase pode aparecer nesse contexto?',
-        options: ['Can I see the menu?', 'The printer is broken', 'My flight was cancelled', 'I need a bigger screen'],
-        correctIndex: 0,
-      },
-      {
-        question: 'Qual habilidade é o foco principal?',
-        options: ['Pedir comida e entender respostas', 'Escrever contratos', 'Ler artigos científicos', 'Fazer apresentações longas'],
-        correctIndex: 0,
-      },
-    ],
-  },
-  {
-    videoId: 'F4Zu5ZZAG7I',
-    title: 'Business English Conversation: Meetings',
-    channel: 'Learn English with Rebecca',
-    level: 'intermediário',
-    theme: 'Reuniões de trabalho',
-    estimatedDuration: 480,
-    quiz: [
-      {
-        question: 'Qual é o tema principal do vídeo?',
-        options: ['Reuniões de trabalho', 'Receitas culinárias', 'Compras no mercado', 'Esportes'],
-        correctIndex: 0,
-      },
-      {
-        question: 'Qual expressão combina com uma reunião?',
-        options: ['Let us get started', 'The beach is crowded', 'I need two tickets', 'The soup is cold'],
-        correctIndex: 0,
-      },
-      {
-        question: 'Esse vídeo ajuda principalmente em:',
-        options: ['Comunicação profissional', 'Gírias de adolescentes', 'Vocabulário de animais', 'Nomes de capitais'],
-        correctIndex: 0,
-      },
-    ],
-  },
-];
 
 const passingScorePercent = 60;
 const unlockPercent = 80;
@@ -184,21 +75,29 @@ function createDailyStudy(date: string, video: DailyEnglishVideo): EnglishDailyS
     date,
     videoId: video.videoId,
     title: video.title,
-    durationSeconds: video.estimatedDuration,
+    durationSeconds: video.durationSeconds,
     watchedSeconds: [],
     progressPercent: 0,
     quizStatus: 'locked',
+    quizGenerated: false,
+    quizCompleted: false,
     completed: false,
   };
 }
 
 function getTodayStudy(data: EnglishStudyData, video: DailyEnglishVideo) {
   const today = hojeISO();
-  return data.dailyStudies.find(study => study.date === today) ?? createDailyStudy(today, video);
-}
-
-function getVideoById(videoId: string) {
-  return dailyVideos.find(video => video.videoId === videoId) ?? dailyVideos[0];
+  const savedStudy = data.dailyStudies.find(study => study.date === today);
+  if (!savedStudy) return createDailyStudy(today, video);
+  return {
+    ...createDailyStudy(today, getDailyEnglishVideoById(savedStudy.videoId)),
+    ...savedStudy,
+    watchedSeconds: Array.isArray(savedStudy.watchedSeconds) ? savedStudy.watchedSeconds : [],
+    quizStatus: savedStudy.quizStatus === 'generating' ? 'available' : savedStudy.quizStatus,
+    quizGenerated: Boolean(savedStudy.quizGenerated),
+    quizCompleted: Boolean(savedStudy.quizCompleted),
+    completed: Boolean(savedStudy.completed),
+  };
 }
 
 function mergeDailyStudy(data: EnglishStudyData, study: EnglishDailyStudy): EnglishStudyData {
@@ -211,10 +110,36 @@ function mergeDailyStudy(data: EnglishStudyData, study: EnglishDailyStudy): Engl
   };
 }
 
+function mergeGeneratedQuiz(data: EnglishStudyData, quiz: GeneratedEnglishQuiz): EnglishStudyData {
+  const exists = data.generatedQuizzes.some(item => item.videoId === quiz.videoId);
+  return {
+    ...data,
+    generatedQuizzes: exists
+      ? data.generatedQuizzes.map(item => item.videoId === quiz.videoId ? quiz : item)
+      : [quiz, ...data.generatedQuizzes],
+  };
+}
+
+function addQuizAttempt(data: EnglishStudyData, attempt: EnglishQuizAttempt): EnglishStudyData {
+  return {
+    ...data,
+    quizAttempts: [attempt, ...data.quizAttempts],
+  };
+}
+
 function getGoalStatus(study: EnglishDailyStudy) {
   if (study.completed) return 'Concluída';
-  if (study.watchedSeconds.length > 0 || study.quizScore !== undefined) return 'Em andamento';
+  if (study.watchedSeconds.length > 0 || study.quizScorePercent !== undefined) return 'Em andamento';
   return 'Não iniciada';
+}
+
+function getQuizStatusLabel(study: EnglishDailyStudy, hasQuiz: boolean) {
+  if (study.completed) return 'concluído';
+  if (study.quizStatus === 'generating') return 'gerando';
+  if (study.quizCompleted) return 'respondido';
+  if (study.quizStatus === 'locked') return 'bloqueado';
+  if (hasQuiz || study.quizGenerated) return 'disponível';
+  return 'disponível';
 }
 
 function getWeekSummary(data: EnglishStudyData) {
@@ -249,17 +174,22 @@ export function InglesPage() {
   const [playerStatus, setPlayerStatus] = useState<'loading' | 'ready' | 'playing' | 'paused' | 'unavailable' | 'error'>('loading');
   const [isPlayerPlaying, setIsPlayerPlaying] = useState(false);
   const [answers, setAnswers] = useState<Record<number, number>>({});
+  const [quizLoading, setQuizLoading] = useState(false);
   const [quizMessage, setQuizMessage] = useState('');
   const [shortcutModal, setShortcutModal] = useState<'Biblioteca' | 'Histórico' | 'Configurações' | null>(null);
 
-  const initialVideo = useMemo(() => getVideoById(getTodayStudy(data, dailyVideos[0]).videoId), [data]);
+  const initialVideo = useMemo(() => getDailyEnglishVideoById(getTodayStudy(data, dailyEnglishVideos[0]).videoId), [data]);
   const todayStudy = useMemo(() => getTodayStudy(data, initialVideo), [data, initialVideo]);
-  const currentVideo = useMemo(() => getVideoById(todayStudy.videoId), [todayStudy.videoId]);
+  const currentVideo = useMemo(() => getDailyEnglishVideoById(todayStudy.videoId), [todayStudy.videoId]);
+  const generatedQuiz = useMemo(
+    () => data.generatedQuizzes.find(quiz => quiz.videoId === currentVideo.videoId),
+    [currentVideo.videoId, data.generatedQuizzes],
+  );
   const watchedCount = todayStudy.watchedSeconds.length;
   const progressPercent = Math.min(100, Math.round(todayStudy.progressPercent));
   const quizAvailable = todayStudy.quizStatus !== 'locked';
-  const quizCompleted = todayStudy.quizStatus === 'completed';
-  const quizPercent = todayStudy.quizTotal ? Math.round(((todayStudy.quizScore ?? 0) / todayStudy.quizTotal) * 100) : 0;
+  const quizCompleted = todayStudy.quizCompleted || todayStudy.quizStatus === 'completed';
+  const quizPercent = todayStudy.quizScorePercent ?? (todayStudy.quizTotal ? Math.round(((todayStudy.quizScore ?? 0) / todayStudy.quizTotal) * 100) : 0);
   const weekSummary = useMemo(() => getWeekSummary(data), [data]);
 
   const saveStudy = useCallback(async (study: EnglishDailyStudy, session?: StudySession) => {
@@ -270,13 +200,26 @@ export function InglesPage() {
     await saveEnglishStudyData(userId, withSession);
   }, [userId]);
 
+  const saveData = useCallback(async (nextData: EnglishStudyData) => {
+    latestDataRef.current = nextData;
+    setData(nextData);
+    await saveEnglishStudyData(userId, nextData);
+  }, [userId]);
+
   useEffect(() => {
     let mounted = true;
     getEnglishStudyData(userId)
       .then(studyData => {
         if (!mounted) return;
-        const study = getTodayStudy(studyData, dailyVideos[0]);
-        setData(mergeDailyStudy(studyData, study));
+        const normalizedData = {
+          ...emptyStudyData,
+          ...studyData,
+          dailyStudies: studyData.dailyStudies ?? [],
+          generatedQuizzes: studyData.generatedQuizzes ?? [],
+          quizAttempts: studyData.quizAttempts ?? [],
+        };
+        const study = getTodayStudy(normalizedData, dailyEnglishVideos[0]);
+        setData(mergeDailyStudy(normalizedData, study));
       })
       .catch(err => setError(err instanceof Error ? err.message : 'Erro ao carregar o estudo diário.'))
       .finally(() => {
@@ -312,7 +255,7 @@ export function InglesPage() {
         },
         events: {
           onReady: event => {
-            const duration = Math.floor(event.target.getDuration() || currentVideo.estimatedDuration);
+            const duration = Math.floor(event.target.getDuration() || currentVideo.durationSeconds);
             setPlayerStatus('ready');
             const study = latestStudyRef.current;
             if (study && duration > 0 && Math.abs(study.durationSeconds - duration) > 1) {
@@ -351,7 +294,7 @@ export function InglesPage() {
       playerRef.current?.destroy();
       playerRef.current = null;
     };
-  }, [currentVideo.videoId, currentVideo.estimatedDuration, loading, playerContainerId, saveStudy]);
+  }, [currentVideo.videoId, currentVideo.durationSeconds, loading, playerContainerId, saveStudy]);
 
   useEffect(() => {
     if (!isPlayerPlaying || document.visibilityState !== 'visible') {
@@ -366,7 +309,7 @@ export function InglesPage() {
       if (!player || !study || document.visibilityState !== 'visible') return;
 
       const second = Math.floor(player.getCurrentTime());
-      const duration = Math.floor(player.getDuration() || study.durationSeconds || currentVideo.estimatedDuration);
+      const duration = Math.floor(player.getDuration() || study.durationSeconds || currentVideo.durationSeconds);
       if (second < 0 || second >= duration) return;
 
       const watchedSeconds = uniqueSortedSeconds([...study.watchedSeconds, second]);
@@ -381,7 +324,7 @@ export function InglesPage() {
       if (intervalRef.current) window.clearInterval(intervalRef.current);
       intervalRef.current = null;
     };
-  }, [currentVideo.estimatedDuration, isPlayerPlaying, saveStudy]);
+  }, [currentVideo.durationSeconds, isPlayerPlaying, saveStudy]);
 
   useEffect(() => {
     const handleVisibility = () => {
@@ -405,33 +348,100 @@ export function InglesPage() {
   }
 
   async function handleChangeVideo() {
-    const currentIndex = dailyVideos.findIndex(video => video.videoId === todayStudy.videoId);
-    const nextVideo = dailyVideos[(currentIndex + 1) % dailyVideos.length];
+    const currentIndex = dailyEnglishVideos.findIndex(video => video.videoId === todayStudy.videoId);
+    const nextVideo = dailyEnglishVideos[(currentIndex + 1) % dailyEnglishVideos.length];
     const nextStudy = createDailyStudy(hojeISO(), nextVideo);
     setAnswers({});
     setQuizMessage('');
     await saveStudy(nextStudy);
   }
 
+  async function handleGenerateQuiz() {
+    if (!quizAvailable || quizLoading) return;
+    if (generatedQuiz) {
+      const nextStudy: EnglishDailyStudy = {
+        ...todayStudy,
+        quizStatus: 'available',
+        quizGenerated: true,
+      };
+      await saveStudy(nextStudy);
+      return;
+    }
+
+    setError('');
+    setQuizMessage('');
+    setQuizLoading(true);
+    const generatingStudy: EnglishDailyStudy = {
+      ...todayStudy,
+      quizStatus: 'generating',
+    };
+    await saveStudy(generatingStudy);
+
+    try {
+      const quiz = await generateEnglishQuiz({
+        videoId: currentVideo.videoId,
+        title: currentVideo.title,
+        channel: currentVideo.channel,
+        level: currentVideo.cefrLevel,
+        theme: currentVideo.theme,
+        durationSeconds: todayStudy.durationSeconds,
+        transcript: currentVideo.transcript,
+        summary: currentVideo.summary,
+        questionCount: 5,
+      });
+
+      const nextStudy: EnglishDailyStudy = {
+        ...generatingStudy,
+        quizStatus: 'available',
+        quizGenerated: true,
+      };
+      await saveData(mergeDailyStudy(mergeGeneratedQuiz(latestDataRef.current, quiz), nextStudy));
+      setQuizMessage(quiz.warning ?? 'Questionário gerado com IA.');
+    } catch (err) {
+      const nextStudy: EnglishDailyStudy = {
+        ...generatingStudy,
+        quizStatus: 'available',
+        quizGenerated: false,
+      };
+      await saveStudy(nextStudy);
+      setError(err instanceof Error ? err.message : 'Falha de rede ao gerar questionário.');
+    } finally {
+      setQuizLoading(false);
+    }
+  }
+
   async function handleSubmitQuiz() {
-    if (!quizAvailable || currentVideo.quiz.length === 0) return;
-    const allAnswered = currentVideo.quiz.every((_, index) => answers[index] !== undefined);
+    if (!quizAvailable || !generatedQuiz) return;
+    const allAnswered = generatedQuiz.questions.every((_, index) => answers[index] !== undefined);
     if (!allAnswered) {
       setQuizMessage('Responda todas as perguntas antes de enviar.');
       return;
     }
 
-    const score = currentVideo.quiz.reduce((total, question, index) => total + (answers[index] === question.correctIndex ? 1 : 0), 0);
-    const percent = Math.round((score / currentVideo.quiz.length) * 100);
+    const score = generatedQuiz.questions.reduce((total, question, index) => total + (answers[index] === question.correctIndex ? 1 : 0), 0);
+    const percent = Math.round((score / generatedQuiz.questions.length) * 100);
     const passed = percent >= passingScorePercent;
     const completed = passed && todayStudy.progressPercent >= unlockPercent;
     const nextStudy: EnglishDailyStudy = {
       ...todayStudy,
       quizScore: score,
-      quizTotal: currentVideo.quiz.length,
-      quizStatus: passed ? 'completed' : 'available',
+      quizTotal: generatedQuiz.questions.length,
+      quizScorePercent: percent,
+      quizStatus: passed ? 'completed' : 'answered',
+      quizGenerated: true,
+      quizCompleted: true,
       completed,
       completedAt: completed ? new Date().toISOString() : todayStudy.completedAt,
+    };
+    const attempt: EnglishQuizAttempt = {
+      date: hojeISO(),
+      videoId: currentVideo.videoId,
+      answers: generatedQuiz.questions.map((_, index) => answers[index]),
+      correctCount: score,
+      totalQuestions: generatedQuiz.questions.length,
+      scorePercent: percent,
+      passed,
+      completedAt: new Date().toISOString(),
     };
 
     const session: StudySession | undefined = completed && !todayStudy.completed
@@ -450,9 +460,28 @@ export function InglesPage() {
         }
       : undefined;
 
-    setQuizMessage(passed ? 'Questionário aprovado. Meta diária concluída.' : 'Resultado abaixo de 60%. Revise o vídeo e refaça o questionário.');
-    if (!passed) setAnswers({});
-    await saveStudy(nextStudy, session);
+    setQuizMessage(passed ? 'Questionário aprovado. Meta diária concluída.' : 'Resultado abaixo de 60%. Revise e refaça o questionário.');
+    await saveData(addQuizAttempt(mergeDailyStudy(latestDataRef.current, nextStudy), attempt));
+    if (session) {
+      const withSession = { ...latestDataRef.current, sessions: [session, ...latestDataRef.current.sessions] };
+      await saveData(withSession);
+    }
+  }
+
+  async function handleRetryQuiz() {
+    setAnswers({});
+    setQuizMessage('');
+    const nextStudy: EnglishDailyStudy = {
+      ...todayStudy,
+      quizStatus: 'available',
+      quizCompleted: false,
+      quizScore: undefined,
+      quizTotal: undefined,
+      quizScorePercent: undefined,
+      completed: false,
+      completedAt: undefined,
+    };
+    await saveStudy(nextStudy);
   }
 
   if (loading) {
@@ -479,8 +508,8 @@ export function InglesPage() {
         <CardBody>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <SummaryItem label="Status da meta" value={getGoalStatus(todayStudy)} />
-            <SummaryItem label="Meta" value={`Assistir ${unlockPercent}% do vídeo`} />
-            <SummaryItem label="Questionário" value={quizCompleted ? 'Concluído' : quizAvailable ? 'Liberado' : 'Pendente'} />
+            <SummaryItem label="Progresso do vídeo" value={`${progressPercent}%`} />
+            <SummaryItem label="Questionário" value={getQuizStatusLabel(todayStudy, Boolean(generatedQuiz))} />
           </div>
           <div className="mt-4 rounded-lg bg-surface-50 p-4 text-sm text-surface-700 dark:bg-surface-900/40 dark:text-surface-200">
             Tempo assistido: <strong>{formatTime(watchedCount)}</strong> · Progresso: <strong>{progressPercent}%</strong> · Pontuação:{' '}
@@ -530,15 +559,25 @@ export function InglesPage() {
             <StateNote>Assista pelo menos 80% do vídeo para liberar o questionário.</StateNote>
           )}
 
-          {quizAvailable && currentVideo.quiz.length === 0 && (
-            <StateNote>Este vídeo ainda não possui questionário. Escolha outro vídeo para concluir a meta diária.</StateNote>
+          {quizAvailable && !generatedQuiz && !quizLoading && (
+            <div className="space-y-3">
+              <StateNote>Questionário liberado. Gere perguntas com IA para responder e concluir sua meta.</StateNote>
+              <Button className="w-full sm:w-auto" loading={quizLoading} onClick={handleGenerateQuiz}>
+                Gerar questionário com IA
+              </Button>
+            </div>
           )}
 
-          {quizAvailable && currentVideo.quiz.length > 0 && (
+          {(quizLoading || todayStudy.quizStatus === 'generating') && (
+            <StateNote>Gerando perguntas com IA...</StateNote>
+          )}
+
+          {quizAvailable && generatedQuiz && (
             <>
+              {generatedQuiz.warning && <StateNote>{generatedQuiz.warning}</StateNote>}
               <div className="space-y-4">
-                {currentVideo.quiz.map((question, questionIndex) => (
-                  <fieldset key={question.question} className="rounded-lg border border-surface-200 p-4 dark:border-surface-700">
+                {generatedQuiz.questions.map((question, questionIndex) => (
+                  <fieldset key={question.id} className="rounded-lg border border-surface-200 p-4 dark:border-surface-700">
                     <legend className="px-1 text-sm font-semibold text-surface-900 dark:text-white">{question.question}</legend>
                     <div className="mt-3 space-y-2">
                       {question.options.map((option, optionIndex) => (
@@ -555,6 +594,11 @@ export function InglesPage() {
                         </label>
                       ))}
                     </div>
+                    {quizCompleted && (
+                      <p className="mt-3 text-xs text-surface-500 dark:text-surface-400">
+                        {question.explanation}
+                      </p>
+                    )}
                   </fieldset>
                 ))}
               </div>
@@ -571,6 +615,12 @@ export function InglesPage() {
               {!quizCompleted && (
                 <Button className="w-full sm:w-auto" onClick={handleSubmitQuiz}>
                   Enviar questionário
+                </Button>
+              )}
+
+              {quizCompleted && quizPercent < passingScorePercent && (
+                <Button className="w-full sm:w-auto" variant="secondary" onClick={handleRetryQuiz}>
+                  Refazer questionário
                 </Button>
               )}
             </>
@@ -597,7 +647,7 @@ export function InglesPage() {
 
       <Modal isOpen={shortcutModal !== null} onClose={() => setShortcutModal(null)} title={shortcutModal ?? ''} size="md">
         <div className="space-y-3">
-          {shortcutModal === 'Biblioteca' && dailyVideos.map(video => (
+          {shortcutModal === 'Biblioteca' && dailyEnglishVideos.map(video => (
             <button
               key={video.videoId}
               onClick={() => {

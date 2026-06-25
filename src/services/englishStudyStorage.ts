@@ -29,6 +29,8 @@ export function createEmptyEnglishStudyData(date = hojeISO()): EnglishStudyData 
     speakingPractices: [],
     savedVideos: [],
     dailyStudies: [],
+    generatedQuizzes: [],
+    quizAttempts: [],
   };
 }
 
@@ -42,6 +44,8 @@ function normalizeData(raw: Partial<EnglishStudyData> | null | undefined): Engli
     speakingPractices: raw?.speakingPractices ?? [],
     savedVideos: raw?.savedVideos ?? [],
     dailyStudies: raw?.dailyStudies ?? [],
+    generatedQuizzes: raw?.generatedQuizzes ?? [],
+    quizAttempts: raw?.quizAttempts ?? [],
   };
 }
 
