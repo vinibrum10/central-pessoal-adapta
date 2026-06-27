@@ -29,6 +29,10 @@ export function isDriveConfigurado(): boolean {
   return Boolean(DRIVE_FOLDER_ID && DRIVE_FOLDER_ID.trim() !== '');
 }
 
+export function isDriveConectado(): boolean {
+  return tokenValido() !== null;
+}
+
 export function getMensagemDriveNaoConfigurado(): string {
   return 'Google Drive não configurado. Configure VITE_GOOGLE_DRIVE_FOLDER_ID e conecte sua conta Google para sincronizar leituras.';
 }
@@ -139,13 +143,22 @@ async function getToken(): Promise<string> {
   return conectarGoogleDrive();
 }
 
-function classificarArquivo(nome: string): TipoLeitura {
+function classificarArquivo(nome: string, mimeType?: string, temUrl = false): TipoLeitura {
   const n = nome.toLowerCase();
+  // mimeType tem prioridade: Google Workspace e PDF → documento
+  if (mimeType?.startsWith('application/vnd.google-apps.')) {
+    if (/document|presentation|form|drawing/.test(mimeType)) return 'documento';
+    if (/spreadsheet/.test(mimeType)) return 'documento';
+  }
+  if (mimeType === 'application/pdf') return 'documento';
+  // Classificação pelo nome do arquivo
   if (/vaga|emprego|job|linkedin|curr[ií]culo|resume|career|candidatura|recrutamento|oportunidade/.test(n)) return 'vaga';
   if (/tecnologia|tech|ia\b|ai\b|programação|framework|javascript|python|react|llm|gpt|claude/.test(n)) return 'tecnologia';
   if (/artigo|article|post|blog|paper|pesquisa/.test(n)) return 'artigo';
   if (/doc|documento|relatorio|relatório|draft/.test(n)) return 'documento';
   if (/link|url|http/.test(n)) return 'link';
+  // Arquivo com URL mas sem palavra-chave reconhecida → link (melhor que geral)
+  if (temUrl) return 'link';
   return 'geral';
 }
 
@@ -177,9 +190,12 @@ export async function listarArquivosDaPasta(folderId?: string): Promise<DriveFil
   });
 
   if (!res.ok) {
-    if (res.status === 401) limparEstado();
-    if (res.status === 401 || res.status === 403) {
-      throw new Error('Não foi possível acessar o Google Drive. Verifique permissões da conta Google.');
+    if (res.status === 401) {
+      limparEstado();
+      throw new Error('Sessão do Google Drive expirada. Clique em "Sincronizar Drive" para reconectar.');
+    }
+    if (res.status === 403) {
+      throw new Error('Acesso negado ao Google Drive. Verifique se a pasta está compartilhada com a conta conectada e se o escopo de permissão está correto.');
     }
     const err = await res.json() as { error?: { message?: string } };
     throw new Error(err.error?.message ?? `Erro ${res.status} ao listar Drive.`);
@@ -195,8 +211,8 @@ export async function sincronizarLeiturasDrive(folderId?: string): Promise<Leitu
 }
 
 export function importarArquivoComoLeitura(file: DriveFile): LeituraDiaria {
-  const tipo = classificarArquivo(file.name);
   const url = file.webViewLink ?? file.webContentLink;
+  const tipo = classificarArquivo(file.name, file.mimeType, Boolean(url));
   const categoriaMap: Record<TipoLeitura, string> = {
     vaga: 'Vagas de emprego',
     tecnologia: 'Atualização de tecnologia',
