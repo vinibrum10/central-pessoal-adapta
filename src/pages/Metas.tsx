@@ -220,6 +220,7 @@ export function MetasPage() {
 
     setData(d => {
       const etapas = formAtiva.etapas
+        .slice(0, formAtiva.quantidadeEtapas)
         .map((descricao, index) => ({ numero: index + 1, descricao: descricao.trim() }))
         .filter(etapa => etapa.descricao.length > 0);
       if (metaEditando) {
@@ -752,14 +753,14 @@ export function MetasPage() {
           value={form.quantidadeEtapas}
           onChange={e => {
             const qtd = Math.max(0, Number(e.target.value) || 0);
-            setForm({
-              ...form,
-              quantidadeEtapas: qtd,
-              etapas: Array.from({ length: qtd }, (_, i) => form.etapas[i] ?? ''),
-            });
+            // Grow the array when needed; never shrink (preserves hidden values during edit)
+            const etapas = qtd > form.etapas.length
+              ? [...form.etapas, ...Array(qtd - form.etapas.length).fill('')]
+              : form.etapas;
+            setForm({ ...form, quantidadeEtapas: qtd, etapas });
           }}
         />
-        {form.etapas.map((etapa, index) => (
+        {form.etapas.slice(0, form.quantidadeEtapas).map((etapa, index) => (
           <Input
             key={index}
             id={`meta-etapa-${index + 1}`}

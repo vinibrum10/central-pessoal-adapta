@@ -1249,7 +1249,7 @@ export function AgendaTempoPage() {
                         <Button size="sm" onClick={async () => { await handleSincronizarGoogle(); setModalSincronizar(false); }} icon={<RefreshCw size={12} className={carregandoGoogle ? 'animate-spin' : ''} />} className="flex-1">{carregandoGoogle ? 'Sincronizando…' : 'Sincronizar'}</Button>
                         <Button size="sm" variant="secondary" onClick={() => { handleDesconectarGoogle(); }} icon={<Link2Off size={12} />}>Sair</Button>
                       </>
-                    : <Button size="sm" onClick={async () => { await handleConectarGoogle(); }} icon={<Link2 size={12} />} className="flex-1">{carregandoGoogle ? 'Conectando…' : 'Conectar com Google'}</Button>
+                    : <Button size="sm" onClick={async () => { await handleConectarGoogle(); setModalSincronizar(false); }} icon={<Link2 size={12} />} className="flex-1">{carregandoGoogle ? 'Conectando…' : 'Conectar com Google'}</Button>
                   }
                 </div>
               : <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1"><Info size={11} /> {googleMsg()}</p>
@@ -1274,7 +1274,7 @@ export function AgendaTempoPage() {
                         <Button size="sm" onClick={async () => { await handleSincronizarMs(); setModalSincronizar(false); }} icon={<RefreshCw size={12} className={carregandoMs ? 'animate-spin' : ''} />} className="flex-1">{carregandoMs ? 'Sincronizando…' : 'Sincronizar'}</Button>
                         <Button size="sm" variant="secondary" onClick={() => { handleDesconectarMs(); }} icon={<Link2Off size={12} />}>Sair</Button>
                       </>
-                    : <Button size="sm" onClick={async () => { await handleConectarMs(); }} icon={<Link2 size={12} />} className="flex-1">{carregandoMs ? 'Conectando…' : 'Conectar com Microsoft'}</Button>
+                    : <Button size="sm" onClick={async () => { await handleConectarMs(); setModalSincronizar(false); }} icon={<Link2 size={12} />} className="flex-1">{carregandoMs ? 'Conectando…' : 'Conectar com Microsoft'}</Button>
                   }
                 </div>
               : <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1"><Info size={11} /> {msMsg()}</p>

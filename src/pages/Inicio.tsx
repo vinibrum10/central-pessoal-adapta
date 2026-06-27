@@ -71,7 +71,7 @@ function KpiCard({
           <p className="mt-1 text-2xl font-semibold tracking-tight leading-none text-surface-950 dark:text-white">{value}</p>
           {sub && <p className="mt-1 text-[10px] text-surface-500 dark:text-surface-400 leading-tight truncate">{sub}</p>}
         </div>
-        {icon && <div className={`flex-shrink-0 rounded-lg p-2 ring-1 ${tone}`}>{icon}</div>}
+        {icon && <div className={`hidden sm:flex flex-shrink-0 rounded-lg p-2 ring-1 ${tone}`}>{icon}</div>}
       </div>
     </div>
   );
@@ -97,9 +97,9 @@ function EficienciaCard({ eficiencia, qtd }: { eficiencia: number; qtd: number }
   return (
     <div className="relative overflow-hidden rounded-lg border border-surface-200/80 border-l-[3px] border-l-danger-500 bg-white/90 px-4 py-3 shadow-sm shadow-surface-200/50 dark:border-white/10 dark:border-l-danger-400 dark:bg-surface-900/70 dark:shadow-black/20">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400">Foco do dia</p>
-      <div className="flex items-center gap-3 mt-1">
-        <div className="relative flex-shrink-0 w-14 h-14">
-          <svg width="56" height="56" viewBox="0 0 56 56" className="-rotate-90">
+      <div className="flex items-center gap-2 mt-1">
+        <div className="relative flex-shrink-0 w-10 h-10 sm:w-14 sm:h-14">
+          <svg style={{ width: '100%', height: '100%' }} viewBox="0 0 56 56" className="-rotate-90">
             <circle cx="28" cy="28" r={r} fill="none" stroke="rgba(148,163,184,0.22)" strokeWidth="7" />
             <circle
               cx="28" cy="28" r={r} fill="none"
@@ -111,7 +111,7 @@ function EficienciaCard({ eficiencia, qtd }: { eficiencia: number; qtd: number }
             />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-base font-bold text-surface-950 dark:text-white">{eficiencia}%</span>
+            <span className="text-xs sm:text-base font-bold text-surface-950 dark:text-white">{eficiencia}%</span>
           </div>
         </div>
         <div className="min-w-0">
