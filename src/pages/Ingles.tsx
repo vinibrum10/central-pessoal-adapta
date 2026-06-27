@@ -7,11 +7,13 @@ import { Badge, ProgressBar } from '../components/Badge';
 import { MetricCard, PageHeader } from '../components/DesignSystem';
 import { useAuth } from '../contexts/AuthContext';
 import { dailyEnglishVideos, getDailyEnglishVideoById, type DailyEnglishVideo } from '../data/englishDailyVideos';
+import { buscarVideosIngles, isYouTubeEnglishConfigured, DURACAO_MAX_SECONDS } from '../services/youtubeEnglish';
 import { generateEnglishQuiz } from '../services/englishQuizApi';
 import { getEnglishStudyData, saveEnglishStudyData } from '../services/englishStudyStorage';
 import { gerarId, hojeISO } from '../utils';
 import type {
   EnglishQuizAttempt,
+  EnglishCefrLevel,
   EnglishDailyStudy,
   EnglishStudyData,
   GeneratedEnglishQuiz,
@@ -736,10 +738,11 @@ const NIVEL_CEFR: Record<NivelFiltro, string[]> = {
   'Avançado':      ['C1', 'C2'],
 };
 
-const DURACAO_MAX: Record<DuracaoFiltro, number> = {
-  'curto': 300,
-  'medio': 600,
-  'longo': 1200,
+// Default CEFR representative for each level (used when creating a synthetic DailyEnglishVideo)
+const NIVEL_CEFR_DEFAULT: Record<NivelFiltro, EnglishCefrLevel> = {
+  'Iniciante':     'A2',
+  'Intermediário': 'B1',
+  'Avançado':      'C1',
 };
 
 const DURACAO_LABEL: Record<DuracaoFiltro, string> = {
@@ -748,7 +751,31 @@ const DURACAO_LABEL: Record<DuracaoFiltro, string> = {
   'longo': 'Longo (até 20 min)',
 };
 
-const MAX_RESULTADOS = 3;
+// Unified result type used inside BibliotecaVideos (covers both YouTube API and local fallback)
+interface VideoResult {
+  videoId: string;
+  title: string;
+  channelTitle: string;
+  thumbnailUrl?: string;
+  url: string;
+  durationSeconds: number;
+  cefrLevel?: string;
+  theme?: string;
+}
+
+function toVideoResult(v: DailyEnglishVideo): VideoResult {
+  return {
+    videoId: v.videoId,
+    title: v.title,
+    channelTitle: v.channel,
+    thumbnailUrl: `https://img.youtube.com/vi/${v.videoId}/mqdefault.jpg`,
+    url: `https://www.youtube.com/watch?v=${v.videoId}`,
+    durationSeconds: v.durationSeconds,
+    cefrLevel: v.cefrLevel,
+    theme: v.theme,
+  };
+}
+
 
 function BibliotecaVideos({
   allVideos,
@@ -759,38 +786,185 @@ function BibliotecaVideos({
 }) {
   const [nivel, setNivel] = useState<NivelFiltro | null>(null);
   const [duracao, setDuracao] = useState<DuracaoFiltro | null>(null);
-  const [resultados, setResultados] = useState<DailyEnglishVideo[] | null>(null);
-  const [cycleOffset, setCycleOffset] = useState(0);
+  const [resultados, setResultados] = useState<VideoResult[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [error, setError] = useState('');
+  const [isUsingFallback, setIsUsingFallback] = useState(false);
+  const [noMoreResults, setNoMoreResults] = useState(false);
 
-  const aplicarFiltros = (offset: number) => {
-    const filtered = allVideos.filter(v => {
-      const nivelOk = !nivel || NIVEL_CEFR[nivel].includes(v.cefrLevel);
-      const duracaoOk = !duracao || v.durationSeconds <= DURACAO_MAX[duracao];
-      return nivelOk && duracaoOk;
-    });
-    if (filtered.length === 0) { setResultados([]); return; }
-    const start = offset % filtered.length;
-    const slice = [...filtered.slice(start), ...filtered.slice(0, start)].slice(0, MAX_RESULTADOS);
-    setResultados(slice);
-    setCycleOffset((offset + MAX_RESULTADOS) % Math.max(1, filtered.length));
-  };
+  // Pagination state held in a ref to avoid stale closures between buscar and buscarNovasOpcoes
+  const pageStateRef = useRef<{
+    nextPageToken: string | null;
+    queryIndex: number;
+    seenVideoIds: Set<string>;
+  }>({ nextPageToken: null, queryIndex: 0, seenVideoIds: new Set() });
 
-  const buscar = () => aplicarFiltros(0);
-  const buscarNovasOpcoes = () => aplicarFiltros(cycleOffset);
-
-  const semFiltros = !nivel && !duracao;
   const nivelOpts: NivelFiltro[] = ['Iniciante', 'Intermediário', 'Avançado'];
   const duracaoOpts: DuracaoFiltro[] = ['curto', 'medio', 'longo'];
 
+  function getLocalFallback(): VideoResult[] {
+    const maxSec = duracao ? DURACAO_MAX_SECONDS[duracao] : Infinity;
+    return allVideos
+      .filter(v => {
+        const nivelOk = !nivel || NIVEL_CEFR[nivel].includes(v.cefrLevel);
+        return nivelOk && v.durationSeconds <= maxSec;
+      })
+      .map(toVideoResult);
+  }
+
+  function changeNivel(n: NivelFiltro) {
+    setNivel(prev => (prev === n ? null : n));
+    setHasSearched(false);
+    setResultados([]);
+    setError('');
+    setNoMoreResults(false);
+  }
+
+  function changeDuracao(d: DuracaoFiltro) {
+    setDuracao(prev => (prev === d ? null : d));
+    setHasSearched(false);
+    setResultados([]);
+    setError('');
+    setNoMoreResults(false);
+  }
+
+  async function buscar() {
+    if (!nivel || !duracao) return;
+    setError('');
+    setNoMoreResults(false);
+    setHasSearched(true);
+    pageStateRef.current = { nextPageToken: null, queryIndex: 0, seenVideoIds: new Set() };
+
+    if (!isYouTubeEnglishConfigured()) {
+      setIsUsingFallback(true);
+      const fallback = getLocalFallback();
+      setResultados(fallback);
+      return;
+    }
+
+    setIsUsingFallback(false);
+    setIsLoading(true);
+    setResultados([]);
+
+    try {
+      const result = await buscarVideosIngles({ nivel, duracao, queryIndex: 0 });
+
+      // Mark all fetched (not just displayed) as seen to avoid repeats when "buscar novas opções"
+      const newSeen = new Set(result.videos.map(v => v.id));
+      pageStateRef.current = {
+        nextPageToken: result.nextPageToken,
+        queryIndex: result.queryIndex,
+        seenVideoIds: newSeen,
+      };
+
+      if (result.videos.length === 0) {
+        // YouTube returned nothing matching duration — try local fallback
+        const fallback = getLocalFallback();
+        if (fallback.length > 0) {
+          setIsUsingFallback(true);
+          setResultados(fallback);
+        }
+        // else: setResultados stays [] and hasSearched=true → empty state shows
+      } else {
+        // Show up to 4 results; the rest are "new options" via nextPageToken
+        setResultados(result.videos.slice(0, 4).map(v => ({
+          videoId: v.id,
+          title: v.title,
+          channelTitle: v.channelTitle,
+          thumbnailUrl: v.thumbnailUrl,
+          url: v.url,
+          durationSeconds: v.durationSeconds,
+        })));
+      }
+    } catch (e) {
+      const msg = (e as Error).message;
+      setError(msg);
+      // Show local fallback alongside the error so the screen is not blank
+      const fallback = getLocalFallback();
+      if (fallback.length > 0) {
+        setIsUsingFallback(true);
+        setResultados(fallback);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function buscarNovasOpcoes() {
+    if (!nivel || !duracao || isLoading || isLoadingMore) return;
+
+    if (isUsingFallback) {
+      setNoMoreResults(true);
+      return;
+    }
+
+    const pageState = pageStateRef.current;
+    setError('');
+    setNoMoreResults(false);
+    setIsLoadingMore(true);
+
+    try {
+      // Prefer nextPageToken; fall back to next query variation when the page is exhausted
+      const useNextPage = Boolean(pageState.nextPageToken);
+      const result = await buscarVideosIngles({
+        nivel,
+        duracao,
+        pageToken: useNextPage ? pageState.nextPageToken! : undefined,
+        queryIndex: useNextPage ? pageState.queryIndex : pageState.queryIndex + 1,
+        seenVideoIds: pageState.seenVideoIds,
+      });
+
+      if (result.videos.length === 0 && useNextPage) {
+        // Page was exhausted; try the next query variation immediately
+        const result2 = await buscarVideosIngles({
+          nivel,
+          duracao,
+          queryIndex: pageState.queryIndex + 1,
+          seenVideoIds: pageState.seenVideoIds,
+        });
+
+        if (result2.videos.length === 0) {
+          setNoMoreResults(true);
+        } else {
+          const newSeen = new Set([...pageState.seenVideoIds, ...result2.videos.map(v => v.id)]);
+          pageStateRef.current = { nextPageToken: result2.nextPageToken, queryIndex: result2.queryIndex, seenVideoIds: newSeen };
+          setResultados(result2.videos.slice(0, 4).map(v => ({
+            videoId: v.id, title: v.title, channelTitle: v.channelTitle,
+            thumbnailUrl: v.thumbnailUrl, url: v.url, durationSeconds: v.durationSeconds,
+          })));
+        }
+      } else if (result.videos.length === 0) {
+        setNoMoreResults(true);
+      } else {
+        const newSeen = new Set([...pageState.seenVideoIds, ...result.videos.map(v => v.id)]);
+        pageStateRef.current = { nextPageToken: result.nextPageToken, queryIndex: result.queryIndex, seenVideoIds: newSeen };
+        setResultados(result.videos.slice(0, 4).map(v => ({
+          videoId: v.id, title: v.title, channelTitle: v.channelTitle,
+          thumbnailUrl: v.thumbnailUrl, url: v.url, durationSeconds: v.durationSeconds,
+        })));
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }
+
+  const prontoPraBuscar = nivel !== null && duracao !== null;
+  const buscando = isLoading || isLoadingMore;
+
   return (
     <div className="space-y-4">
+      {/* Filtro Nível */}
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400 mb-2">Nível</p>
         <div className="flex flex-wrap gap-2">
           {nivelOpts.map(n => (
             <button
               key={n}
-              onClick={() => { setNivel(nivel === n ? null : n); setResultados(null); }}
+              onClick={() => changeNivel(n)}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
                 nivel === n
                   ? 'bg-primary-600 text-white'
@@ -801,13 +975,14 @@ function BibliotecaVideos({
         </div>
       </div>
 
+      {/* Filtro Duração */}
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400 mb-2">Duração</p>
         <div className="flex flex-wrap gap-2">
           {duracaoOpts.map(d => (
             <button
               key={d}
-              onClick={() => { setDuracao(duracao === d ? null : d); setResultados(null); }}
+              onClick={() => changeDuracao(d)}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
                 duracao === d
                   ? 'bg-primary-600 text-white'
@@ -818,42 +993,83 @@ function BibliotecaVideos({
         </div>
       </div>
 
+      {/* Botão buscar */}
       <button
-        onClick={buscar}
-        disabled={semFiltros}
+        onClick={() => { void buscar(); }}
+        disabled={!prontoPraBuscar || isLoading}
         className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed"
       >
-        Buscar vídeos
+        {isLoading ? 'Buscando vídeos...' : 'Buscar vídeos'}
       </button>
 
-      {resultados === null && (
-        <p className="text-center text-sm text-surface-400 dark:text-surface-500 py-4">
-          Escolha nível e duração para encontrar vídeos.
+      {/* Aviso fallback */}
+      {isUsingFallback && (
+        <p className="text-xs text-surface-400 dark:text-surface-500 text-center">
+          Sugestões salvas localmente. Configure <code className="font-mono">VITE_YOUTUBE_API_KEY</code> para buscar vídeos reais do YouTube.
         </p>
       )}
 
-      {resultados !== null && resultados.length === 0 && (
+      {/* Erro */}
+      {error && (
+        <div className="rounded-lg border border-danger-200 bg-danger-50 px-3 py-2 text-xs text-danger-700 dark:border-danger-800 dark:bg-danger-900/20 dark:text-danger-300">
+          {error}
+        </div>
+      )}
+
+      {/* Estado inicial sem busca */}
+      {!hasSearched && !isLoading && (
+        <p className="text-center text-sm text-surface-400 dark:text-surface-500 py-4">
+          {prontoPraBuscar
+            ? 'Clique em "Buscar vídeos" para carregar sugestões.'
+            : 'Escolha nível e duração para encontrar vídeos.'}
+        </p>
+      )}
+
+      {/* Estado vazio após busca */}
+      {hasSearched && !isLoading && resultados.length === 0 && !error && (
         <p className="text-center text-sm text-surface-400 dark:text-surface-500 py-4">
           Nenhum vídeo encontrado com esses filtros. Tente outra duração ou nível.
         </p>
       )}
 
-      {resultados !== null && resultados.length > 0 && (
+      {/* Resultados */}
+      {resultados.length > 0 && (
         <div className="space-y-2">
           {resultados.map(video => (
             <div key={video.videoId} className="flex items-start gap-3 rounded-lg border border-surface-200 p-3 dark:border-surface-700">
               <img
-                src={`https://img.youtube.com/vi/${video.videoId}/mqdefault.jpg`}
+                src={video.thumbnailUrl ?? `https://img.youtube.com/vi/${video.videoId}/mqdefault.jpg`}
                 alt={video.title}
                 className="w-24 h-16 object-cover rounded-md flex-shrink-0 bg-surface-100 dark:bg-surface-700"
               />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-surface-900 dark:text-white leading-tight line-clamp-2">{video.title}</p>
                 <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">
-                  {video.channel} · {Math.floor(video.durationSeconds / 60)}min · {video.cefrLevel} · {video.theme}
+                  {video.channelTitle} · {Math.floor(video.durationSeconds / 60)}min
+                  {video.cefrLevel ? ` · ${video.cefrLevel}` : ''}
+                  {video.theme ? ` · ${video.theme}` : ''}
                 </p>
                 <button
-                  onClick={() => onSelectVideo(video)}
+                  onClick={() => {
+                    // Map VideoResult back to DailyEnglishVideo so the existing saveStudy flow is unchanged
+                    const localMatch = allVideos.find(v => v.videoId === video.videoId);
+                    if (localMatch) {
+                      onSelectVideo(localMatch);
+                    } else if (nivel) {
+                      // Synthetic DailyEnglishVideo for YouTube API results not in local list
+                      const synth: DailyEnglishVideo = {
+                        videoId: video.videoId,
+                        title: video.title,
+                        channel: video.channelTitle,
+                        level: nivel === 'Iniciante' ? 'iniciante' : nivel === 'Avançado' ? 'avançado' : 'intermediário',
+                        cefrLevel: NIVEL_CEFR_DEFAULT[nivel],
+                        theme: 'Listening',
+                        durationSeconds: video.durationSeconds,
+                        summary: '',
+                      };
+                      onSelectVideo(synth);
+                    }
+                  }}
                   className="mt-2 rounded-lg bg-primary-600 px-3 py-1 text-xs font-semibold text-white hover:bg-primary-700 transition-all"
                 >
                   Usar como aula de hoje
@@ -861,16 +1077,27 @@ function BibliotecaVideos({
               </div>
             </div>
           ))}
+
+          {/* Buscar novas opções */}
           <div className="pt-1 border-t border-surface-100 dark:border-surface-700">
-            <button
-              onClick={buscarNovasOpcoes}
-              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 px-4 py-2 text-sm text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700 transition-all"
-            >
-              Buscar novas opções
-            </button>
-            <p className="text-center text-[10px] text-surface-400 dark:text-surface-500 mt-1">
-              Não gostou? Busque novas sugestões com os mesmos filtros.
-            </p>
+            {noMoreResults ? (
+              <p className="text-center text-xs text-surface-400 dark:text-surface-500 py-2">
+                Não encontrei novas opções para esses filtros. Tente outro nível ou duração.
+              </p>
+            ) : (
+              <>
+                <button
+                  onClick={() => { void buscarNovasOpcoes(); }}
+                  disabled={buscando || isUsingFallback}
+                  className="w-full rounded-lg border border-surface-200 dark:border-surface-700 px-4 py-2 text-sm text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {isLoadingMore ? 'Buscando novas opções...' : 'Buscar novas opções'}
+                </button>
+                <p className="text-center text-[10px] text-surface-400 dark:text-surface-500 mt-1">
+                  Não gostou? Busque novas sugestões com os mesmos filtros.
+                </p>
+              </>
+            )}
           </div>
         </div>
       )}
