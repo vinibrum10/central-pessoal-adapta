@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   BookOpen, Search, RefreshCw, CheckCircle, Archive,
   ExternalLink, Plus, AlertCircle, Briefcase, Cpu,
@@ -10,7 +10,7 @@ import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { Select } from '../components/FormFields';
 import { gerarId, hojeISO } from '../utils';
-import { isDriveConfigurado, getMensagemDriveNaoConfigurado, sincronizarLeiturasDrive } from '../services/googleDrive';
+import { isDriveConfigurado, isDriveConectado, getMensagemDriveNaoConfigurado, sincronizarLeiturasDrive } from '../services/googleDrive';
 import { leituraRepository } from '../repositories/leituraRepository';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -159,6 +159,7 @@ export function LeituraDiariaPage() {
   const [busca, setBusca] = useState('');
   const [sincronizando, setSincronizando] = useState(false);
   const [msgSync, setMsgSync] = useState('');
+  const [ultimaSinc, setUltimaSinc] = useState<string | null>(null);
   const [modalTarefaAberto, setModalTarefaAberto] = useState(false);
   const [leituraParaTarefa, setLeituraParaTarefa] = useState<LeituraDiaria | null>(null);
   const [metaIdTarefa, setMetaIdTarefa] = useState<string>('');
@@ -183,7 +184,10 @@ export function LeituraDiariaPage() {
       case 'lido': return lista.filter(l => l.status === 'lido');
       case 'arquivado': return lista.filter(l => l.status === 'arquivado');
       case 'importante': return lista.filter(l => l.prioridade === 'importante');
-      case 'vaga': case 'tecnologia': case 'artigo': case 'documento': case 'link': case 'geral':
+      case 'link':
+        // Inclui também itens com URL classificados como 'geral' (importados antes da correção de classificação)
+        return lista.filter(l => (l.tipo === 'link' || (l.tipo === 'geral' && Boolean(l.url))) && l.status !== 'arquivado');
+      case 'vaga': case 'tecnologia': case 'artigo': case 'documento': case 'geral':
         return lista.filter(l => l.tipo === filtro && l.status !== 'arquivado');
       default: return lista.filter(l => l.status !== 'arquivado');
     }
@@ -275,11 +279,25 @@ export function LeituraDiariaPage() {
       } else {
         setMsgSync(novosItens.length === 0 ? 'Nenhuma leitura encontrada nesta pasta.' : 'Nenhum item novo encontrado na pasta do Drive.');
       }
+      setUltimaSinc(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
     } catch (e) {
+      // Itens já carregados permanecem visíveis; apenas exibe o erro
       setMsgSync(`Erro: ${(e as Error).message}`);
     }
     setSincronizando(false);
   };
+
+  // Auto-sync ao abrir a página, se já estiver conectado e com token válido
+  useEffect(() => {
+    if (!isDriveConfigurado()) return;
+    if (!isDriveConectado()) {
+      // Token expirado — mantém itens locais, pede reconexão sem bloquear a tela
+      setMsgSync('Sessão do Google Drive expirada. Clique em "Sincronizar Drive" para reconectar.');
+      return;
+    }
+    sincronizarDrive();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // roda só no mount
 
   const adicionarManual = () => {
     const url = prompt('URL do link para adicionar:');
@@ -369,10 +387,21 @@ export function LeituraDiariaPage() {
         </div>
       )}
 
-      {/* Mensagem sync */}
+      {/* Status de sincronização */}
+      {ultimaSinc && !msgSync && (
+        <p className="text-[11px] text-surface-400 dark:text-surface-500">Sincronizado às {ultimaSinc}</p>
+      )}
       {msgSync && (
-        <div className={`text-xs px-3 py-2 rounded-lg ${msgSync.startsWith('Erro') ? 'bg-danger-50 dark:bg-danger-900/20 text-danger-700 dark:text-danger-300 border border-danger-200 dark:border-danger-800' : 'bg-success-50 dark:bg-success-900/20 text-success-700 dark:text-success-300 border border-success-200 dark:border-success-800'}`}>
-          {msgSync}
+        <div className={`text-xs px-3 py-2 rounded-lg flex items-start gap-2 ${msgSync.startsWith('Erro') || msgSync.includes('expirada') ? 'bg-danger-50 dark:bg-danger-900/20 text-danger-700 dark:text-danger-300 border border-danger-200 dark:border-danger-800' : 'bg-success-50 dark:bg-success-900/20 text-success-700 dark:text-success-300 border border-success-200 dark:border-success-800'}`}>
+          <span className="flex-1">{msgSync}</span>
+          {(msgSync.startsWith('Erro') || msgSync.includes('expirada')) && (
+            <button
+              onClick={() => { setMsgSync(''); sincronizarDrive(); }}
+              className="underline font-medium flex-shrink-0 hover:no-underline"
+            >
+              Reconectar
+            </button>
+          )}
         </div>
       )}
 
