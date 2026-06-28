@@ -70,14 +70,12 @@ export function gerarItensPagarMes(mes: number, ano: number, data: AppData): Ite
   const competencia = `${ano}-${String(mes + 1).padStart(2, '0')}`;
   const items: ItemPagar[] = [];
 
-  // 1. Despesas não-cartão (ou cartão sem faturaId)
+  // 1. Despesas não-cartão. Cartão de crédito sempre entra por fatura consolidada.
   data.despesas
     .filter(d => {
-      if (d.formaPagamento !== 'Cartão de crédito' || !d.faturaId) {
-        const { mes: dm, ano: da } = mesAnoDeIso(d.data);
-        return dm === mes && da === ano;
-      }
-      return false;
+      if (d.formaPagamento === 'Cartão de crédito') return false;
+      const { mes: dm, ano: da } = mesAnoDeIso(d.data);
+      return dm === mes && da === ano;
     })
     .forEach(d => {
       items.push({
@@ -111,6 +109,41 @@ export function gerarItensPagarMes(mes: number, ano: number, data: AppData): Ite
         });
       }
     });
+
+  // 2.1 Fallback consolidado para despesas de cartão antigas sem fatura vinculada.
+  const cartaoSemFaturaPorCartao = new Map<string, number>();
+  data.despesas
+    .filter(d => {
+      if (d.formaPagamento !== 'Cartão de crédito' || d.faturaId || !d.cartaoId) return false;
+      const { mes: dm, ano: da } = mesAnoDeIso(d.data);
+      return dm === mes && da === ano;
+    })
+    .forEach(d => {
+      cartaoSemFaturaPorCartao.set(d.cartaoId!, (cartaoSemFaturaPorCartao.get(d.cartaoId!) ?? 0) + d.valor);
+    });
+
+  cartaoSemFaturaPorCartao.forEach((valor, cartaoId) => {
+    const cartao = data.cartoes.find(c => c.id === cartaoId);
+    const faturaExistente = items.find(item => item.tipo === 'fatura' && item.cartaoId === cartaoId);
+    if (faturaExistente) {
+      const faturaOriginal = (data.faturas ?? []).find(f => f.id === faturaExistente.faturaId);
+      if (!faturaOriginal || faturaOriginal.valorInformado === null) {
+        faturaExistente.valor += valor;
+      }
+      return;
+    }
+    items.push({
+      id: `fatura-${cartaoId}-${competencia}`,
+      tipo: 'fatura',
+      descricao: `Fatura ${cartao?.nome ?? 'Cartão'}`,
+      valor,
+      origemLabel: 'Cartão de crédito',
+      pago: false,
+      cartaoNome: cartao?.nome,
+      competencia,
+      cartaoId,
+    });
+  });
 
   // 3. Parcelas de dívidas
   (data.dividas ?? [])

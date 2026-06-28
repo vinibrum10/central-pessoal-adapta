@@ -52,6 +52,19 @@ interface FormDespesaExtra {
   mesInicioParcelas: string;
 }
 
+type FormAReceber = Omit<AReceber, 'id' | 'dataCriacao' | 'dataAtualizacao'>;
+
+const novoFormAReceber = (mes: number, ano: number): FormAReceber => ({
+  pessoa: '',
+  descricao: '',
+  valor: 0,
+  mes,
+  ano,
+  status: 'a_receber',
+  tipoRecebimento: 'unico',
+  diaPrevisto: 10,
+});
+
 function calcularParcelasPagasAuto(divida: { dataInicio?: string; diaVencimento?: number; totalParcelas: number; parcelasPagas: number }): number {
   if (!divida.dataInicio) return divida.parcelasPagas;
   const inicio = new Date(divida.dataInicio + 'T12:00:00');
@@ -179,15 +192,9 @@ export function OrcamentoPage() {
   const [formBem, setFormBem] = useState<Omit<Bem, 'id' | 'dataCriacao'>>({ nome: '', tipo: 'Carro', valorEstimado: 0, status: 'manter', observacoes: '' });
   const [formBemValorStr, setFormBemValorStr] = useState('');
   const [formFaturaValorStr, setFormFaturaValorStr] = useState('');
-  const [formAReceber, setFormAReceber] = useState<Omit<AReceber, 'id' | 'dataCriacao' | 'dataAtualizacao'>>({
-    pessoa: '',
-    descricao: '',
-    valor: 0,
-    mes: new Date().getMonth() + 1,
-    ano: new Date().getFullYear(),
-    status: 'a_receber',
-  });
+  const [formAReceber, setFormAReceber] = useState<FormAReceber>(() => novoFormAReceber(new Date().getMonth() + 1, new Date().getFullYear()));
   const [formAReceberValorStr, setFormAReceberValorStr] = useState('');
+  const [modalAReceberAcao, setModalAReceberAcao] = useState<null | { itemId: string; tipo: 'receber' | 'desfazer' }>(null);
   const [pendenciasAnterior, setPendenciasAnterior] = useState<null | { mes: number; ano: number; itens: ItemPagar[] }>(null);
   const [msgOrcamento, setMsgOrcamento] = useState('');
 
@@ -263,6 +270,9 @@ export function OrcamentoPage() {
   const totalPagoMes = Math.min(despesasMes, itensPagos.reduce((acc, item) => acc + item.valor, 0));
   const totalEmAbertoMes = Math.max(0, despesasMes - totalPagoMes);
   const aReceberMes = useMemo(() => calcularAReceberMes(mesFiltro.mes, mesFiltro.ano, data), [mesFiltro.mes, mesFiltro.ano, data]);
+  const aReceberAcaoItem = modalAReceberAcao
+    ? (data.aReceber ?? []).find(item => item.id === modalAReceberAcao.itemId)
+    : null;
 
   useEffect(() => {
     if (aba !== 'resumo') return;
@@ -343,24 +353,63 @@ export function OrcamentoPage() {
 
   const salvarAReceber = useCallback(() => {
     const valor = parseBRLMoney(formAReceberValorStr);
-    const registro: AReceber = {
-      id: editandoId ?? gerarId(),
-      ...formAReceber,
-      valor,
-      dataCriacao: editandoId
-        ? (data.aReceber ?? []).find(a => a.id === editandoId)?.dataCriacao ?? hojeISO()
-        : hojeISO(),
-      dataAtualizacao: hojeISO(),
-    };
-    setData(d => ({
-      ...d,
-      aReceber: editandoId
-        ? (d.aReceber ?? []).map(a => a.id === editandoId ? registro : a)
-        : [...(d.aReceber ?? []), registro],
-    }));
+    const tipoRecebimento = formAReceber.tipoRecebimento ?? 'unico';
+    const totalParcelas = Math.max(1, Number(formAReceber.totalParcelas ?? 1));
+    const dataAtualizacao = hojeISO();
+
+    if (editandoId || tipoRecebimento === 'unico' || totalParcelas === 1) {
+      const registro: AReceber = {
+        id: editandoId ?? gerarId(),
+        ...formAReceber,
+        tipoRecebimento: editandoId ? tipoRecebimento : 'unico',
+        valor,
+        totalParcelas: tipoRecebimento === 'parcelado' ? totalParcelas : undefined,
+        parcelaAtual: tipoRecebimento === 'parcelado' ? formAReceber.parcelaAtual : undefined,
+        grupoRecebimentoId: tipoRecebimento === 'parcelado' ? formAReceber.grupoRecebimentoId : undefined,
+        dataCriacao: editandoId
+          ? (data.aReceber ?? []).find(a => a.id === editandoId)?.dataCriacao ?? dataAtualizacao
+          : dataAtualizacao,
+        dataAtualizacao,
+      };
+      setData(d => ({
+        ...d,
+        aReceber: editandoId
+          ? (d.aReceber ?? []).map(a => a.id === editandoId ? registro : a)
+          : [...(d.aReceber ?? []), registro],
+      }));
+    } else {
+      const grupoRecebimentoId = gerarId();
+      const totalCentavos = Math.round(valor * 100);
+      const centavosBase = Math.floor(totalCentavos / totalParcelas);
+      const resto = totalCentavos % totalParcelas;
+      const registros: AReceber[] = Array.from({ length: totalParcelas }, (_, index) => {
+        const mesIndex = formAReceber.mes - 1 + index;
+        const ano = formAReceber.ano + Math.floor(mesIndex / 12);
+        const mes = (mesIndex % 12) + 1;
+        const valorParcela = (centavosBase + (index < resto ? 1 : 0)) / 100;
+        return {
+          id: gerarId(),
+          ...formAReceber,
+          valor: valorParcela,
+          mes,
+          ano,
+          status: 'a_receber',
+          tipoRecebimento: 'parcelado',
+          grupoRecebimentoId,
+          parcelaAtual: index + 1,
+          totalParcelas,
+          dataRecebimento: undefined,
+          receitaVinculadaId: undefined,
+          dataCriacao: dataAtualizacao,
+          dataAtualizacao,
+        };
+      });
+      setData(d => ({ ...d, aReceber: [...(d.aReceber ?? []), ...registros] }));
+    }
+
     setModal(null);
     setEditandoId(null);
-    setFormAReceber({ pessoa: '', descricao: '', valor: 0, mes: mesFiltro.mes + 1, ano: mesFiltro.ano, status: 'a_receber' });
+    setFormAReceber(novoFormAReceber(mesFiltro.mes + 1, mesFiltro.ano));
     setFormAReceberValorStr('');
   }, [data.aReceber, editandoId, formAReceber, formAReceberValorStr, mesFiltro.ano, mesFiltro.mes, setData]);
 
@@ -491,6 +540,9 @@ export function OrcamentoPage() {
       // Gera despesa do mês atual + próximos 11 meses (total 12)
       setData(d => {
         const dataBase = new Date(formDespesaComValor.data + 'T12:00:00');
+        const cartaoId = isCartao && cartaoSelecionadoId ? cartaoSelecionadoId : undefined;
+        const cartao = cartaoId ? d.cartoes.find(c => c.id === cartaoId) : undefined;
+        let faturasAtual = [...(d.faturas ?? [])];
         const novasDespesas: Despesa[] = [];
         for (let i = 0; i < 12; i++) {
           const dt = new Date(dataBase);
@@ -506,15 +558,27 @@ export function OrcamentoPage() {
             new Date(dep.data).getFullYear() === anoDt
           );
           if (!jaExiste) {
+            let faturaId: string | undefined;
+            if (cartaoId) {
+              const competencia = obterCompetenciaFatura(dataStr, cartao?.diaFechamento);
+              const { fatura, isNova } = obterOuCriarFatura(cartaoId, competencia, faturasAtual);
+              if (isNova) faturasAtual = [...faturasAtual, fatura];
+              faturaId = fatura.id;
+            }
             novasDespesas.push({
               id: gerarId(),
               ...formDespesaComValor,
               data: dataStr,
               dataCriacao: hojeISO(),
+              cartaoId,
+              faturaId,
+              tipoCobrancaCartao: isCartao ? 'avista' : undefined,
             });
           }
         }
-        return { ...d, despesas: [...d.despesas, ...novasDespesas] };
+        const todasDespesas = [...d.despesas, ...novasDespesas];
+        faturasAtual = faturasAtual.map(f => recalcularFatura(f, todasDespesas));
+        return { ...d, despesas: todasDespesas, faturas: faturasAtual };
       });
     } else {
       setData(d => {
@@ -1259,7 +1323,7 @@ export function OrcamentoPage() {
               icon={<Plus size={16} />}
               onClick={() => {
                 setEditandoId(null);
-                setFormAReceber({ pessoa: '', descricao: '', valor: 0, mes: mesFiltro.mes + 1, ano: mesFiltro.ano, status: 'a_receber' });
+                setFormAReceber(novoFormAReceber(mesFiltro.mes + 1, mesFiltro.ano));
                 setFormAReceberValorStr('');
                 setModal('aReceber');
               }}
@@ -1291,7 +1355,11 @@ export function OrcamentoPage() {
                     <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-surface-200 p-3 dark:border-surface-700">
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-surface-900 dark:text-white truncate">{item.descricao}</p>
-                        <p className="text-xs text-surface-400">{item.pessoa} · {item.status}</p>
+                        <p className="text-xs text-surface-400">
+                          {item.pessoa} · {item.status}
+                          {item.tipoRecebimento === 'parcelado' && item.parcelaAtual && item.totalParcelas ? ` · parcela ${item.parcelaAtual}/${item.totalParcelas}` : ''}
+                          {item.diaPrevisto ? ` · dia ${item.diaPrevisto}` : ''}
+                        </p>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <span className="text-sm font-semibold text-primary-600 dark:text-primary-400">{formatarDinheiro(item.valor)}</span>
@@ -1309,6 +1377,10 @@ export function OrcamentoPage() {
                             status: item.status,
                             dataRecebimento: item.dataRecebimento,
                             receitaVinculadaId: item.receitaVinculadaId,
+                            tipoRecebimento: item.tipoRecebimento ?? 'unico',
+                            grupoRecebimentoId: item.grupoRecebimentoId,
+                            parcelaAtual: item.parcelaAtual,
+                            totalParcelas: item.totalParcelas,
                           });
                           setFormAReceberValorStr(moneyToInputBR(item.valor));
                           setModal('aReceber');
@@ -1318,22 +1390,7 @@ export function OrcamentoPage() {
                           variant={item.status === 'recebido' ? 'secondary' : 'success'}
                           icon={item.status === 'recebido' ? <RotateCcw size={13} /> : <CheckCircle size={13} />}
                           onClick={() => {
-                            if (item.status === 'recebido') {
-                              const removerReceita = item.receitaVinculadaId && window.confirm('Deseja remover a receita vinculada a este recebimento?');
-                              setData(d => ({
-                                ...d,
-                                receitas: removerReceita ? d.receitas.filter(r => r.id !== item.receitaVinculadaId) : d.receitas,
-                                aReceber: (d.aReceber ?? []).map(a => a.id === item.id
-                                  ? { ...a, status: 'a_receber', dataRecebimento: undefined, receitaVinculadaId: removerReceita ? undefined : a.receitaVinculadaId, dataAtualizacao: hojeISO() }
-                                  : a),
-                              }));
-                              return;
-                            }
-                            const converter = !item.receitaVinculadaId && window.confirm('Quer inserir este valor como Nova Receita?');
-                            setData(d => {
-                              const recebido = marcarRecebimentoComoRecebido(d, item.id);
-                              return converter ? converterRecebimentoEmReceita(recebido, item.id) : recebido;
-                            });
+                            setModalAReceberAcao({ itemId: item.id, tipo: item.status === 'recebido' ? 'desfazer' : 'receber' });
                           }}
                         >
                           {item.status === 'recebido' ? 'Desfazer' : 'Recebido'}
@@ -1349,6 +1406,99 @@ export function OrcamentoPage() {
       )}
 
       {/* MODAIS */}
+      <Modal
+        isOpen={modalAReceberAcao !== null && aReceberAcaoItem !== null}
+        onClose={() => setModalAReceberAcao(null)}
+        title={modalAReceberAcao?.tipo === 'desfazer' ? 'Desfazer recebimento' : 'Marcar como recebido'}
+        size="md"
+      >
+        {aReceberAcaoItem && (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-surface-200 p-3 dark:border-surface-700">
+              <p className="text-sm font-semibold text-surface-900 dark:text-white">{aReceberAcaoItem.descricao}</p>
+              <p className="mt-1 text-xs text-surface-400">
+                {aReceberAcaoItem.pessoa} · {formatarDinheiro(aReceberAcaoItem.valor)}
+                {aReceberAcaoItem.parcelaAtual && aReceberAcaoItem.totalParcelas ? ` · parcela ${aReceberAcaoItem.parcelaAtual}/${aReceberAcaoItem.totalParcelas}` : ''}
+              </p>
+            </div>
+
+            {modalAReceberAcao?.tipo === 'receber' ? (
+              <>
+                <p className="text-sm text-surface-600 dark:text-surface-300">
+                  Como deseja registrar este recebimento?
+                </p>
+                <div className="flex flex-col gap-2">
+                  <Button
+                    variant="success"
+                    onClick={() => {
+                      setData(d => {
+                        const recebido = marcarRecebimentoComoRecebido(d, aReceberAcaoItem.id);
+                        return aReceberAcaoItem.receitaVinculadaId
+                          ? recebido
+                          : converterRecebimentoEmReceita(recebido, aReceberAcaoItem.id);
+                      });
+                      setModalAReceberAcao(null);
+                    }}
+                  >
+                    Recebido e criar receita
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setData(d => marcarRecebimentoComoRecebido(d, aReceberAcaoItem.id));
+                      setModalAReceberAcao(null);
+                    }}
+                  >
+                    Recebido sem criar receita
+                  </Button>
+                  <Button variant="ghost" onClick={() => setModalAReceberAcao(null)}>Cancelar</Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-surface-600 dark:text-surface-300">
+                  Deseja voltar este item para “A receber”?
+                </p>
+                <div className="flex flex-col gap-2">
+                  {aReceberAcaoItem.receitaVinculadaId && (
+                    <Button
+                      variant="danger"
+                      onClick={() => {
+                        setData(d => ({
+                          ...d,
+                          receitas: d.receitas.filter(r => r.id !== aReceberAcaoItem.receitaVinculadaId),
+                          aReceber: (d.aReceber ?? []).map(a => a.id === aReceberAcaoItem.id
+                            ? { ...a, status: 'a_receber', dataRecebimento: undefined, receitaVinculadaId: undefined, dataAtualizacao: hojeISO() }
+                            : a),
+                        }));
+                        setModalAReceberAcao(null);
+                      }}
+                    >
+                      Desfazer e remover receita
+                    </Button>
+                  )}
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setData(d => ({
+                        ...d,
+                        aReceber: (d.aReceber ?? []).map(a => a.id === aReceberAcaoItem.id
+                          ? { ...a, status: 'a_receber', dataRecebimento: undefined, dataAtualizacao: hojeISO() }
+                          : a),
+                      }));
+                      setModalAReceberAcao(null);
+                    }}
+                  >
+                    Desfazer recebimento
+                  </Button>
+                  <Button variant="ghost" onClick={() => setModalAReceberAcao(null)}>Cancelar</Button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </Modal>
+
       <Modal
         isOpen={aba === 'resumo' && pendenciasAnterior !== null}
         onClose={() => {
@@ -1878,14 +2028,72 @@ export function OrcamentoPage() {
         <div className="space-y-4">
           <Input id="ar-pessoa" label="Pessoa / origem" required value={formAReceber.pessoa} onChange={e => setFormAReceber(f => ({ ...f, pessoa: e.target.value }))} placeholder="Ex: Cliente, empresa, familiar..." />
           <Input id="ar-desc" label="Descrição" required value={formAReceber.descricao} onChange={e => setFormAReceber(f => ({ ...f, descricao: e.target.value }))} placeholder="Ex: Reembolso, freelance..." />
-          <Input id="ar-valor" label="Valor (R$)" required type="text" inputMode="decimal" placeholder="0,00" value={formAReceberValorStr} onChange={e => setFormAReceberValorStr(e.target.value)} />
+          <Select
+            id="ar-tipo-recebimento"
+            label="Tipo de recebimento"
+            value={formAReceber.tipoRecebimento ?? 'unico'}
+            disabled={Boolean(editandoId)}
+            onChange={e => setFormAReceber(f => ({
+              ...f,
+              tipoRecebimento: e.target.value as AReceber['tipoRecebimento'],
+              totalParcelas: e.target.value === 'parcelado' ? f.totalParcelas ?? 2 : undefined,
+              parcelaAtual: undefined,
+              grupoRecebimentoId: undefined,
+              status: e.target.value === 'parcelado' ? 'a_receber' : f.status,
+            }))}
+          >
+            <option value="unico">Única parcela</option>
+            <option value="parcelado">Parcelado</option>
+          </Select>
+          <Input
+            id="ar-valor"
+            label={(formAReceber.tipoRecebimento ?? 'unico') === 'parcelado' && !editandoId ? 'Valor total (R$)' : 'Valor (R$)'}
+            required
+            type="text"
+            inputMode="decimal"
+            placeholder="0,00"
+            value={formAReceberValorStr}
+            onChange={e => setFormAReceberValorStr(e.target.value)}
+          />
+          {(formAReceber.tipoRecebimento ?? 'unico') === 'parcelado' && !editandoId && (
+            <Input
+              id="ar-total-parcelas"
+              label="Quantidade de parcelas"
+              required
+              type="number"
+              min="2"
+              max="120"
+              value={formAReceber.totalParcelas ?? 2}
+              onChange={e => setFormAReceber(f => ({ ...f, totalParcelas: Math.max(2, Number(e.target.value) || 2) }))}
+            />
+          )}
           <div className="grid grid-cols-2 gap-3">
-            <Select id="ar-mes" label="Mês" value={String(formAReceber.mes)} onChange={e => setFormAReceber(f => ({ ...f, mes: Number(e.target.value) }))}>
+            <Select id="ar-mes" label={(formAReceber.tipoRecebimento ?? 'unico') === 'parcelado' && !editandoId ? 'Mês inicial' : 'Mês'} value={String(formAReceber.mes)} onChange={e => setFormAReceber(f => ({ ...f, mes: Number(e.target.value) }))}>
               {MESES.map((mes, i) => <option key={mes} value={i + 1}>{mes}</option>)}
             </Select>
-            <Input id="ar-ano" label="Ano" type="number" min="2020" max="2035" value={formAReceber.ano} onChange={e => setFormAReceber(f => ({ ...f, ano: Number(e.target.value) }))} />
+            <Input id="ar-ano" label={(formAReceber.tipoRecebimento ?? 'unico') === 'parcelado' && !editandoId ? 'Ano inicial' : 'Ano'} type="number" min="2020" max="2035" value={formAReceber.ano} onChange={e => setFormAReceber(f => ({ ...f, ano: Number(e.target.value) }))} />
           </div>
-          <Select id="ar-status" label="Status" value={formAReceber.status} onChange={e => setFormAReceber(f => ({ ...f, status: e.target.value as AReceber['status'], dataRecebimento: e.target.value === 'recebido' ? hojeISO() : undefined }))}>
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              id="ar-dia-previsto"
+              label="Dia previsto"
+              type="number"
+              min="1"
+              max="31"
+              value={formAReceber.diaPrevisto ?? ''}
+              onChange={e => setFormAReceber(f => ({ ...f, diaPrevisto: e.target.value ? Number(e.target.value) : undefined }))}
+            />
+            <Select id="ar-forma-prevista" label="Forma prevista" value={formAReceber.formaPrevista ?? ''} onChange={e => setFormAReceber(f => ({ ...f, formaPrevista: e.target.value || undefined }))}>
+              <option value="">Não definida</option>
+              <option value="PIX">PIX</option>
+              <option value="Dinheiro">Dinheiro</option>
+              <option value="Transferência">Transferência</option>
+              <option value="Débito">Débito</option>
+              <option value="Boleto">Boleto</option>
+              <option value="Outro">Outro</option>
+            </Select>
+          </div>
+          <Select id="ar-status" label="Status" value={formAReceber.status} disabled={!editandoId && (formAReceber.tipoRecebimento ?? 'unico') === 'parcelado'} onChange={e => setFormAReceber(f => ({ ...f, status: e.target.value as AReceber['status'], dataRecebimento: e.target.value === 'recebido' ? hojeISO() : undefined }))}>
             <option value="a_receber">A receber</option>
             <option value="recebido">Recebido</option>
             <option value="cancelado">Cancelado</option>

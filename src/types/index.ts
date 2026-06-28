@@ -293,6 +293,10 @@ export interface AReceber {
   valor: number;
   mes: number;
   ano: number;
+  tipoRecebimento?: 'unico' | 'parcelado';
+  grupoRecebimentoId?: string;
+  parcelaAtual?: number;
+  totalParcelas?: number;
   diaPrevisto?: number;
   formaPrevista?: string;
   observacao?: string;
