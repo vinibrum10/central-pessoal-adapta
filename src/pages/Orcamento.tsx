@@ -226,23 +226,8 @@ export function OrcamentoPage() {
   });
   const receitasMes = receitasFiltradas.reduce((a, r) => a + r.valor, 0);
 
-  // Despesas que contam diretamente (não via fatura):
-  // - tudo que não é cartão de crédito
-  // - cartão de crédito SEM faturaId (à vista, sem vínculo com fatura — não duplica)
-  const despesasSemCartao = despesasFiltradas.filter(d =>
-    d.formaPagamento !== 'Cartão de crédito' || !d.faturaId
-  );
   // Faturas com competência no mês filtrado
   const competenciaMesFiltro = `${mesFiltro.ano}-${String(mesFiltro.mes + 1).padStart(2, '0')}`;
-  const faturasMes = (data.faturas ?? []).filter(f => f.competencia === competenciaMesFiltro);
-  // Total de cartões: para cada cartão, usa valorInformado da fatura se existir, senão faturaAtual do cartão
-  const totalCartoes = (data.cartoes ?? []).reduce((total, c) => {
-    const fatura = faturasMes.find(f => f.cartaoId === c.id);
-    // Fatura existe: usa valor informado ou detalhado calculado.
-    if (fatura) return total + calcularValorEfetivo(fatura);
-    // Sem fatura para este mês → usa faturaAtual do cartão como estimativa
-    return total + (c.faturaAtual ?? 0);
-  }, 0);
   // Parcelas de dívidas ativas que vencem no mês filtrado (calculado automaticamente, sem duplicar em data.despesas)
   const parcelasDividasNoMes = useMemo(() => {
     return (data.dividas ?? [])
@@ -263,10 +248,6 @@ export function OrcamentoPage() {
       });
   }, [data.dividas, mesFiltro]);
 
-  const totalParcelasDividas = parcelasDividasNoMes.reduce((a, p) => a + p.valorParcela, 0);
-  // Total do mês = despesas sem cartão + total de faturas dos cartões + parcelas de dívidas
-  const despesasMes = despesasSemCartao.reduce((a, d) => a + d.valor, 0) + totalCartoes + totalParcelasDividas;
-  const saldoMes = receitasMes - despesasMes;
   const totalDividas = data.dividas.reduce((a, d) => a + Math.max(0, d.valorTotal - calcularParcelasPagasAuto(d) * d.valorParcela), 0);
   const totalReservas = data.reservas.reduce((a, r) => a + r.valorAtual, 0);
   const totalMetaReservas = data.reservas.reduce((a, r) => a + r.metaReserva, 0);
@@ -277,8 +258,10 @@ export function OrcamentoPage() {
   const itensPagarMes = useMemo(() => gerarItensPagarMes(mesFiltro.mes, mesFiltro.ano, data), [mesFiltro.mes, mesFiltro.ano, data]);
   const itensEmAberto = itensPagarMes.filter(item => !item.pago);
   const itensPagos = itensPagarMes.filter(item => item.pago);
-  const totalPagarMes = itensPagarMes.reduce((acc, item) => acc + item.valor, 0);
-  const totalPagoMes = itensPagos.reduce((acc, item) => acc + item.valor, 0);
+  const despesasMes = totaisDespesasMes.total;
+  const saldoMes = receitasMes - despesasMes;
+  const totalPagoMes = Math.min(despesasMes, itensPagos.reduce((acc, item) => acc + item.valor, 0));
+  const totalEmAbertoMes = Math.max(0, despesasMes - totalPagoMes);
   const aReceberMes = useMemo(() => calcularAReceberMes(mesFiltro.mes, mesFiltro.ano, data), [mesFiltro.mes, mesFiltro.ano, data]);
 
   useEffect(() => {
@@ -817,7 +800,7 @@ export function OrcamentoPage() {
               <div className="grid grid-cols-2 gap-3 mb-4">
                 <div className="rounded-lg bg-danger-50 dark:bg-danger-900/20 px-3 py-2">
                   <p className="text-xs text-danger-600 dark:text-danger-300">Em aberto</p>
-                  <p className="text-sm font-bold text-danger-700 dark:text-danger-200">{formatarDinheiro(totalPagarMes - totalPagoMes)}</p>
+                  <p className="text-sm font-bold text-danger-700 dark:text-danger-200">{formatarDinheiro(totalEmAbertoMes)}</p>
                 </div>
                 <div className="rounded-lg bg-success-50 dark:bg-success-900/20 px-3 py-2">
                   <p className="text-xs text-success-600 dark:text-success-300">Pago</p>
