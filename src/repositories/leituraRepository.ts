@@ -57,12 +57,13 @@ export const leituraRepository = {
       ])
       .join(',');
     const folderUrlFilter = 'url.ilike.%drive.google.com/drive/folders/%';
+    const legacyDocWithoutFileIdFilter = 'and(drive_file_id.is.null,url.ilike.%docs.google.com/%)';
     const { error } = await supabase
       .from('leituras_diarias')
       .delete()
       .eq('user_id', userId)
       .eq('origem', 'drive')
-      .or([legacyIdFilter, folderUrlFilter].filter(Boolean).join(','));
+      .or([legacyIdFilter, folderUrlFilter, legacyDocWithoutFileIdFilter].filter(Boolean).join(','));
     if (error) throw error;
   },
 
