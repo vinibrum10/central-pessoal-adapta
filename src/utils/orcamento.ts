@@ -1,5 +1,6 @@
-import type { AppData, StatusPagamentoMensal } from '../types';
-import { calcularValorEfetivo } from './faturaCartao';
+import type { AppData, Despesa, FaturaCartao, Receita, StatusPagamentoMensal } from '../types';
+import { calcularValorEfetivo, obterOuCriarFatura, recalcularFatura } from './faturaCartao';
+import { gerarId, hojeISO } from '.';
 
 // ---- Estrutura de item a pagar no mês ----
 export interface ItemPagar {
@@ -164,5 +165,149 @@ export function calcularAReceberMes(mes: number, ano: number, data: AppData) {
   const lista = (data.aReceber ?? []).filter(a => a.mes === mes + 1 && a.ano === ano);
   const totalAReceber = lista.filter(a => a.status === 'a_receber').reduce((s, a) => s + a.valor, 0);
   const totalRecebido = lista.filter(a => a.status === 'recebido').reduce((s, a) => s + a.valor, 0);
-  return { lista, totalAReceber, totalRecebido };
+  return { lista, totalAReceber, totalRecebido, totalEmAberto: totalAReceber };
+}
+
+export function calcularResumoMensal(mes: number, ano: number, data: AppData) {
+  const itens = gerarItensPagarMes(mes, ano, data);
+  const aReceber = calcularAReceberMes(mes, ano, data);
+  const totalPagar = itens.reduce((acc, item) => acc + item.valor, 0);
+  const totalPago = itens.filter(item => item.pago).reduce((acc, item) => acc + item.valor, 0);
+  return { itens, aReceber, totalPagar, totalPago, totalEmAberto: totalPagar - totalPago };
+}
+
+export function verificarPendenciasMesAnterior(mes: number, ano: number, data: AppData): { mes: number; ano: number; itens: ItemPagar[] } {
+  const anterior = mes === 0 ? { mes: 11, ano: ano - 1 } : { mes: mes - 1, ano };
+  const itens = gerarItensPagarMes(anterior.mes, anterior.ano, data).filter(item => !item.pago);
+  return { ...anterior, itens };
+}
+
+export function marcarItemComoPago(data: AppData, item: ItemPagar, mes: number, ano: number): AppData {
+  return alterarStatusPagamentoItem(data, item, mes, ano, true);
+}
+
+export function desfazerPagamentoItem(data: AppData, item: ItemPagar, mes: number, ano: number): AppData {
+  return alterarStatusPagamentoItem(data, item, mes, ano, false);
+}
+
+function alterarStatusPagamentoItem(data: AppData, item: ItemPagar, mes: number, ano: number, pago: boolean): AppData {
+  const statusAtual = data.statusPagamentos ?? [];
+  const itemId = item.tipo === 'fatura' ? item.faturaId ?? item.id : item.id;
+  const existente = statusAtual.find(s => s.itemId === itemId && s.tipo === item.tipo && s.mes === mes && s.ano === ano);
+  const status: StatusPagamentoMensal = {
+    id: existente?.id ?? gerarId(),
+    itemId,
+    tipo: item.tipo,
+    mes,
+    ano,
+    pago,
+    dataPagamento: pago ? hojeISO() : undefined,
+    dataCriacao: existente?.dataCriacao ?? hojeISO(),
+  };
+  const statusPagamentos = existente
+    ? statusAtual.map(s => s.id === existente.id ? status : s)
+    : [...statusAtual, status];
+  const faturas = item.tipo === 'fatura'
+    ? (data.faturas ?? []).map(f => f.id === itemId ? { ...f, status: pago ? 'paga' as const : 'aberta' as const, dataAtualizacao: new Date().toISOString() } : f)
+    : data.faturas;
+  return { ...data, statusPagamentos, faturas };
+}
+
+export function ajustarFaturaCartao(
+  data: AppData,
+  cartaoId: string,
+  competencia: string,
+  valorReal: number,
+  observacoes?: string,
+): { data: AppData; fatura: FaturaCartao; diferenca: number; ajusteCriadoOuAtualizado: boolean; aviso?: string } {
+  let faturasAtual = [...(data.faturas ?? [])];
+  const { fatura, isNova } = obterOuCriarFatura(cartaoId, competencia, faturasAtual);
+  if (isNova) faturasAtual = [...faturasAtual, fatura];
+  const faturaBase = recalcularFatura({ ...fatura, valorInformado: null }, data.despesas);
+  const diferenca = valorReal - faturaBase.valorDetalhado;
+  const [anoStr, mesStr] = competencia.split('-');
+  const ano = Number(anoStr);
+  const mes = Number(mesStr);
+
+  let despesas = [...data.despesas];
+  let ajusteCriadoOuAtualizado = false;
+  if (diferenca > 0) {
+    const ajusteExistente = despesas.find(dep =>
+      dep.origemAjuste === true &&
+      dep.cartaoId === cartaoId &&
+      dep.faturaId === fatura.id &&
+      dep.adjustmentCartaoId === cartaoId &&
+      dep.adjustmentMes === mes &&
+      dep.adjustmentAno === ano
+    );
+    const ajuste: Despesa = {
+      id: ajusteExistente?.id ?? gerarId(),
+      descricao: 'GASTO NÃO IDENTIFICADO',
+      valor: diferenca,
+      data: `${competencia}-01`,
+      categoria: 'Outros',
+      formaPagamento: 'Cartão de crédito',
+      recorrente: false,
+      essencial: false,
+      dataCriacao: ajusteExistente?.dataCriacao ?? hojeISO(),
+      cartaoId,
+      faturaId: fatura.id,
+      tipoCobrancaCartao: 'avista',
+      origemAjuste: true,
+      adjustmentCartaoId: cartaoId,
+      adjustmentMes: mes,
+      adjustmentAno: ano,
+    };
+    despesas = ajusteExistente
+      ? despesas.map(dep => dep.id === ajusteExistente.id ? ajuste : dep)
+      : [...despesas, ajuste];
+    ajusteCriadoOuAtualizado = true;
+  }
+
+  const faturaAtualizada = recalcularFatura({ ...fatura, valorInformado: valorReal > 0 ? valorReal : null, observacoes: observacoes || undefined }, despesas);
+  faturasAtual = faturasAtual.map(f => f.id === faturaAtualizada.id ? faturaAtualizada : f);
+  return {
+    data: { ...data, despesas, faturas: faturasAtual },
+    fatura: faturaAtualizada,
+    diferenca,
+    ajusteCriadoOuAtualizado,
+    aviso: diferenca < 0 ? 'Valor real menor que o calculado. Revise lançamentos ou registre estorno/crédito.' : undefined,
+  };
+}
+
+export function marcarRecebimentoComoRecebido(data: AppData, aReceberId: string): AppData {
+  return {
+    ...data,
+    aReceber: (data.aReceber ?? []).map(item => item.id === aReceberId
+      ? { ...item, status: 'recebido' as const, dataRecebimento: item.dataRecebimento ?? hojeISO(), dataAtualizacao: hojeISO() }
+      : item),
+  };
+}
+
+export function converterRecebimentoEmReceita(data: AppData, aReceberId: string): AppData {
+  const item = (data.aReceber ?? []).find(a => a.id === aReceberId);
+  if (!item || item.receitaVinculadaId) return data;
+  const receitaId = gerarId();
+  const receita: Receita = {
+    id: receitaId,
+    descricao: item.descricao,
+    valor: item.valor,
+    data: `${item.ano}-${String(item.mes).padStart(2, '0')}-${String(item.diaPrevisto ?? 1).padStart(2, '0')}`,
+    mesReferencia: item.mes,
+    anoReferencia: item.ano,
+    categoria: 'Outros',
+    recorrente: false,
+    recorrenciaId: null,
+    recorrenciaTemTermino: false,
+    recorrenciaMesTermino: null,
+    recorrenciaAnoTermino: null,
+    aReceberOrigemId: item.id,
+    statusAReceber: 'recebido',
+    dataCriacao: hojeISO(),
+  };
+  return {
+    ...data,
+    receitas: [...data.receitas, receita],
+    aReceber: (data.aReceber ?? []).map(a => a.id === item.id ? { ...a, receitaVinculadaId: receitaId, dataAtualizacao: hojeISO() } : a),
+  };
 }
