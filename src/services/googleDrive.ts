@@ -62,7 +62,7 @@ export function isDriveConectado(): boolean {
 
 export function getMensagemDriveNaoConfigurado(): string {
   if (!isGoogleIntegrationConfigured('drive')) {
-    return 'Google Drive não configurado. Configure VITE_GOOGLE_CLIENT_ID ou VITE_GOOGLE_DRIVE_CLIENT_ID nas variáveis de ambiente.';
+    return 'Google Drive não configurado. Configure VITE_GOOGLE_CLIENT_ID ou VITE_GOOGLE_DRIVE_CLIENT_ID com um Client ID OAuth válido do Google nas variáveis de ambiente.';
   }
   return 'Google Drive não configurado. Configure VITE_GOOGLE_DRIVE_FOLDER_ID e conecte sua conta Google para sincronizar leituras.';
 }
@@ -72,8 +72,25 @@ export async function conectarGoogleDrive(): Promise<string> {
 }
 
 export async function reconectarGoogleDrive(): Promise<string> {
+  driveLog('Iniciando reconexão Drive', {
+    acao: 'limpar_token_antigo_e_abrir_oauth',
+    escopoSolicitado: getGoogleIntegrationScope('drive'),
+  });
   clearGoogleIntegration('drive');
-  return requestGoogleIntegrationToken('drive', { prompt: 'consent select_account' });
+  const token = await requestGoogleIntegrationToken('drive', { prompt: 'consent select_account' });
+  const tokenInfo = await inspectGoogleIntegrationToken('drive').catch(() => ({
+    present: Boolean(token),
+    valid: false,
+    expectedScope: getGoogleIntegrationScope('drive'),
+    scopes: [],
+  }));
+  driveLog('Reconexão Drive concluída', {
+    tokenRecebido: Boolean(token),
+    escopoEsperado: tokenInfo.expectedScope,
+    possuiDriveReadonly: tokenInfo.valid,
+    escoposToken: tokenInfo.scopes,
+  });
+  return token;
 }
 
 export function desconectarGoogleDrive(): void {
@@ -141,6 +158,7 @@ export async function listarArquivosDaPasta(folderId?: string): Promise<DriveFil
   driveLog('listando pasta', {
     folderId: pasta,
     modulo: 'leitura',
+    subpastaTecnologiaChamada: pasta === SGP_DRIVE_FOLDERS.leituraTecnologia.id,
     tokenStatus: getDriveConnectionStatus(),
     tokenPresente: tokenInfo.present,
     escopoEsperado: tokenInfo.expectedScope,
@@ -162,6 +180,7 @@ export async function listarArquivosDaPasta(folderId?: string): Promise<DriveFil
   driveLog('resposta da API', {
     folderId: pasta,
     modulo: 'leitura',
+    subpastaTecnologiaChamada: pasta === SGP_DRIVE_FOLDERS.leituraTecnologia.id,
     status: res.status,
   });
 
@@ -193,6 +212,7 @@ export async function listarArquivosDaPasta(folderId?: string): Promise<DriveFil
   const files = data.files ?? [];
   driveLog('arquivos retornados', {
     folderId: pasta,
+    subpastaTecnologiaChamada: pasta === SGP_DRIVE_FOLDERS.leituraTecnologia.id,
     quantidade: files.length,
     mimeTypes: Array.from(new Set(files.map(file => file.mimeType))).sort(),
   });

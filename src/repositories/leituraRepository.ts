@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { LeituraDiaria } from '../types';
+import { isLeituraDriveLegada, LEGACY_DRIVE_FOLDER_IDS } from '../services/leituraLegacy';
 
 export const leituraRepository = {
   async listar(userId: string): Promise<LeituraDiaria[]> {
@@ -10,7 +11,7 @@ export const leituraRepository = {
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
     if (error) throw error;
-    return (data ?? []).map(rowToLeitura);
+    return (data ?? []).map(rowToLeitura).filter(item => !isLeituraDriveLegada(item));
   },
 
   async criar(userId: string, l: LeituraDiaria): Promise<void> {
@@ -43,6 +44,25 @@ export const leituraRepository = {
   async excluir(id: string): Promise<void> {
     if (!isSupabaseConfigured) return;
     const { error } = await supabase.from('leituras_diarias').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  async excluirLegadosDrive(userId: string): Promise<void> {
+    if (!isSupabaseConfigured) return;
+    const legacyIdFilter = LEGACY_DRIVE_FOLDER_IDS
+      .flatMap(id => [
+        `drive_file_id.eq.${id}`,
+        `url.ilike.%${id}%`,
+        `titulo.ilike.%${id}%`,
+      ])
+      .join(',');
+    const folderUrlFilter = 'url.ilike.%drive.google.com/drive/folders/%';
+    const { error } = await supabase
+      .from('leituras_diarias')
+      .delete()
+      .eq('user_id', userId)
+      .eq('origem', 'drive')
+      .or([legacyIdFilter, folderUrlFilter].filter(Boolean).join(','));
     if (error) throw error;
   },
 

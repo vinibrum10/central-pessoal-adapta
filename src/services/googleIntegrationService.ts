@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 
 const GSI_URL = 'https://accounts.google.com/gsi/client';
 const TOKENINFO_URL = 'https://www.googleapis.com/oauth2/v3/tokeninfo';
+const GOOGLE_OAUTH_CLIENT_ID_SUFFIX = '.apps.googleusercontent.com';
 
 export type GoogleIntegrationKind = 'calendar' | 'drive';
 export type GoogleIntegrationStatus = 'desconectado' | 'permissao_necessaria' | 'conectado' | 'expirado';
@@ -23,17 +24,20 @@ type TokenInfo = {
 const CONFIG: Record<GoogleIntegrationKind, {
   scope: string;
   storageKey: string;
-  clientId: string | undefined;
+  clientIds: Array<string | undefined>;
 }> = {
   calendar: {
     scope: 'https://www.googleapis.com/auth/calendar.readonly',
     storageKey: 'google_calendar_connection',
-    clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined,
+    clientIds: [import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined],
   },
   drive: {
     scope: 'https://www.googleapis.com/auth/drive.readonly',
     storageKey: 'google_drive_connection',
-    clientId: (import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID || import.meta.env.VITE_GOOGLE_CLIENT_ID) as string | undefined,
+    clientIds: [
+      import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID as string | undefined,
+      import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined,
+    ],
   },
 };
 
@@ -41,9 +45,39 @@ function getConfig(kind: GoogleIntegrationKind) {
   return CONFIG[kind];
 }
 
+function googleIntegrationLog(message: string, details: Record<string, unknown>): void {
+  console.info('[SGP Google OAuth]', message, details);
+}
+
+function googleIntegrationWarn(message: string, details: Record<string, unknown>): void {
+  console.warn('[SGP Google OAuth]', message, details);
+}
+
+function normalizeClientId(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function isValidGoogleOAuthClientId(value: string | null): boolean {
+  return Boolean(value && value.endsWith(GOOGLE_OAUTH_CLIENT_ID_SUFFIX));
+}
+
+function getClientId(kind: GoogleIntegrationKind): string | null {
+  const candidates = getConfig(kind).clientIds.map(normalizeClientId).filter(Boolean) as string[];
+  const invalidCandidates = candidates.filter(candidate => !isValidGoogleOAuthClientId(candidate));
+  if (invalidCandidates.length > 0) {
+    googleIntegrationWarn('Client ID Google ignorado por formato inválido', {
+      integracao: kind,
+      motivo: 'client_id deve terminar com .apps.googleusercontent.com',
+      contemUrl: invalidCandidates.some(candidate => candidate.startsWith('http://') || candidate.startsWith('https://')),
+      contemEscopo: invalidCandidates.some(candidate => candidate.includes('www.googleapis.com/auth/')),
+    });
+  }
+  return candidates.find(candidate => isValidGoogleOAuthClientId(candidate)) ?? null;
+}
+
 export function isGoogleIntegrationConfigured(kind: GoogleIntegrationKind): boolean {
-  const clientId = getConfig(kind).clientId;
-  return Boolean(clientId && clientId.trim() !== '');
+  return getClientId(kind) !== null;
 }
 
 export function getGoogleIntegrationScope(kind: GoogleIntegrationKind): string {
@@ -157,10 +191,11 @@ export async function requestGoogleIntegrationToken(
   options: { prompt?: string } = {},
 ): Promise<string> {
   const config = getConfig(kind);
-  if (!isGoogleIntegrationConfigured(kind)) {
+  const clientId = getClientId(kind);
+  if (!clientId) {
     throw new Error(kind === 'calendar'
       ? 'Google Calendar não configurado. Adicione VITE_GOOGLE_CLIENT_ID nas variáveis de ambiente.'
-      : 'Google Drive não configurado. Configure VITE_GOOGLE_CLIENT_ID ou VITE_GOOGLE_DRIVE_CLIENT_ID.');
+      : 'Google Drive não configurado. Configure VITE_GOOGLE_CLIENT_ID ou VITE_GOOGLE_DRIVE_CLIENT_ID com um Client ID OAuth válido do Google.');
   }
 
   await loadGsi();
@@ -174,7 +209,7 @@ export async function requestGoogleIntegrationToken(
               client_id: string;
               scope: string;
               callback: (resp: { access_token?: string; expires_in?: number; error?: string }) => void;
-            }) => { requestAccessToken: (override?: { prompt?: string }) => void };
+            }) => { requestAccessToken: (override?: { prompt?: string; scope?: string }) => void };
             revoke?: (token: string, cb: () => void) => void;
           };
         };
@@ -186,11 +221,24 @@ export async function requestGoogleIntegrationToken(
       return;
     }
 
+    googleIntegrationLog('Iniciando fluxo OAuth Google', {
+      integracao: kind,
+      endpoint: GSI_URL,
+      escopoSolicitado: config.scope,
+      prompt: options.prompt ?? '',
+      clientIdValido: true,
+      usaPopupGis: true,
+    });
+
     const tokenClient = win.google.accounts.oauth2.initTokenClient({
-      client_id: config.clientId!,
+      client_id: clientId,
       scope: config.scope,
       callback: (resp) => {
         if (resp.error || !resp.access_token) {
+          googleIntegrationWarn('OAuth Google sem token', {
+            integracao: kind,
+            erro: resp.error ?? 'sem_access_token',
+          });
           reject(new Error(resp.error === 'access_denied'
             ? 'Permissão negada. Você pode conectar novamente a qualquer momento.'
             : resp.error ?? 'Falha na autenticação com o Google'));
@@ -200,6 +248,13 @@ export async function requestGoogleIntegrationToken(
           .then(info => {
             const scopes = info?.scopes ?? [config.scope];
             saveConnection(kind, resp.access_token!, resp.expires_in, scopes, 'gsi');
+            googleIntegrationLog('Token Google recebido e validado', {
+              integracao: kind,
+              tokenRecebido: true,
+              escopoEsperado: config.scope,
+              escopoValido: hasScope(scopes, config.scope),
+              escoposToken: scopes,
+            });
             if (!hasScope(scopes, config.scope)) {
               reject(new Error(`Permissão Google insuficiente. Escopo esperado: ${config.scope}.`));
               return;
@@ -208,13 +263,20 @@ export async function requestGoogleIntegrationToken(
           })
           .catch(() => {
             saveConnection(kind, resp.access_token!, resp.expires_in, [config.scope], 'gsi');
+            googleIntegrationLog('Token Google recebido sem tokeninfo conclusivo', {
+              integracao: kind,
+              tokenRecebido: true,
+              escopoAssumido: config.scope,
+            });
             resolve(resp.access_token!);
           });
       },
     });
 
     try {
-      tokenClient.requestAccessToken(options.prompt !== undefined ? { prompt: options.prompt } : undefined);
+      tokenClient.requestAccessToken(options.prompt !== undefined
+        ? { prompt: options.prompt, scope: config.scope }
+        : { scope: config.scope });
     } catch {
       reject(new Error('Popup bloqueado pelo navegador. Permita popups para este site e tente novamente.'));
     }

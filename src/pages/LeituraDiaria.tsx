@@ -22,19 +22,9 @@ import {
 } from '../services/googleDrive';
 import { leituraRepository } from '../repositories/leituraRepository';
 import { useAuth } from '../contexts/AuthContext';
+import { isLeituraDriveLegada } from '../services/leituraLegacy';
 
 type FiltroLeitura = 'todos' | StatusLeitura | TipoLeitura | 'importante';
-
-const LEGACY_DRIVE_FOLDER_IDS = [
-  '1IUBsDA5FZWUJWuwrqjTGvzMy87feVbpD',
-];
-
-function isLeituraDriveLegada(item: LeituraDiaria): boolean {
-  if (item.origem !== 'drive') return false;
-  const haystack = [item.url, item.driveFileId, item.titulo].filter(Boolean).join(' ');
-  if (LEGACY_DRIVE_FOLDER_IDS.some(id => haystack.includes(id))) return true;
-  return Boolean(item.url?.includes('drive.google.com/drive/folders/'));
-}
 
 const tipoIcons: Record<TipoLeitura, typeof BookOpen> = {
   vaga: Briefcase,
@@ -286,8 +276,11 @@ export function LeituraDiariaPage() {
       if (filtradas.length === leiturasAtuais.length) return d;
       return { ...d, leiturasDiarias: filtradas };
     });
-    if (user && removidas.length > 0) {
-      await Promise.allSettled(removidas.map(item => leituraRepository.excluir(item.id)));
+    if (user) {
+      await Promise.allSettled([
+        ...removidas.map(item => leituraRepository.excluir(item.id)),
+        leituraRepository.excluirLegadosDrive(user.id),
+      ]);
     }
     if (showFeedback) {
       setMsgSync(removidas.length > 0
