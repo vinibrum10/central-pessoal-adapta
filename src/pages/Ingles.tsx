@@ -63,8 +63,29 @@ const emptyStudyData: EnglishStudyData = {
 
 const passingScorePercent = 60;
 const unlockPercent = 80;
-const defaultLibraryLevel = 'Intermediário';
-const defaultLibraryDuration: 'curto' | 'medio' | 'longo' = 'medio';
+const ENGLISH_VIDEO_PREF_KEY = 'sgp-english-video-preferences';
+const defaultLibraryLevel: NivelFiltro = 'Intermediário';
+const defaultLibraryDuration: DuracaoFiltro = 'medio';
+
+function getSavedVideoPreferences(): { nivel: NivelFiltro; duracao: DuracaoFiltro } {
+  try {
+    const raw = localStorage.getItem(ENGLISH_VIDEO_PREF_KEY);
+    if (!raw) return { nivel: defaultLibraryLevel, duracao: defaultLibraryDuration };
+    const parsed = JSON.parse(raw) as Partial<{ nivel: NivelFiltro; duracao: DuracaoFiltro }>;
+    const nivelOpts: NivelFiltro[] = ['Iniciante', 'Intermediário', 'Avançado'];
+    const duracaoOpts: DuracaoFiltro[] = ['curto', 'medio', 'longo'];
+    return {
+      nivel: parsed.nivel && nivelOpts.includes(parsed.nivel) ? parsed.nivel : defaultLibraryLevel,
+      duracao: parsed.duracao && duracaoOpts.includes(parsed.duracao) ? parsed.duracao : defaultLibraryDuration,
+    };
+  } catch {
+    return { nivel: defaultLibraryLevel, duracao: defaultLibraryDuration };
+  }
+}
+
+function getLibraryFilterKey(nivel: NivelFiltro, duracao: DuracaoFiltro) {
+  return `${nivel}:${duracao}`;
+}
 
 function formatTime(seconds: number) {
   const safeSeconds = Math.max(0, Math.floor(seconds || 0));
@@ -200,6 +221,9 @@ export function InglesPage() {
   const [quizLoading, setQuizLoading] = useState(false);
   const [quizMessage, setQuizMessage] = useState('');
   const [shortcutModal, setShortcutModal] = useState<'Biblioteca' | 'Histórico' | 'Configurações' | null>(null);
+  const [videoPreferences, setVideoPreferences] = useState(getSavedVideoPreferences);
+  const [libraryResultsByFilter, setLibraryResultsByFilter] = useState<Record<string, VideoResult[]>>({});
+  const [changingVideo, setChangingVideo] = useState(false);
 
   const todayStudy = useMemo(() => getTodayStudy(data, dailyEnglishVideos[0]), [data]);
   const currentVideo = useMemo(() => resolveDailyVideoFromStudy(todayStudy), [todayStudy]);
@@ -213,6 +237,21 @@ export function InglesPage() {
   const quizCompleted = todayStudy.quizCompleted || todayStudy.quizStatus === 'completed';
   const quizPercent = todayStudy.quizScorePercent ?? (todayStudy.quizTotal ? Math.round(((todayStudy.quizScore ?? 0) / todayStudy.quizTotal) * 100) : 0);
   const weekSummary = useMemo(() => getWeekSummary(data), [data]);
+  const selectedNivel = videoPreferences.nivel;
+  const selectedDuracao = videoPreferences.duracao;
+  const selectedFilterKey = getLibraryFilterKey(selectedNivel, selectedDuracao);
+  const cachedVideosForSelectedFilter = libraryResultsByFilter[selectedFilterKey] ?? [];
+
+  const updateVideoPreferences = useCallback((patch: Partial<{ nivel: NivelFiltro; duracao: DuracaoFiltro }>) => {
+    setVideoPreferences(prev => ({ ...prev, ...patch }));
+  }, []);
+
+  const cacheLibraryResults = useCallback((nivel: NivelFiltro, duracao: DuracaoFiltro, videos: VideoResult[]) => {
+    setLibraryResultsByFilter(prev => ({
+      ...prev,
+      [getLibraryFilterKey(nivel, duracao)]: videos,
+    }));
+  }, []);
 
   const saveStudy = useCallback(async (study: EnglishDailyStudy, session?: StudySession) => {
     const nextData = mergeDailyStudy(latestDataRef.current, study);
@@ -221,6 +260,10 @@ export function InglesPage() {
     setData(withSession);
     await saveEnglishStudyData(userId, withSession);
   }, [userId]);
+
+  useEffect(() => {
+    localStorage.setItem(ENGLISH_VIDEO_PREF_KEY, JSON.stringify(videoPreferences));
+  }, [videoPreferences]);
 
   const saveData = useCallback(async (nextData: EnglishStudyData) => {
     latestDataRef.current = nextData;
@@ -416,10 +459,12 @@ export function InglesPage() {
   }
 
   async function handleChangeVideo() {
+    if (changingVideo) return;
     stopWatchTimer();
     setIsPlayerPlaying(false);
     setError('');
     setPlayerStatus('loading');
+    setChangingVideo(true);
     const recentVideoIds = new Set([
       todayStudy.videoId,
       ...latestDataRef.current.dailyStudies.slice(0, 12).map(study => study.videoId),
@@ -428,28 +473,26 @@ export function InglesPage() {
         .filter(Boolean),
     ]);
     let nextVideo: DailyEnglishVideo | null = null;
+    const cachedCandidates = cachedVideosForSelectedFilter.filter(video => !recentVideoIds.has(video.videoId));
 
-    if (isYouTubeEnglishConfigured()) {
+    if (cachedCandidates.length > 0) {
+      nextVideo = videoResultToDailyVideo(cachedCandidates[0], selectedNivel, dailyEnglishVideos);
+    }
+
+    if (!nextVideo && isYouTubeEnglishConfigured()) {
       try {
         for (let queryIndex = 0; queryIndex < 4 && !nextVideo; queryIndex += 1) {
           const result = await buscarVideosIngles({
-            nivel: defaultLibraryLevel,
-            duracao: defaultLibraryDuration,
+            nivel: selectedNivel,
+            duracao: selectedDuracao,
             queryIndex,
             seenVideoIds: recentVideoIds,
           });
           const candidate = result.videos.find(video => !recentVideoIds.has(video.id));
+          const videos = result.videos.map(youtubeResultToVideoResult);
+          if (videos.length > 0) cacheLibraryResults(selectedNivel, selectedDuracao, videos);
           if (candidate) {
-            nextVideo = {
-              videoId: candidate.id,
-              title: candidate.title,
-              channel: candidate.channelTitle,
-              level: 'intermediário',
-              cefrLevel: 'B1',
-              theme: 'Listening',
-              durationSeconds: candidate.durationSeconds,
-              summary: '',
-            };
+            nextVideo = videoResultToDailyVideo(youtubeResultToVideoResult(candidate), selectedNivel, dailyEnglishVideos);
           }
         }
       } catch (err) {
@@ -458,15 +501,28 @@ export function InglesPage() {
     }
 
     if (!nextVideo) {
-      nextVideo = dailyEnglishVideos.find(video => !recentVideoIds.has(video.videoId))
-        ?? dailyEnglishVideos.find(video => video.videoId !== todayStudy.videoId)
-        ?? dailyEnglishVideos[0];
+      const fallback = getLocalFallbackVideos(dailyEnglishVideos, selectedNivel, selectedDuracao)
+        .filter(video => !recentVideoIds.has(video.videoId));
+      if (fallback.length > 0) {
+        cacheLibraryResults(selectedNivel, selectedDuracao, fallback);
+        nextVideo = videoResultToDailyVideo(fallback[0], selectedNivel, dailyEnglishVideos);
+      }
+    }
+
+    if (!nextVideo) {
+      setError('Nenhum vídeo encontrado para esse filtro. Tente outro nível ou duração.');
+      setChangingVideo(false);
+      return;
     }
 
     const nextStudy = createDailyStudy(hojeISO(), nextVideo);
     setAnswers({});
     setQuizMessage('');
-    await saveStudy(nextStudy);
+    try {
+      await saveStudy(nextStudy);
+    } finally {
+      setChangingVideo(false);
+    }
   }
 
   async function handleGenerateQuiz() {
@@ -620,9 +676,53 @@ export function InglesPage() {
           title="Aula de hoje"
           subtitle="Um vídeo curto, progresso real e questionário para fixar."
           icon={<Video size={18} />}
-          action={<Button size="sm" variant="secondary" icon={<RotateCcw size={14} />} onClick={handleChangeVideo}>Trocar vídeo</Button>}
+          action={<Button size="sm" variant="secondary" icon={<RotateCcw size={14} className={changingVideo ? 'animate-spin' : ''} />} onClick={handleChangeVideo} disabled={changingVideo}>{changingVideo ? 'Buscando...' : 'Trocar vídeo'}</Button>}
         />
         <CardBody className="space-y-4">
+          <div className="rounded-lg border border-surface-200 bg-surface-50/80 p-3 dark:border-white/10 dark:bg-white/5">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Preferência da aula</p>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div>
+                <p className="mb-2 text-xs font-medium text-surface-500 dark:text-surface-400">Nível</p>
+                <div className="flex flex-wrap gap-2">
+                  {(['Iniciante', 'Intermediário', 'Avançado'] as NivelFiltro[]).map(nivel => (
+                    <button
+                      key={nivel}
+                      type="button"
+                      onClick={() => updateVideoPreferences({ nivel })}
+                      className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
+                        selectedNivel === nivel
+                          ? 'bg-primary-600 text-white'
+                          : 'bg-white text-surface-600 hover:bg-surface-100 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700'
+                      }`}
+                    >
+                      {nivel}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="mb-2 text-xs font-medium text-surface-500 dark:text-surface-400">Duração</p>
+                <div className="flex flex-wrap gap-2">
+                  {(['curto', 'medio', 'longo'] as DuracaoFiltro[]).map(duracao => (
+                    <button
+                      key={duracao}
+                      type="button"
+                      onClick={() => updateVideoPreferences({ duracao })}
+                      className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
+                        selectedDuracao === duracao
+                          ? 'bg-primary-600 text-white'
+                          : 'bg-white text-surface-600 hover:bg-surface-100 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700'
+                      }`}
+                    >
+                      {DURACAO_LABEL[duracao]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="aspect-video w-full overflow-hidden rounded-lg bg-surface-950 shadow-sm">
             <div id={playerContainerId} className="h-full w-full" />
           </div>
@@ -755,6 +855,12 @@ export function InglesPage() {
           {shortcutModal === 'Biblioteca' && (
             <BibliotecaVideos
               allVideos={dailyEnglishVideos}
+              nivel={selectedNivel}
+              duracao={selectedDuracao}
+              onNivelChange={(nivel) => updateVideoPreferences({ nivel })}
+              onDuracaoChange={(duracao) => updateVideoPreferences({ duracao })}
+              cachedResults={cachedVideosForSelectedFilter}
+              onCacheResults={cacheLibraryResults}
               onSelectVideo={(video) => {
                 setAnswers({});
                 setQuizMessage('');
@@ -838,18 +944,60 @@ function toVideoResult(v: DailyEnglishVideo): VideoResult {
   };
 }
 
+function getLocalFallbackVideos(allVideos: DailyEnglishVideo[], nivel: NivelFiltro, duracao: DuracaoFiltro): VideoResult[] {
+  const maxSec = DURACAO_MAX_SECONDS[duracao];
+  return allVideos
+    .filter(v => NIVEL_CEFR[nivel].includes(v.cefrLevel) && v.durationSeconds <= maxSec)
+    .map(toVideoResult);
+}
+
+function videoResultToDailyVideo(video: VideoResult, nivel: NivelFiltro, allVideos: DailyEnglishVideo[]): DailyEnglishVideo {
+  const localMatch = allVideos.find(v => v.videoId === video.videoId);
+  if (localMatch) return localMatch;
+  return {
+    videoId: video.videoId,
+    title: video.title,
+    channel: video.channelTitle,
+    level: nivel === 'Iniciante' ? 'iniciante' : nivel === 'Avançado' ? 'avançado' : 'intermediário',
+    cefrLevel: NIVEL_CEFR_DEFAULT[nivel],
+    theme: video.theme ?? 'Listening',
+    durationSeconds: video.durationSeconds,
+    summary: '',
+  };
+}
+
+function youtubeResultToVideoResult(video: Awaited<ReturnType<typeof buscarVideosIngles>>['videos'][number]): VideoResult {
+  return {
+    videoId: video.id,
+    title: video.title,
+    channelTitle: video.channelTitle,
+    thumbnailUrl: video.thumbnailUrl,
+    url: video.url,
+    durationSeconds: video.durationSeconds,
+  };
+}
 
 function BibliotecaVideos({
   allVideos,
   onSelectVideo,
+  nivel,
+  duracao,
+  onNivelChange,
+  onDuracaoChange,
+  cachedResults,
+  onCacheResults,
 }: {
   allVideos: DailyEnglishVideo[];
   onSelectVideo: (v: DailyEnglishVideo) => void;
+  nivel: NivelFiltro;
+  duracao: DuracaoFiltro;
+  onNivelChange: (nivel: NivelFiltro) => void;
+  onDuracaoChange: (duracao: DuracaoFiltro) => void;
+  cachedResults: VideoResult[];
+  onCacheResults: (nivel: NivelFiltro, duracao: DuracaoFiltro, videos: VideoResult[]) => void;
 }) {
-  const [nivel, setNivel] = useState<NivelFiltro | null>(null);
-  const [duracao, setDuracao] = useState<DuracaoFiltro | null>(null);
-  const [resultados, setResultados] = useState<VideoResult[]>([]);
-  const [hasSearched, setHasSearched] = useState(false);
+  const [resultados, setResultados] = useState<VideoResult[]>(cachedResults);
+  const [hasSearched, setHasSearched] = useState(cachedResults.length > 0);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState('');
@@ -866,18 +1014,15 @@ function BibliotecaVideos({
   const nivelOpts: NivelFiltro[] = ['Iniciante', 'Intermediário', 'Avançado'];
   const duracaoOpts: DuracaoFiltro[] = ['curto', 'medio', 'longo'];
 
-  function getLocalFallback(): VideoResult[] {
-    const maxSec = duracao ? DURACAO_MAX_SECONDS[duracao] : Infinity;
-    return allVideos
-      .filter(v => {
-        const nivelOk = !nivel || NIVEL_CEFR[nivel].includes(v.cefrLevel);
-        return nivelOk && v.durationSeconds <= maxSec;
-      })
-      .map(toVideoResult);
-  }
+  useEffect(() => {
+    setResultados(cachedResults);
+    setHasSearched(cachedResults.length > 0);
+    setError('');
+    setNoMoreResults(false);
+  }, [cachedResults, nivel, duracao]);
 
   function changeNivel(n: NivelFiltro) {
-    setNivel(prev => (prev === n ? null : n));
+    onNivelChange(n);
     setHasSearched(false);
     setResultados([]);
     setError('');
@@ -885,7 +1030,7 @@ function BibliotecaVideos({
   }
 
   function changeDuracao(d: DuracaoFiltro) {
-    setDuracao(prev => (prev === d ? null : d));
+    onDuracaoChange(d);
     setHasSearched(false);
     setResultados([]);
     setError('');
@@ -893,7 +1038,6 @@ function BibliotecaVideos({
   }
 
   async function buscar() {
-    if (!nivel || !duracao) return;
     setError('');
     setNoMoreResults(false);
     setHasSearched(true);
@@ -901,8 +1045,9 @@ function BibliotecaVideos({
 
     if (!isYouTubeEnglishConfigured()) {
       setIsUsingFallback(true);
-      const fallback = getLocalFallback();
+      const fallback = getLocalFallbackVideos(allVideos, nivel, duracao);
       setResultados(fallback);
+      onCacheResults(nivel, duracao, fallback);
       return;
     }
 
@@ -923,31 +1068,28 @@ function BibliotecaVideos({
 
       if (result.videos.length === 0) {
         // YouTube returned nothing matching duration — try local fallback
-        const fallback = getLocalFallback();
+        const fallback = getLocalFallbackVideos(allVideos, nivel, duracao);
         if (fallback.length > 0) {
           setIsUsingFallback(true);
           setResultados(fallback);
+          onCacheResults(nivel, duracao, fallback);
         }
         // else: setResultados stays [] and hasSearched=true → empty state shows
       } else {
         // Show up to 4 results; the rest are "new options" via nextPageToken
-        setResultados(result.videos.slice(0, 4).map(v => ({
-          videoId: v.id,
-          title: v.title,
-          channelTitle: v.channelTitle,
-          thumbnailUrl: v.thumbnailUrl,
-          url: v.url,
-          durationSeconds: v.durationSeconds,
-        })));
+        const videos = result.videos.slice(0, 4).map(youtubeResultToVideoResult);
+        setResultados(videos);
+        onCacheResults(nivel, duracao, videos);
       }
     } catch (e) {
       const msg = (e as Error).message;
       setError(msg);
       // Show local fallback alongside the error so the screen is not blank
-      const fallback = getLocalFallback();
+      const fallback = getLocalFallbackVideos(allVideos, nivel, duracao);
       if (fallback.length > 0) {
         setIsUsingFallback(true);
         setResultados(fallback);
+        onCacheResults(nivel, duracao, fallback);
       }
     } finally {
       setIsLoading(false);
@@ -955,7 +1097,7 @@ function BibliotecaVideos({
   }
 
   async function buscarNovasOpcoes() {
-    if (!nivel || !duracao || isLoading || isLoadingMore) return;
+    if (isLoading || isLoadingMore) return;
 
     if (isUsingFallback) {
       setNoMoreResults(true);
@@ -992,20 +1134,18 @@ function BibliotecaVideos({
         } else {
           const newSeen = new Set([...pageState.seenVideoIds, ...result2.videos.map(v => v.id)]);
           pageStateRef.current = { nextPageToken: result2.nextPageToken, queryIndex: result2.queryIndex, seenVideoIds: newSeen };
-          setResultados(result2.videos.slice(0, 4).map(v => ({
-            videoId: v.id, title: v.title, channelTitle: v.channelTitle,
-            thumbnailUrl: v.thumbnailUrl, url: v.url, durationSeconds: v.durationSeconds,
-          })));
+          const videos = result2.videos.slice(0, 4).map(youtubeResultToVideoResult);
+          setResultados(videos);
+          onCacheResults(nivel, duracao, videos);
         }
       } else if (result.videos.length === 0) {
         setNoMoreResults(true);
       } else {
         const newSeen = new Set([...pageState.seenVideoIds, ...result.videos.map(v => v.id)]);
         pageStateRef.current = { nextPageToken: result.nextPageToken, queryIndex: result.queryIndex, seenVideoIds: newSeen };
-        setResultados(result.videos.slice(0, 4).map(v => ({
-          videoId: v.id, title: v.title, channelTitle: v.channelTitle,
-          thumbnailUrl: v.thumbnailUrl, url: v.url, durationSeconds: v.durationSeconds,
-        })));
+        const videos = result.videos.slice(0, 4).map(youtubeResultToVideoResult);
+        setResultados(videos);
+        onCacheResults(nivel, duracao, videos);
       }
     } catch (e) {
       setError((e as Error).message);
@@ -1014,7 +1154,6 @@ function BibliotecaVideos({
     }
   }
 
-  const prontoPraBuscar = nivel !== null && duracao !== null;
   const buscando = isLoading || isLoadingMore;
 
   return (
@@ -1023,7 +1162,7 @@ function BibliotecaVideos({
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400 mb-2">Nível</p>
         <div className="flex flex-wrap gap-2">
-          {nivelOpts.map(n => (
+        {nivelOpts.map(n => (
             <button
               key={n}
               onClick={() => changeNivel(n)}
@@ -1058,7 +1197,7 @@ function BibliotecaVideos({
       {/* Botão buscar */}
       <button
         onClick={() => { void buscar(); }}
-        disabled={!prontoPraBuscar || isLoading}
+        disabled={isLoading}
         className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {isLoading ? 'Buscando vídeos...' : 'Buscar vídeos'}
@@ -1081,9 +1220,7 @@ function BibliotecaVideos({
       {/* Estado inicial sem busca */}
       {!hasSearched && !isLoading && (
         <p className="text-center text-sm text-surface-400 dark:text-surface-500 py-4">
-          {prontoPraBuscar
-            ? 'Clique em "Buscar vídeos" para carregar sugestões.'
-            : 'Escolha nível e duração para encontrar vídeos.'}
+          Clique em "Buscar vídeos" para carregar sugestões.
         </p>
       )}
 
@@ -1114,23 +1251,7 @@ function BibliotecaVideos({
                 <button
                   onClick={() => {
                     // Map VideoResult back to DailyEnglishVideo so the existing saveStudy flow is unchanged
-                    const localMatch = allVideos.find(v => v.videoId === video.videoId);
-                    if (localMatch) {
-                      onSelectVideo(localMatch);
-                    } else if (nivel) {
-                      // Synthetic DailyEnglishVideo for YouTube API results not in local list
-                      const synth: DailyEnglishVideo = {
-                        videoId: video.videoId,
-                        title: video.title,
-                        channel: video.channelTitle,
-                        level: nivel === 'Iniciante' ? 'iniciante' : nivel === 'Avançado' ? 'avançado' : 'intermediário',
-                        cefrLevel: NIVEL_CEFR_DEFAULT[nivel],
-                        theme: 'Listening',
-                        durationSeconds: video.durationSeconds,
-                        summary: '',
-                      };
-                      onSelectVideo(synth);
-                    }
+                    onSelectVideo(videoResultToDailyVideo(video, nivel, allVideos));
                   }}
                   className="mt-2 rounded-lg bg-primary-600 px-3 py-1 text-xs font-semibold text-white hover:bg-primary-700 transition-all"
                 >
