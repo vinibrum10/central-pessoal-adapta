@@ -194,6 +194,7 @@ export function OrcamentoPage() {
   const [formFaturaValorStr, setFormFaturaValorStr] = useState('');
   const [formAReceber, setFormAReceber] = useState<FormAReceber>(() => novoFormAReceber(new Date().getMonth() + 1, new Date().getFullYear()));
   const [formAReceberValorStr, setFormAReceberValorStr] = useState('');
+  const [erroAReceber, setErroAReceber] = useState('');
   const [modalAReceberAcao, setModalAReceberAcao] = useState<null | { itemId: string; tipo: 'receber' | 'desfazer' }>(null);
   const [pendenciasAnterior, setPendenciasAnterior] = useState<null | { mes: number; ano: number; itens: ItemPagar[] }>(null);
   const [msgOrcamento, setMsgOrcamento] = useState('');
@@ -356,18 +357,47 @@ export function OrcamentoPage() {
     const tipoRecebimento = formAReceber.tipoRecebimento ?? 'unico';
     const totalParcelas = Math.max(1, Number(formAReceber.totalParcelas ?? 1));
     const dataAtualizacao = hojeISO();
+    const itemAtual = editandoId ? (data.aReceber ?? []).find(a => a.id === editandoId) : undefined;
+    const grupoAtual = itemAtual?.grupoRecebimentoId
+      ? (data.aReceber ?? []).filter(a => a.grupoRecebimentoId === itemAtual.grupoRecebimentoId)
+      : itemAtual
+        ? [itemAtual]
+        : [];
 
-    if (editandoId || tipoRecebimento === 'unico' || totalParcelas === 1) {
+    setErroAReceber('');
+
+    const dividirEmParcelas = (valorTotal: number, quantidade: number) => {
+      const totalCentavos = Math.round(valorTotal * 100);
+      const centavosBase = Math.floor(totalCentavos / quantidade);
+      const resto = totalCentavos % quantidade;
+      return Array.from({ length: quantidade }, (_, index) => (centavosBase + (index < resto ? 1 : 0)) / 100);
+    };
+
+    if (editandoId && itemAtual?.grupoRecebimentoId && tipoRecebimento === 'unico' && grupoAtual.length > 1) {
+      setErroAReceber('Este item faz parte de um recebimento parcelado. Para evitar parcelas órfãs, a conversão para única parcela foi bloqueada por enquanto.');
+      return;
+    }
+
+    if (editandoId && itemAtual?.grupoRecebimentoId && tipoRecebimento === 'parcelado') {
+      const existemParcelasRecebidas = grupoAtual.some(item => item.status === 'recebido' || item.receitaVinculadaId);
+      const totalParcelasAtual = itemAtual.totalParcelas ?? grupoAtual.length;
+      if (existemParcelasRecebidas && totalParcelas !== totalParcelasAtual) {
+        setErroAReceber('Não é possível alterar o parcelamento porque já existem parcelas recebidas.');
+        return;
+      }
+    }
+
+    if (tipoRecebimento === 'unico' || totalParcelas === 1) {
       const registro: AReceber = {
         id: editandoId ?? gerarId(),
         ...formAReceber,
-        tipoRecebimento: editandoId ? tipoRecebimento : 'unico',
+        tipoRecebimento: 'unico',
         valor,
-        totalParcelas: tipoRecebimento === 'parcelado' ? totalParcelas : undefined,
-        parcelaAtual: tipoRecebimento === 'parcelado' ? formAReceber.parcelaAtual : undefined,
-        grupoRecebimentoId: tipoRecebimento === 'parcelado' ? formAReceber.grupoRecebimentoId : undefined,
+        totalParcelas: undefined,
+        parcelaAtual: undefined,
+        grupoRecebimentoId: undefined,
         dataCriacao: editandoId
-          ? (data.aReceber ?? []).find(a => a.id === editandoId)?.dataCriacao ?? dataAtualizacao
+          ? itemAtual?.dataCriacao ?? dataAtualizacao
           : dataAtualizacao,
         dataAtualizacao,
       };
@@ -378,39 +408,50 @@ export function OrcamentoPage() {
           : [...(d.aReceber ?? []), registro],
       }));
     } else {
-      const grupoRecebimentoId = gerarId();
-      const totalCentavos = Math.round(valor * 100);
-      const centavosBase = Math.floor(totalCentavos / totalParcelas);
-      const resto = totalCentavos % totalParcelas;
+      const grupoRecebimentoId = itemAtual?.grupoRecebimentoId ?? gerarId();
+      const valoresParcelas = dividirEmParcelas(valor, totalParcelas);
       const registros: AReceber[] = Array.from({ length: totalParcelas }, (_, index) => {
         const mesIndex = formAReceber.mes - 1 + index;
         const ano = formAReceber.ano + Math.floor(mesIndex / 12);
         const mes = (mesIndex % 12) + 1;
-        const valorParcela = (centavosBase + (index < resto ? 1 : 0)) / 100;
+        const existente = grupoAtual.find(item => item.parcelaAtual === index + 1) ?? (index === 0 ? itemAtual : undefined);
         return {
-          id: gerarId(),
+          id: existente?.id ?? gerarId(),
           ...formAReceber,
-          valor: valorParcela,
+          valor: valoresParcelas[index],
           mes,
           ano,
-          status: 'a_receber',
+          status: existente?.status ?? (index === 0 ? formAReceber.status : 'a_receber'),
           tipoRecebimento: 'parcelado',
           grupoRecebimentoId,
           parcelaAtual: index + 1,
           totalParcelas,
-          dataRecebimento: undefined,
-          receitaVinculadaId: undefined,
-          dataCriacao: dataAtualizacao,
+          dataRecebimento: existente?.dataRecebimento,
+          receitaVinculadaId: existente?.receitaVinculadaId,
+          dataCriacao: existente?.dataCriacao ?? dataAtualizacao,
           dataAtualizacao,
         };
       });
-      setData(d => ({ ...d, aReceber: [...(d.aReceber ?? []), ...registros] }));
+      setData(d => {
+        const idsSubstituidos = new Set([
+          ...(itemAtual ? [itemAtual.id] : []),
+          ...grupoAtual.map(item => item.id),
+        ]);
+        return {
+          ...d,
+          aReceber: [
+            ...(d.aReceber ?? []).filter(item => !idsSubstituidos.has(item.id)),
+            ...registros,
+          ],
+        };
+      });
     }
 
     setModal(null);
     setEditandoId(null);
     setFormAReceber(novoFormAReceber(mesFiltro.mes + 1, mesFiltro.ano));
     setFormAReceberValorStr('');
+    setErroAReceber('');
   }, [data.aReceber, editandoId, formAReceber, formAReceberValorStr, mesFiltro.ano, mesFiltro.mes, setData]);
 
   const salvarReceita = useCallback(() => {
@@ -1325,6 +1366,7 @@ export function OrcamentoPage() {
                 setEditandoId(null);
                 setFormAReceber(novoFormAReceber(mesFiltro.mes + 1, mesFiltro.ano));
                 setFormAReceberValorStr('');
+                setErroAReceber('');
                 setModal('aReceber');
               }}
             >
@@ -1364,15 +1406,24 @@ export function OrcamentoPage() {
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <span className="text-sm font-semibold text-primary-600 dark:text-primary-400">{formatarDinheiro(item.valor)}</span>
                         <button onClick={() => {
+                          const grupo = item.grupoRecebimentoId
+                            ? (data.aReceber ?? [])
+                              .filter(a => a.grupoRecebimentoId === item.grupoRecebimentoId)
+                              .sort((a, b) => (a.parcelaAtual ?? 0) - (b.parcelaAtual ?? 0))
+                            : [];
+                          const primeiraParcela = grupo[0] ?? item;
+                          const valorTotalGrupo = grupo.length > 0
+                            ? grupo.reduce((total, parcela) => total + parcela.valor, 0)
+                            : item.valor;
                           setEditandoId(item.id);
                           setFormAReceber({
                             pessoa: item.pessoa,
                             descricao: item.descricao,
-                            valor: item.valor,
-                            mes: item.mes,
-                            ano: item.ano,
-                            diaPrevisto: item.diaPrevisto,
-                            formaPrevista: item.formaPrevista,
+                            valor: valorTotalGrupo,
+                            mes: primeiraParcela.mes,
+                            ano: primeiraParcela.ano,
+                            diaPrevisto: primeiraParcela.diaPrevisto,
+                            formaPrevista: primeiraParcela.formaPrevista,
                             observacao: item.observacao,
                             status: item.status,
                             dataRecebimento: item.dataRecebimento,
@@ -1380,9 +1431,10 @@ export function OrcamentoPage() {
                             tipoRecebimento: item.tipoRecebimento ?? 'unico',
                             grupoRecebimentoId: item.grupoRecebimentoId,
                             parcelaAtual: item.parcelaAtual,
-                            totalParcelas: item.totalParcelas,
+                            totalParcelas: item.totalParcelas ?? (grupo.length > 0 ? grupo.length : undefined),
                           });
-                          setFormAReceberValorStr(moneyToInputBR(item.valor));
+                          setFormAReceberValorStr(moneyToInputBR(valorTotalGrupo));
+                          setErroAReceber('');
                           setModal('aReceber');
                         }} className="p-1.5 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
                         <Button
@@ -2024,21 +2076,25 @@ export function OrcamentoPage() {
         </div>
       </Modal>
 
-      <Modal isOpen={modal === 'aReceber'} onClose={() => setModal(null)} title={editandoId ? 'Editar A Receber' : 'Novo A Receber'} size="md">
+      <Modal isOpen={modal === 'aReceber'} onClose={() => { setModal(null); setErroAReceber(''); }} title={editandoId ? 'Editar A Receber' : 'Novo A Receber'} size="md">
         <div className="space-y-4">
+          {erroAReceber && (
+            <div className="rounded-lg border border-warning-200 bg-warning-50 px-3 py-2 text-xs text-warning-700 dark:border-warning-800 dark:bg-warning-900/20 dark:text-warning-300">
+              {erroAReceber}
+            </div>
+          )}
           <Input id="ar-pessoa" label="Pessoa / origem" required value={formAReceber.pessoa} onChange={e => setFormAReceber(f => ({ ...f, pessoa: e.target.value }))} placeholder="Ex: Cliente, empresa, familiar..." />
           <Input id="ar-desc" label="Descrição" required value={formAReceber.descricao} onChange={e => setFormAReceber(f => ({ ...f, descricao: e.target.value }))} placeholder="Ex: Reembolso, freelance..." />
           <Select
             id="ar-tipo-recebimento"
             label="Tipo de recebimento"
             value={formAReceber.tipoRecebimento ?? 'unico'}
-            disabled={Boolean(editandoId)}
             onChange={e => setFormAReceber(f => ({
               ...f,
               tipoRecebimento: e.target.value as AReceber['tipoRecebimento'],
               totalParcelas: e.target.value === 'parcelado' ? f.totalParcelas ?? 2 : undefined,
               parcelaAtual: undefined,
-              grupoRecebimentoId: undefined,
+              grupoRecebimentoId: e.target.value === 'parcelado' ? f.grupoRecebimentoId : f.grupoRecebimentoId,
               status: e.target.value === 'parcelado' ? 'a_receber' : f.status,
             }))}
           >
@@ -2047,7 +2103,7 @@ export function OrcamentoPage() {
           </Select>
           <Input
             id="ar-valor"
-            label={(formAReceber.tipoRecebimento ?? 'unico') === 'parcelado' && !editandoId ? 'Valor total (R$)' : 'Valor (R$)'}
+            label={(formAReceber.tipoRecebimento ?? 'unico') === 'parcelado' ? 'Valor total (R$)' : 'Valor (R$)'}
             required
             type="text"
             inputMode="decimal"
@@ -2055,7 +2111,7 @@ export function OrcamentoPage() {
             value={formAReceberValorStr}
             onChange={e => setFormAReceberValorStr(e.target.value)}
           />
-          {(formAReceber.tipoRecebimento ?? 'unico') === 'parcelado' && !editandoId && (
+          {(formAReceber.tipoRecebimento ?? 'unico') === 'parcelado' && (
             <Input
               id="ar-total-parcelas"
               label="Quantidade de parcelas"
@@ -2068,10 +2124,10 @@ export function OrcamentoPage() {
             />
           )}
           <div className="grid grid-cols-2 gap-3">
-            <Select id="ar-mes" label={(formAReceber.tipoRecebimento ?? 'unico') === 'parcelado' && !editandoId ? 'Mês inicial' : 'Mês'} value={String(formAReceber.mes)} onChange={e => setFormAReceber(f => ({ ...f, mes: Number(e.target.value) }))}>
+            <Select id="ar-mes" label={(formAReceber.tipoRecebimento ?? 'unico') === 'parcelado' ? 'Mês inicial' : 'Mês'} value={String(formAReceber.mes)} onChange={e => setFormAReceber(f => ({ ...f, mes: Number(e.target.value) }))}>
               {MESES.map((mes, i) => <option key={mes} value={i + 1}>{mes}</option>)}
             </Select>
-            <Input id="ar-ano" label={(formAReceber.tipoRecebimento ?? 'unico') === 'parcelado' && !editandoId ? 'Ano inicial' : 'Ano'} type="number" min="2020" max="2035" value={formAReceber.ano} onChange={e => setFormAReceber(f => ({ ...f, ano: Number(e.target.value) }))} />
+            <Input id="ar-ano" label={(formAReceber.tipoRecebimento ?? 'unico') === 'parcelado' ? 'Ano inicial' : 'Ano'} type="number" min="2020" max="2035" value={formAReceber.ano} onChange={e => setFormAReceber(f => ({ ...f, ano: Number(e.target.value) }))} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Input
@@ -2100,7 +2156,7 @@ export function OrcamentoPage() {
           </Select>
           <Textarea id="ar-obs" label="Observação" value={formAReceber.observacao ?? ''} onChange={e => setFormAReceber(f => ({ ...f, observacao: e.target.value }))} />
           <div className="flex gap-3 pt-2">
-            <Button variant="secondary" className="flex-1" onClick={() => setModal(null)}>Cancelar</Button>
+            <Button variant="secondary" className="flex-1" onClick={() => { setModal(null); setErroAReceber(''); }}>Cancelar</Button>
             <Button className="flex-1" onClick={salvarAReceber}>Salvar</Button>
           </div>
         </div>
