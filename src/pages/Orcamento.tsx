@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   Plus, Trash2, Pencil, TrendingUp, TrendingDown,
   CreditCard, AlertTriangle, PiggyBank, Package,
-  ChevronLeft, ChevronRight, Info
+  ChevronLeft, ChevronRight, Info, CheckCircle, RotateCcw
 } from 'lucide-react';
 import { parseBRLMoney, moneyToInputBR } from '../utils/money';
 
@@ -13,7 +13,8 @@ import { canCreateExpense, canEditExpense, canDeleteExpense } from '../utils/per
 import type {
   Receita, Despesa, Cartao, Divida, Reserva, Bem,
   CategoriaFinanceira, FormaPagamento, StatusCartao,
-  PrioridadeQuitacao, StatusBem, TipoBem, FaturaCartao
+  PrioridadeQuitacao, StatusBem, TipoBem, FaturaCartao,
+  AReceber, StatusPagamentoMensal
 } from '../types';
 import {
   obterCompetenciaFatura,
@@ -28,6 +29,13 @@ import { Modal } from '../components/Modal';
 import { Input, Select, Textarea, Checkbox } from '../components/FormFields';
 import { DateInputBR } from '../components/DateInputBR';
 import { formatarDinheiro, formatarData, isoParaDataBR, gerarId, hojeISO } from '../utils';
+import {
+  calcularAReceberMes,
+  calcularLimiteDisponivelCartao,
+  calcularLimiteUsadoCartao,
+  gerarItensPagarMes,
+  type ItemPagar,
+} from '../utils/orcamento';
 
 type TipoCobrancaCartao = 'avista' | 'parcelado';
 
@@ -57,7 +65,7 @@ function proximoVencimento(divida: { dataInicio?: string; diaVencimento?: number
   return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
 }
 
-type Aba = 'resumo' | 'receitas' | 'despesas' | 'cartoes' | 'dividas' | 'reserva' | 'bens';
+type Aba = 'resumo' | 'receitas' | 'despesas' | 'cartoes' | 'dividas' | 'reserva' | 'bens' | 'aReceber';
 
 const categoriasReceita: CategoriaFinanceira[] = ['Salário', 'Freelance', 'Investimentos', 'Outros'];
 const categoriasDespesa: CategoriaFinanceira[] = ['Moradia', 'Alimentação', 'Transporte', 'Saúde', 'Educação', 'Lazer', 'Dívidas', 'Cartão', 'Reserva', 'Outros'];
@@ -164,6 +172,15 @@ export function OrcamentoPage() {
   const [formBem, setFormBem] = useState<Omit<Bem, 'id' | 'dataCriacao'>>({ nome: '', tipo: 'Carro', valorEstimado: 0, status: 'manter', observacoes: '' });
   const [formBemValorStr, setFormBemValorStr] = useState('');
   const [formFaturaValorStr, setFormFaturaValorStr] = useState('');
+  const [formAReceber, setFormAReceber] = useState<Omit<AReceber, 'id' | 'dataCriacao' | 'dataAtualizacao'>>({
+    pessoa: '',
+    descricao: '',
+    valor: 0,
+    mes: new Date().getMonth() + 1,
+    ano: new Date().getFullYear(),
+    status: 'a_receber',
+  });
+  const [formAReceberValorStr, setFormAReceberValorStr] = useState('');
 
   useEffect(() => {
     setData(d => {
@@ -212,8 +229,8 @@ export function OrcamentoPage() {
   // Total de cartões: para cada cartão, usa valorInformado da fatura se existir, senão faturaAtual do cartão
   const totalCartoes = (data.cartoes ?? []).reduce((total, c) => {
     const fatura = faturasMes.find(f => f.cartaoId === c.id);
-    // Fatura existe (mesmo sem valorInformado) → usa valorInformado ?? 0 (espelha o card do cartão)
-    if (fatura) return total + (fatura.valorInformado ?? 0);
+    // Fatura existe: usa valor informado ou detalhado calculado.
+    if (fatura) return total + calcularValorEfetivo(fatura);
     // Sem fatura para este mês → usa faturaAtual do cartão como estimativa
     return total + (c.faturaAtual ?? 0);
   }, 0);
@@ -244,12 +261,12 @@ export function OrcamentoPage() {
   const totalDividas = data.dividas.reduce((a, d) => a + Math.max(0, d.valorTotal - calcularParcelasPagasAuto(d) * d.valorParcela), 0);
   const totalReservas = data.reservas.reduce((a, r) => a + r.valorAtual, 0);
   const totalMetaReservas = data.reservas.reduce((a, r) => a + r.metaReserva, 0);
-
-  // Competência atual no formato YYYY-MM
-  const competenciaAtual = useMemo(() => {
-    const h = new Date();
-    return `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}`;
-  }, []);
+  const itensPagarMes = useMemo(() => gerarItensPagarMes(mesFiltro.mes, mesFiltro.ano, data), [mesFiltro.mes, mesFiltro.ano, data]);
+  const itensEmAberto = itensPagarMes.filter(item => !item.pago);
+  const itensPagos = itensPagarMes.filter(item => item.pago);
+  const totalPagarMes = itensPagarMes.reduce((acc, item) => acc + item.valor, 0);
+  const totalPagoMes = itensPagos.reduce((acc, item) => acc + item.valor, 0);
+  const aReceberMes = useMemo(() => calcularAReceberMes(mesFiltro.mes, mesFiltro.ano, data), [mesFiltro.mes, mesFiltro.ano, data]);
 
   const abrirModal = (tipo: string, item?: { id: string }) => {
     setEditandoId(item?.id ?? null);
@@ -318,6 +335,59 @@ export function OrcamentoPage() {
       return { ...d, despesas: novasDespesas, faturas: faturasAtual };
     });
   }, [setData]);
+
+  const alterarPagamentoMensal = useCallback((item: ItemPagar, pago: boolean) => {
+    setData(d => {
+      const statusAtual = d.statusPagamentos ?? [];
+      const itemId = item.tipo === 'fatura' ? item.faturaId ?? item.id : item.id;
+      const existente = statusAtual.find(s =>
+        s.itemId === itemId &&
+        s.tipo === item.tipo &&
+        s.mes === mesFiltro.mes &&
+        s.ano === mesFiltro.ano
+      );
+      const novoStatus: StatusPagamentoMensal = {
+        id: existente?.id ?? gerarId(),
+        itemId,
+        tipo: item.tipo,
+        mes: mesFiltro.mes,
+        ano: mesFiltro.ano,
+        pago,
+        dataPagamento: pago ? hojeISO() : undefined,
+        dataCriacao: existente?.dataCriacao ?? hojeISO(),
+      };
+      const statusPagamentos = existente
+        ? statusAtual.map(s => s.id === existente.id ? novoStatus : s)
+        : [...statusAtual, novoStatus];
+      const faturas = item.tipo === 'fatura'
+        ? (d.faturas ?? []).map(f => f.id === itemId ? { ...f, status: pago ? 'paga' as const : 'aberta' as const, dataAtualizacao: new Date().toISOString() } : f)
+        : d.faturas;
+      return { ...d, statusPagamentos, faturas };
+    });
+  }, [mesFiltro.ano, mesFiltro.mes, setData]);
+
+  const salvarAReceber = useCallback(() => {
+    const valor = parseBRLMoney(formAReceberValorStr);
+    const registro: AReceber = {
+      id: editandoId ?? gerarId(),
+      ...formAReceber,
+      valor,
+      dataCriacao: editandoId
+        ? (data.aReceber ?? []).find(a => a.id === editandoId)?.dataCriacao ?? hojeISO()
+        : hojeISO(),
+      dataAtualizacao: hojeISO(),
+    };
+    setData(d => ({
+      ...d,
+      aReceber: editandoId
+        ? (d.aReceber ?? []).map(a => a.id === editandoId ? registro : a)
+        : [...(d.aReceber ?? []), registro],
+    }));
+    setModal(null);
+    setEditandoId(null);
+    setFormAReceber({ pessoa: '', descricao: '', valor: 0, mes: mesFiltro.mes + 1, ano: mesFiltro.ano, status: 'a_receber' });
+    setFormAReceberValorStr('');
+  }, [data.aReceber, editandoId, formAReceber, formAReceberValorStr, mesFiltro.ano, mesFiltro.mes, setData]);
 
   const salvarReceita = useCallback(() => {
     const valorFinal = parseBRLMoney(formReceitaValorStr);
@@ -644,6 +714,7 @@ export function OrcamentoPage() {
     { id: 'dividas', label: 'Dívidas' },
     { id: 'reserva', label: 'Reserva' },
     { id: 'bens', label: 'Bens' },
+    { id: 'aReceber', label: 'A Receber' },
   ];
 
   return (
@@ -721,6 +792,62 @@ export function OrcamentoPage() {
               <p className="text-xs text-surface-400 dark:text-surface-500 mt-1">
                 {receitasMes > 0 ? `${Math.round((despesasMes / receitasMes) * 100)}% da renda comprometida` : 'Sem receitas cadastradas este mês'}
               </p>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader title="Contas do mês" icon={<CheckCircle size={18} />} />
+            <CardBody>
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div className="rounded-lg bg-danger-50 dark:bg-danger-900/20 px-3 py-2">
+                  <p className="text-xs text-danger-600 dark:text-danger-300">Em aberto</p>
+                  <p className="text-sm font-bold text-danger-700 dark:text-danger-200">{formatarDinheiro(totalPagarMes - totalPagoMes)}</p>
+                </div>
+                <div className="rounded-lg bg-success-50 dark:bg-success-900/20 px-3 py-2">
+                  <p className="text-xs text-success-600 dark:text-success-300">Pago</p>
+                  <p className="text-sm font-bold text-success-700 dark:text-success-200">{formatarDinheiro(totalPagoMes)}</p>
+                </div>
+              </div>
+
+              {itensPagarMes.length === 0 ? (
+                <p className="text-center py-6 text-surface-400">Nenhuma conta para pagar em {MESES[mesFiltro.mes]} {mesFiltro.ano}</p>
+              ) : (
+                <div className="space-y-4">
+                  {[
+                    { titulo: 'Em aberto', itens: itensEmAberto },
+                    { titulo: 'Pago', itens: itensPagos },
+                  ].map(grupo => (
+                    <div key={grupo.titulo} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-semibold uppercase tracking-wide text-surface-400">{grupo.titulo}</h4>
+                        <span className="text-xs text-surface-400">{grupo.itens.length} item{grupo.itens.length === 1 ? '' : 's'}</span>
+                      </div>
+                      {grupo.itens.length === 0 ? (
+                        <p className="text-xs text-surface-400">Nenhum item.</p>
+                      ) : grupo.itens.map(item => (
+                        <div key={`${item.tipo}-${item.id}`} className="flex items-center justify-between gap-3 rounded-xl border border-surface-200 p-3 dark:border-surface-700">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-surface-900 dark:text-white truncate" title={item.descricao}>{item.descricao}</p>
+                            <p className="text-xs text-surface-400 dark:text-surface-500">{item.origemLabel} · {item.tipo}</p>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className={`text-sm font-semibold ${item.pago ? 'text-success-600 dark:text-success-400' : 'text-danger-600 dark:text-danger-400'}`}>{formatarDinheiro(item.valor)}</span>
+                            {item.pago ? (
+                              <Button size="sm" variant="secondary" icon={<RotateCcw size={13} />} onClick={() => alterarPagamentoMensal(item, false)}>
+                                Desfazer
+                              </Button>
+                            ) : (
+                              <Button size="sm" variant="success" icon={<CheckCircle size={13} />} onClick={() => alterarPagamentoMensal(item, true)}>
+                                Pago
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardBody>
           </Card>
 
@@ -927,9 +1054,12 @@ export function OrcamentoPage() {
                     </div>
                   </div>
                   {(() => {
-                    const faturasMesAtual = (data.faturas ?? []).filter(f => f.cartaoId === c.id && f.competencia === competenciaAtual);
+                    const faturasMesAtual = (data.faturas ?? []).filter(f => f.cartaoId === c.id && f.competencia === competenciaMesFiltro);
                     const faturaAtualMes = faturasMesAtual[0];
                     const valorEfetivo = faturaAtualMes ? calcularValorEfetivo(faturaAtualMes) : c.faturaAtual;
+                    const itemFatura = faturaAtualMes ? itensPagarMes.find(item => item.tipo === 'fatura' && item.faturaId === faturaAtualMes.id) : undefined;
+                    const limiteUsado = calcularLimiteUsadoCartao(c.id, data);
+                    const limiteDisponivel = calcularLimiteDisponivelCartao(c.id, c.limite, data);
                     const usarLimite = c.limite > 0;
                     return (
                       <div className="space-y-2">
@@ -955,7 +1085,22 @@ export function OrcamentoPage() {
                           <span className="text-surface-500">Limite</span>
                           <span className="text-surface-700 dark:text-surface-300">{formatarDinheiro(c.limite)}</span>
                         </div>
-                        {usarLimite && <ProgressBar value={(valorEfetivo / c.limite) * 100} color={valorEfetivo / c.limite > 0.8 ? 'danger' : valorEfetivo / c.limite > 0.5 ? 'warning' : 'success'} showLabel height="md" />}
+                        <div className="flex justify-between text-xs text-surface-400">
+                          <span>Usado: {formatarDinheiro(limiteUsado)}</span>
+                          <span>Disponível: {formatarDinheiro(limiteDisponivel)}</span>
+                        </div>
+                        {usarLimite && <ProgressBar value={(limiteUsado / c.limite) * 100} color={limiteUsado / c.limite > 0.8 ? 'danger' : limiteUsado / c.limite > 0.5 ? 'warning' : 'success'} showLabel height="md" />}
+                        {itemFatura && (
+                          <Button
+                            size="sm"
+                            variant={itemFatura.pago ? 'secondary' : 'success'}
+                            icon={itemFatura.pago ? <RotateCcw size={13} /> : <CheckCircle size={13} />}
+                            className="w-full"
+                            onClick={() => alterarPagamentoMensal(itemFatura, !itemFatura.pago)}
+                          >
+                            {itemFatura.pago ? 'Desfazer pagamento' : 'Marcar fatura paga'}
+                          </Button>
+                        )}
                         <button
                           onClick={() => abrirModalFatura(c.id, competenciaMesFiltro)}
                           className="w-full mt-1 text-xs text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-1 justify-center"
@@ -1101,6 +1246,91 @@ export function OrcamentoPage() {
             ))}
             {data.bens.length === 0 && <div className="text-center py-10 text-surface-400">Nenhum bem cadastrado</div>}
           </div>
+        </div>
+      )}
+
+      {/* A RECEBER */}
+      {aba === 'aReceber' && (
+        <div className="space-y-4 animate-fade-in">
+          <div className="flex justify-end">
+            <Button
+              icon={<Plus size={16} />}
+              onClick={() => {
+                setEditandoId(null);
+                setFormAReceber({ pessoa: '', descricao: '', valor: 0, mes: mesFiltro.mes + 1, ano: mesFiltro.ano, status: 'a_receber' });
+                setFormAReceberValorStr('');
+                setModal('aReceber');
+              }}
+            >
+              Novo valor a receber
+            </Button>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Card>
+              <CardBody>
+                <p className="text-xs text-surface-400">A receber</p>
+                <p className="text-lg font-bold text-primary-600 dark:text-primary-400">{formatarDinheiro(aReceberMes.totalAReceber)}</p>
+              </CardBody>
+            </Card>
+            <Card>
+              <CardBody>
+                <p className="text-xs text-surface-400">Recebido</p>
+                <p className="text-lg font-bold text-success-600 dark:text-success-400">{formatarDinheiro(aReceberMes.totalRecebido)}</p>
+              </CardBody>
+            </Card>
+          </div>
+          <Card>
+            <CardBody className="!px-4 !pb-4">
+              {aReceberMes.lista.length === 0 ? (
+                <p className="text-center py-8 text-surface-400">Nenhum valor a receber em {MESES[mesFiltro.mes]} {mesFiltro.ano}</p>
+              ) : (
+                <div className="space-y-2">
+                  {aReceberMes.lista.map(item => (
+                    <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-surface-200 p-3 dark:border-surface-700">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-surface-900 dark:text-white truncate">{item.descricao}</p>
+                        <p className="text-xs text-surface-400">{item.pessoa} · {item.status}</p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="text-sm font-semibold text-primary-600 dark:text-primary-400">{formatarDinheiro(item.valor)}</span>
+                        <button onClick={() => {
+                          setEditandoId(item.id);
+                          setFormAReceber({
+                            pessoa: item.pessoa,
+                            descricao: item.descricao,
+                            valor: item.valor,
+                            mes: item.mes,
+                            ano: item.ano,
+                            diaPrevisto: item.diaPrevisto,
+                            formaPrevista: item.formaPrevista,
+                            observacao: item.observacao,
+                            status: item.status,
+                            dataRecebimento: item.dataRecebimento,
+                            receitaVinculadaId: item.receitaVinculadaId,
+                          });
+                          setFormAReceberValorStr(moneyToInputBR(item.valor));
+                          setModal('aReceber');
+                        }} className="p-1.5 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
+                        <Button
+                          size="sm"
+                          variant={item.status === 'recebido' ? 'secondary' : 'success'}
+                          icon={item.status === 'recebido' ? <RotateCcw size={13} /> : <CheckCircle size={13} />}
+                          onClick={() => setData(d => ({
+                            ...d,
+                            aReceber: (d.aReceber ?? []).map(a => a.id === item.id
+                              ? { ...a, status: item.status === 'recebido' ? 'a_receber' : 'recebido', dataRecebimento: item.status === 'recebido' ? undefined : hojeISO(), dataAtualizacao: hojeISO() }
+                              : a),
+                          }))}
+                        >
+                          {item.status === 'recebido' ? 'Desfazer' : 'Recebido'}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardBody>
+          </Card>
         </div>
       )}
 
@@ -1565,6 +1795,30 @@ export function OrcamentoPage() {
           <div className="flex gap-3 pt-2">
             <Button variant="secondary" className="flex-1" onClick={() => setModal(null)}>Cancelar</Button>
             <Button className="flex-1" onClick={salvarBem}>Salvar</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={modal === 'aReceber'} onClose={() => setModal(null)} title={editandoId ? 'Editar A Receber' : 'Novo A Receber'} size="md">
+        <div className="space-y-4">
+          <Input id="ar-pessoa" label="Pessoa / origem" required value={formAReceber.pessoa} onChange={e => setFormAReceber(f => ({ ...f, pessoa: e.target.value }))} placeholder="Ex: Cliente, empresa, familiar..." />
+          <Input id="ar-desc" label="Descrição" required value={formAReceber.descricao} onChange={e => setFormAReceber(f => ({ ...f, descricao: e.target.value }))} placeholder="Ex: Reembolso, freelance..." />
+          <Input id="ar-valor" label="Valor (R$)" required type="text" inputMode="decimal" placeholder="0,00" value={formAReceberValorStr} onChange={e => setFormAReceberValorStr(e.target.value)} />
+          <div className="grid grid-cols-2 gap-3">
+            <Select id="ar-mes" label="Mês" value={String(formAReceber.mes)} onChange={e => setFormAReceber(f => ({ ...f, mes: Number(e.target.value) }))}>
+              {MESES.map((mes, i) => <option key={mes} value={i + 1}>{mes}</option>)}
+            </Select>
+            <Input id="ar-ano" label="Ano" type="number" min="2020" max="2035" value={formAReceber.ano} onChange={e => setFormAReceber(f => ({ ...f, ano: Number(e.target.value) }))} />
+          </div>
+          <Select id="ar-status" label="Status" value={formAReceber.status} onChange={e => setFormAReceber(f => ({ ...f, status: e.target.value as AReceber['status'], dataRecebimento: e.target.value === 'recebido' ? hojeISO() : undefined }))}>
+            <option value="a_receber">A receber</option>
+            <option value="recebido">Recebido</option>
+            <option value="cancelado">Cancelado</option>
+          </Select>
+          <Textarea id="ar-obs" label="Observação" value={formAReceber.observacao ?? ''} onChange={e => setFormAReceber(f => ({ ...f, observacao: e.target.value }))} />
+          <div className="flex gap-3 pt-2">
+            <Button variant="secondary" className="flex-1" onClick={() => setModal(null)}>Cancelar</Button>
+            <Button className="flex-1" onClick={salvarAReceber}>Salvar</Button>
           </div>
         </div>
       </Modal>

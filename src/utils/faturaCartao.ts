@@ -30,11 +30,9 @@ export function calcularValorDetalhado(faturaId: string, despesas: Despesa[]): n
     .reduce((acc, d) => acc + d.valor, 0);
 }
 
-// Calcula valor efetivo para o RESUMO DO MÊS:
-// Só conta se o usuário informou a fatura manualmente.
-// Parcelas não entram no total — apenas a fatura confirmada conta.
+// Calcula valor efetivo da fatura: valorInformado pelo usuário, ou valorDetalhado calculado.
 export function calcularValorEfetivo(fatura: FaturaCartao): number {
-  return fatura.valorInformado ?? 0;
+  return fatura.valorInformado ?? fatura.valorDetalhado;
 }
 
 // Encontra ou cria (em memória) a fatura para o cartão/competência
@@ -72,7 +70,7 @@ export function recalcularFatura(fatura: FaturaCartao, despesas: Despesa[]): Fat
   const detalhado = calcularValorDetalhado(fatura.id, despesas);
   const informado = fatura.valorInformado;
   const diferenca = informado !== null ? informado - detalhado : 0;
-  const efetivo = informado ?? 0; // só conta no resumo se o usuário informou
+  const efetivo = informado ?? detalhado;
   return {
     ...fatura,
     valorDetalhado: detalhado,
