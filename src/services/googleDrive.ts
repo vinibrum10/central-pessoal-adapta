@@ -30,6 +30,20 @@ const DRIVE_FOLDER_ID = SGP_DRIVE_FOLDERS.leituraDiaria.id;
 const DRIVE_API = 'https://www.googleapis.com/drive/v3';
 const GOOGLE_FOLDER_MIME = 'application/vnd.google-apps.folder';
 
+class DriveFolderError extends Error {
+  folderId: string;
+  status: number;
+  apiMessage: string;
+
+  constructor(folderId: string, status: number, apiMessage: string) {
+    super(apiMessage);
+    this.name = 'DriveFolderError';
+    this.folderId = folderId;
+    this.status = status;
+    this.apiMessage = apiMessage;
+  }
+}
+
 function driveLog(message: string, details: Record<string, unknown>): void {
   console.info(`[SGP Drive][leitura] ${message}`, details);
 }
@@ -131,6 +145,7 @@ export async function listarArquivosDaPasta(folderId?: string): Promise<DriveFil
     tokenPresente: tokenInfo.present,
     escopoEsperado: tokenInfo.expectedScope,
     escopoValido: tokenInfo.valid,
+    escoposToken: tokenInfo.scopes,
   });
 
   const params = new URLSearchParams({
@@ -151,15 +166,27 @@ export async function listarArquivosDaPasta(folderId?: string): Promise<DriveFil
   });
 
   if (!res.ok) {
+    let apiMessage = `Erro ${res.status} ao listar Drive.`;
+    try {
+      const err = await res.json() as { error?: { message?: string; status?: string; reason?: string } };
+      apiMessage = err.error?.message ?? err.error?.status ?? apiMessage;
+    } catch {
+      // Mantém a mensagem padrão quando o corpo não é JSON.
+    }
+    driveWarn('erro da API ao listar pasta', {
+      folderId: pasta,
+      modulo: 'leitura',
+      status: res.status,
+      mensagem: apiMessage,
+    });
     if (res.status === 401) {
       clearGoogleIntegration('drive');
-      throw new Error('Sessão do Google Drive expirada. Clique em "Reconectar" para conceder permissão novamente.');
+      throw new DriveFolderError(pasta, res.status, 'Sessão do Google Drive expirada. Clique em "Reconectar" para conceder permissão novamente.');
     }
     if (res.status === 403) {
-      throw new Error('Acesso negado ao Google Drive. Verifique se a pasta está compartilhada com a conta conectada e se o escopo de permissão está correto.');
+      throw new DriveFolderError(pasta, res.status, `Acesso negado ao Google Drive: ${apiMessage}`);
     }
-    const err = await res.json() as { error?: { message?: string } };
-    throw new Error(err.error?.message ?? `Erro ${res.status} ao listar Drive.`);
+    throw new DriveFolderError(pasta, res.status, apiMessage);
   }
 
   const data = await res.json() as { files: DriveFile[] };
@@ -186,7 +213,7 @@ export async function sincronizarLeiturasDrive(folderId?: string): Promise<Leitu
 
 async function listarArquivosLeituraDiaria(): Promise<DriveFile[]> {
   const results: DriveFile[][] = [];
-  const failures: Array<{ folder: SgpDriveFolder; message: string }> = [];
+  const failures: Array<{ folder: SgpDriveFolder; message: string; status?: number }> = [];
   let contentFolderSuccesses = 0;
 
   for (const folder of SGP_LEITURA_SYNC_FOLDERS) {
@@ -209,18 +236,37 @@ async function listarArquivosLeituraDiaria(): Promise<DriveFile[]> {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      failures.push({ folder, message });
+      const status = error instanceof DriveFolderError ? error.status : undefined;
+      failures.push({ folder, message, status });
       driveWarn('falha ao importar pasta', {
         folderId: folder.id,
         pasta: folder.nome,
         categoria: folder.categoria,
+        status,
         erro: message,
       });
     }
   }
 
   if (contentFolderSuccesses === 0 && failures.length > 0) {
-    throw new Error('Não foi possível acessar as subpastas oficiais da Leitura Diária. Clique em Reconectar e confirme a conta Google correta.');
+    const resumo = failures
+      .filter(({ folder }) => folder.key !== SGP_DRIVE_FOLDERS.leituraDiaria.key)
+      .map(({ folder, status, message }) => `${folder.categoria} (${folder.id}): ${status ?? 'sem status'} - ${message}`)
+      .join(' | ');
+    throw new Error(`Não foi possível acessar as subpastas oficiais da Leitura Diária. Detalhes: ${resumo || 'sem detalhes de subpasta'}.`);
+  }
+
+  if (failures.length > 0) {
+    driveWarn('sincronizacao parcial com falhas', {
+      sucessosSubpastas: contentFolderSuccesses,
+      falhas: failures.map(({ folder, status, message }) => ({
+        folderId: folder.id,
+        pasta: folder.nome,
+        categoria: folder.categoria,
+        status,
+        erro: message,
+      })),
+    });
   }
 
   const seen = new Set<string>();
