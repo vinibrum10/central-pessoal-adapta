@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   BookOpen, Search, RefreshCw, CheckCircle, Archive,
   ExternalLink, Plus, AlertCircle, Briefcase, Cpu,
@@ -80,7 +80,7 @@ function leituraCorrespondeFiltro(item: LeituraDiaria, filtro: FiltroContador): 
     case 'pendente':
       return item.status === 'pendente' && naoArquivado;
     case 'lido':
-      return item.status === 'lido';
+      return item.status === 'lido' && naoArquivado;
     case 'arquivado':
       return item.status === 'arquivado';
     case 'importante':
@@ -115,6 +115,58 @@ function leituraCorrespondeFiltro(item: LeituraDiaria, filtro: FiltroContador): 
 
 function contarLeituras(leituras: LeituraDiaria[], filtro: FiltroContador): number {
   return leituras.filter(item => leituraCorrespondeFiltro(item, filtro)).length;
+}
+
+function leituraKey(item: LeituraDiaria): string | null {
+  if (item.driveFileId) return `drive:${item.driveFileId}`;
+  if (item.url) return `url:${item.url}`;
+  return null;
+}
+
+function arraysIguais(a?: string[], b?: string[]): boolean {
+  const left = a ?? [];
+  const right = b ?? [];
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function mergeLeituraDrivePreservandoEstado(local: LeituraDiaria, drive: LeituraDiaria): { item: LeituraDiaria; mudou: boolean } {
+  const merged: LeituraDiaria = {
+    ...local,
+    origem: local.origem || drive.origem,
+    titulo: drive.titulo || local.titulo,
+    tipo: drive.tipo ?? local.tipo,
+    url: drive.url ?? local.url,
+    driveFileId: drive.driveFileId ?? local.driveFileId,
+    mimeType: drive.mimeType ?? local.mimeType,
+    contentText: drive.contentText ?? local.contentText,
+    contentHtml: drive.contentHtml ?? local.contentHtml,
+    tags: drive.tags ?? local.tags,
+    pastaOrigem: drive.pastaOrigem ?? local.pastaOrigem,
+    categoria: drive.categoria ?? local.categoria,
+    resumo: local.resumo ?? drive.resumo,
+    dataCriacao: local.dataCriacao || drive.dataCriacao,
+    status: local.status,
+    prioridade: local.prioridade,
+    dataLeitura: local.dataLeitura,
+  };
+  const mudou = (
+    merged.titulo !== local.titulo
+    || merged.tipo !== local.tipo
+    || merged.url !== local.url
+    || merged.driveFileId !== local.driveFileId
+    || merged.mimeType !== local.mimeType
+    || merged.contentText !== local.contentText
+    || merged.contentHtml !== local.contentHtml
+    || !arraysIguais(merged.tags, local.tags)
+    || merged.pastaOrigem !== local.pastaOrigem
+    || merged.categoria !== local.categoria
+    || merged.resumo !== local.resumo
+  );
+  return { item: merged, mudou };
+}
+
+function leituraSyncLog(message: string, details: Record<string, unknown>): void {
+  console.info(`[SGP Drive][leitura-sync] ${message}`, details);
 }
 
 // ---- Card de leitura ----
@@ -263,6 +315,8 @@ export function LeituraDiariaPage() {
   const [leituraAbertaId, setLeituraAbertaId] = useState<string | null>(null);
   const [metaIdTarefa, setMetaIdTarefa] = useState<string>('');
   const [erroPadrao] = useState('');
+  const sincronizandoRef = useRef(false);
+  const autoSyncKeyRef = useRef<string | null>(null);
 
   const leituras = data.leiturasDiarias ?? [];
   const leiturasLegadasDrive = useMemo(() => leituras.filter(isLeituraDriveLegada), [leituras]);
@@ -384,9 +438,19 @@ export function LeituraDiariaPage() {
       setMsgSync(getMensagemDriveNaoConfigurado());
       return;
     }
+    if (sincronizandoRef.current) {
+      leituraSyncLog('sincronizacao ignorada porque ja existe execucao ativa', { interactive: Boolean(options.interactive) });
+      return;
+    }
+    sincronizandoRef.current = true;
     setSincronizando(true);
     setMsgSync('');
     try {
+      leituraSyncLog('inicio da sincronizacao', {
+        interactive: Boolean(options.interactive),
+        forceReconnect: Boolean(options.forceReconnect),
+        isSyncing: true,
+      });
       if (options.forceReconnect) {
         await reconectarGoogleDrive();
       } else if (options.interactive && !isDriveConectado()) {
@@ -394,50 +458,82 @@ export function LeituraDiariaPage() {
       }
       const novosItens = await sincronizarLeiturasDrive();
       let novos: LeituraDiaria[] = [];
+      let atualizados = 0;
+      let preservados = 0;
+      let arquivadosPreservados = 0;
+      let legadosRemovidos = 0;
 
       setData(d => {
         const leiturasAtuais = d.leiturasDiarias ?? [];
         const existentes = leiturasAtuais.filter(item => !isLeituraDriveLegada(item));
-        const idsExistentes = new Set(existentes.map(l => l.driveFileId).filter(Boolean));
-        novos = novosItens.filter(i => !i.driveFileId || !idsExistentes.has(i.driveFileId));
-        const porDriveId = new Map(novosItens.filter(i => i.driveFileId).map(i => [i.driveFileId, i]));
-        const atualizadas = existentes.map(item => {
-          const atualizado = item.driveFileId ? porDriveId.get(item.driveFileId) : undefined;
-          if (!atualizado) return item;
-          return {
-            ...item,
-            mimeType: atualizado.mimeType ?? item.mimeType,
-            contentText: atualizado.contentText ?? item.contentText,
-            contentHtml: atualizado.contentHtml ?? item.contentHtml,
-            tags: atualizado.tags ?? item.tags,
-            pastaOrigem: atualizado.pastaOrigem ?? item.pastaOrigem,
-            categoria: atualizado.categoria ?? item.categoria,
-          };
+        legadosRemovidos = leiturasAtuais.length - existentes.length;
+        const indexPorChave = new Map<string, number>();
+        existentes.forEach((item, index) => {
+          const key = leituraKey(item);
+          if (key) indexPorChave.set(key, index);
         });
-        const mudouExistentes = atualizadas.some((item, index) => item !== existentes[index]);
-        if (novos.length === 0 && existentes.length === leiturasAtuais.length && !mudouExistentes) return d;
+
+        const atualizadas = [...existentes];
+        for (const itemDrive of novosItens) {
+          const possibleKeys = [leituraKey(itemDrive), itemDrive.url ? `url:${itemDrive.url}` : null].filter((key): key is string => Boolean(key));
+          const existingIndex = possibleKeys.map(key => indexPorChave.get(key)).find(index => index !== undefined);
+          if (existingIndex === undefined) {
+            novos.push(itemDrive);
+            continue;
+          }
+
+          const local = atualizadas[existingIndex];
+          const { item, mudou } = mergeLeituraDrivePreservandoEstado(local, itemDrive);
+          atualizadas[existingIndex] = item;
+          if (mudou) atualizados += 1;
+          preservados += 1;
+          if (local.status === 'arquivado') arquivadosPreservados += 1;
+        }
+
+        if (novos.length === 0 && atualizados === 0 && legadosRemovidos === 0 && existentes.length === leiturasAtuais.length) return d;
         return { ...d, leiturasDiarias: [...atualizadas, ...novos] };
       });
 
+      if (user && legadosRemovidos > 0) {
+        await leituraRepository.excluirLegadosDrive(user.id).catch(() => undefined);
+      }
       if (novos.length > 0) {
         if (user) {
           await leituraRepository.sincronizarDrive(user.id, novos);
         }
-        setMsgSync(`${novos.length} novo${novos.length > 1 ? 's itens importados' : ' item importado'} do Drive.`);
-      } else {
-        setMsgSync(novosItens.length === 0 ? 'Nenhuma leitura encontrada nas pastas oficiais da Leitura Diária.' : 'Nenhum item novo encontrado nas pastas oficiais do Drive.');
       }
+      leituraSyncLog('fim da sincronizacao', {
+        isSyncing: false,
+        arquivosDrive: novosItens.length,
+        novos: novos.length,
+        atualizados,
+        preservados,
+        arquivadosPreservados,
+        legadosRemovidos,
+      });
+      setMsgSync(novosItens.length === 0
+        ? 'Sincronização concluída: nenhuma leitura encontrada nas pastas oficiais.'
+        : `Sincronização concluída: ${novos.length} novos, ${atualizados} atualizados, ${preservados} preservados, ${legadosRemovidos} legados removidos.`);
       setUltimaSinc(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
     } catch (e) {
       // Itens já carregados permanecem visíveis; apenas exibe o erro
       setMsgSync(`Erro: ${(e as Error).message}`);
+      leituraSyncLog('sincronizacao finalizada com erro', {
+        isSyncing: false,
+        erro: (e as Error).message,
+      });
+    } finally {
+      sincronizandoRef.current = false;
+      setSincronizando(false);
     }
-    setSincronizando(false);
   }, [setData, user]);
 
   // Auto-sync ao abrir a página, se já estiver conectado e com token válido
   useEffect(() => {
     if (authLoading) return;
+    const autoSyncKey = user?.id ?? session?.user?.id ?? 'local';
+    if (autoSyncKeyRef.current === autoSyncKey) return;
+    autoSyncKeyRef.current = autoSyncKey;
     let cancelado = false;
     async function autoSyncDrive() {
       if (!isDriveConfigurado()) return;
@@ -455,7 +551,7 @@ export function LeituraDiariaPage() {
     }
     void autoSyncDrive();
     return () => { cancelado = true; };
-  }, [authLoading, session?.access_token, sincronizarDrive, limparLeiturasDriveLegadas]);
+  }, [authLoading, session?.access_token, session?.user?.id, user?.id, sincronizarDrive, limparLeiturasDriveLegadas]);
 
   const adicionarManual = () => {
     const url = prompt('URL do link para adicionar:');

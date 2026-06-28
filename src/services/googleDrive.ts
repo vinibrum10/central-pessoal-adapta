@@ -169,57 +169,71 @@ export async function listarArquivosDaPasta(folderId?: string): Promise<DriveFil
     escoposToken: tokenInfo.scopes,
   });
 
-  const params = new URLSearchParams({
-    q: `'${pasta}' in parents and trashed=false`,
-    fields: 'files(id,name,mimeType,modifiedTime,webViewLink,webContentLink,size)',
-    orderBy: 'modifiedTime desc',
-    pageSize: '100',
-  });
+  const allFiles: DriveFile[] = [];
+  let pageToken: string | undefined;
+  let page = 0;
 
-  const res = await fetch(`${DRIVE_API}/files?${params}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  do {
+    page += 1;
+    const params = new URLSearchParams({
+      q: `'${pasta}' in parents and trashed=false`,
+      fields: 'nextPageToken,files(id,name,mimeType,modifiedTime,webViewLink,webContentLink,size)',
+      orderBy: 'modifiedTime desc',
+      pageSize: '100',
+    });
+    if (pageToken) params.set('pageToken', pageToken);
 
-  driveLog('resposta da API', {
-    folderId: pasta,
-    modulo: 'leitura',
-    subpastaTecnologiaChamada: pasta === SGP_DRIVE_FOLDERS.leituraTecnologia.id,
-    status: res.status,
-  });
+    const res = await fetch(`${DRIVE_API}/files?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
 
-  if (!res.ok) {
-    let apiMessage = `Erro ${res.status} ao listar Drive.`;
-    try {
-      const err = await res.json() as { error?: { message?: string; status?: string; reason?: string } };
-      apiMessage = err.error?.message ?? err.error?.status ?? apiMessage;
-    } catch {
-      // Mantém a mensagem padrão quando o corpo não é JSON.
-    }
-    driveWarn('erro da API ao listar pasta', {
+    driveLog('resposta da API', {
       folderId: pasta,
       modulo: 'leitura',
+      subpastaTecnologiaChamada: pasta === SGP_DRIVE_FOLDERS.leituraTecnologia.id,
       status: res.status,
-      mensagem: apiMessage,
+      pagina: page,
     });
-    if (res.status === 401) {
-      clearGoogleIntegration('drive');
-      throw new DriveFolderError(pasta, res.status, 'Sessão do Google Drive expirada. Clique em "Reconectar" para conceder permissão novamente.');
-    }
-    if (res.status === 403) {
-      throw new DriveFolderError(pasta, res.status, `Acesso negado ao Google Drive: ${apiMessage}`);
-    }
-    throw new DriveFolderError(pasta, res.status, apiMessage);
-  }
 
-  const data = await res.json() as { files: DriveFile[] };
-  const files = data.files ?? [];
+    if (!res.ok) {
+      let apiMessage = `Erro ${res.status} ao listar Drive.`;
+      try {
+        const err = await res.json() as { error?: { message?: string; status?: string; reason?: string } };
+        apiMessage = err.error?.message ?? err.error?.status ?? apiMessage;
+      } catch {
+        // Mantém a mensagem padrão quando o corpo não é JSON.
+      }
+      driveWarn('erro da API ao listar pasta', {
+        folderId: pasta,
+        modulo: 'leitura',
+        status: res.status,
+        mensagem: apiMessage,
+        pagina: page,
+      });
+      if (res.status === 401) {
+        clearGoogleIntegration('drive');
+        throw new DriveFolderError(pasta, res.status, 'Sessão do Google Drive expirada. Clique em "Reconectar" para conceder permissão novamente.');
+      }
+      if (res.status === 403) {
+        throw new DriveFolderError(pasta, res.status, `Acesso negado ao Google Drive: ${apiMessage}`);
+      }
+      throw new DriveFolderError(pasta, res.status, apiMessage);
+    }
+
+    const data = await res.json() as { files: DriveFile[]; nextPageToken?: string };
+    allFiles.push(...(data.files ?? []));
+    pageToken = data.nextPageToken;
+  } while (pageToken);
+
+  const files = allFiles;
   driveLog('arquivos retornados', {
     folderId: pasta,
     subpastaTecnologiaChamada: pasta === SGP_DRIVE_FOLDERS.leituraTecnologia.id,
     quantidade: files.length,
     mimeTypes: Array.from(new Set(files.map(file => file.mimeType))).sort(),
+    paginas: page,
   });
-  return (data.files ?? [])
+  return files
     .filter(file => file.mimeType !== GOOGLE_FOLDER_MIME)
     .map(file => ({
       ...file,
