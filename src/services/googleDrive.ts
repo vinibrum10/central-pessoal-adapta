@@ -29,6 +29,8 @@ import {
 const DRIVE_FOLDER_ID = SGP_DRIVE_FOLDERS.leituraDiaria.id;
 const DRIVE_API = 'https://www.googleapis.com/drive/v3';
 const GOOGLE_FOLDER_MIME = 'application/vnd.google-apps.folder';
+const GOOGLE_DOC_MIME = 'application/vnd.google-apps.document';
+const PDF_MIME = 'application/pdf';
 
 class DriveFolderError extends Error {
   folderId: string;
@@ -141,6 +143,7 @@ export interface DriveFile {
   parentFolderId?: string;
   parentFolderName?: string;
   sgpCategoria?: string;
+  contentText?: string;
 }
 
 export async function listarArquivosDaPasta(folderId?: string): Promise<DriveFile[]> {
@@ -228,7 +231,38 @@ export async function sincronizarLeiturasDrive(folderId?: string): Promise<Leitu
   const arquivos = folderId
     ? await listarArquivosDaPasta(folderId)
     : await listarArquivosLeituraDiaria();
-  return arquivos.map(f => importarArquivoComoLeitura(f));
+  const arquivosComConteudo = await Promise.all(arquivos.map(async file => ({
+    ...file,
+    contentText: await carregarConteudoArquivo(file).catch(error => {
+      driveWarn('conteudo interno indisponivel', {
+        fileId: file.id,
+        nome: file.name,
+        mimeType: file.mimeType,
+        erro: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }),
+  })));
+  return arquivosComConteudo.map(f => importarArquivoComoLeitura(f));
+}
+
+async function carregarConteudoArquivo(file: DriveFile): Promise<string | undefined> {
+  if (file.mimeType !== GOOGLE_DOC_MIME) return undefined;
+  const token = await getToken();
+  const params = new URLSearchParams({ mimeType: 'text/plain' });
+  const res = await fetch(`${DRIVE_API}/files/${encodeURIComponent(file.id)}/export?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  driveLog('conteudo Google Docs exportado', {
+    fileId: file.id,
+    mimeType: file.mimeType,
+    status: res.status,
+  });
+  if (!res.ok) {
+    throw new Error(`Erro ${res.status} ao exportar conteúdo do Google Docs.`);
+  }
+  const text = await res.text();
+  return text.trim() || undefined;
 }
 
 async function listarArquivosLeituraDiaria(): Promise<DriveFile[]> {
@@ -317,6 +351,11 @@ export function importarArquivoComoLeitura(file: DriveFile): LeituraDiaria {
     tipo,
     url,
     driveFileId: file.id,
+    mimeType: file.mimeType,
+    contentText: file.contentText,
+    tags: [file.sgpCategoria, file.parentFolderName, tipo, file.mimeType === GOOGLE_DOC_MIME ? 'google-docs' : '', file.mimeType === PDF_MIME ? 'pdf' : '']
+      .filter((tag): tag is string => Boolean(tag)),
+    pastaOrigem: file.parentFolderName,
     categoria: file.sgpCategoria ?? categoriaMap[tipo],
     prioridade: importante ? 'importante' : 'normal',
     status: 'pendente',

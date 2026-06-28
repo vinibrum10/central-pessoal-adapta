@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   BookOpen, Search, RefreshCw, CheckCircle, Archive,
   ExternalLink, Plus, AlertCircle, Briefcase, Cpu,
-  FileText, Link, File, Star, Clock, Filter,
+  FileText, Link, File, Star, Clock, Filter, Eye,
 } from 'lucide-react';
 import { useApp } from '../hooks/useApp';
 import type { LeituraDiaria, TipoLeitura, StatusLeitura } from '../types';
@@ -25,6 +25,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { isLeituraDriveLegada } from '../services/leituraLegacy';
 
 type FiltroLeitura = 'todos' | StatusLeitura | TipoLeitura | 'importante';
+type FiltroContador = FiltroLeitura;
 
 const tipoIcons: Record<TipoLeitura, typeof BookOpen> = {
   vaga: Briefcase,
@@ -49,11 +50,79 @@ const tipoColors: Record<TipoLeitura, string> = {
   geral: 'bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-400',
 };
 
+function normalizarTexto(value: unknown): string {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+function camposBusca(item: LeituraDiaria): string {
+  return [
+    item.titulo,
+    item.resumo,
+    item.categoria,
+    item.tipo,
+    item.origem,
+    item.mimeType,
+    item.pastaOrigem,
+    ...(item.tags ?? []),
+  ].map(normalizarTexto).join(' ');
+}
+
+function leituraCorrespondeFiltro(item: LeituraDiaria, filtro: FiltroContador): boolean {
+  const campos = camposBusca(item);
+  const naoArquivado = item.status !== 'arquivado';
+
+  switch (filtro) {
+    case 'todos':
+      return naoArquivado;
+    case 'pendente':
+      return item.status === 'pendente' && naoArquivado;
+    case 'lido':
+      return item.status === 'lido';
+    case 'arquivado':
+      return item.status === 'arquivado';
+    case 'importante':
+      return item.prioridade === 'importante' && naoArquivado;
+    case 'tecnologia':
+      return naoArquivado && /\b(tecnologia|tech|ia|ai|programacao|software|framework)\b/.test(campos);
+    case 'documento':
+      return naoArquivado && (
+        item.tipo === 'documento'
+        || campos.includes('application/vnd.google-apps.document')
+        || campos.includes('application/pdf')
+        || campos.includes('text/plain')
+        || campos.includes('documento')
+        || campos.includes('google-docs')
+      );
+    case 'link':
+      return naoArquivado && (
+        item.tipo === 'link'
+        || Boolean(item.url && item.origem !== 'drive')
+        || campos.includes('link')
+      );
+    case 'vaga':
+      return naoArquivado && /\b(vaga|vagas|emprego|carreira|career|job|linkedin|recrutamento)\b/.test(campos);
+    case 'artigo':
+      return naoArquivado && (item.tipo === 'artigo' || /\b(artigo|artigos|article|paper|blog|pesquisa)\b/.test(campos));
+    case 'geral':
+      return naoArquivado && item.tipo === 'geral';
+    default:
+      return naoArquivado;
+  }
+}
+
+function contarLeituras(leituras: LeituraDiaria[], filtro: FiltroContador): number {
+  return leituras.filter(item => leituraCorrespondeFiltro(item, filtro)).length;
+}
+
 // ---- Card de leitura ----
 function LeituraCard({
-  item, onLido, onImportante, onArquivar, onTarefa,
+  item, onAbrir, onLido, onImportante, onArquivar, onTarefa,
 }: {
   item: LeituraDiaria;
+  onAbrir: () => void;
   onLido: () => void;
   onImportante: () => void;
   onArquivar: () => void;
@@ -64,9 +133,20 @@ function LeituraCard({
   const arquivado = item.status === 'arquivado';
 
   return (
-    <div className={`bg-white dark:bg-surface-800 rounded-xl border p-4 space-y-3 transition-all
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onAbrir}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onAbrir();
+        }
+      }}
+      className={`bg-white dark:bg-surface-800 rounded-xl border p-4 space-y-3 transition-all cursor-pointer hover:border-primary-300 hover:shadow-sm dark:hover:border-primary-700
       ${arquivado ? 'opacity-50' : lido ? 'border-success-200 dark:border-success-800' : 'border-surface-200 dark:border-surface-700'}
-    `}>
+    `}
+    >
       {/* Header */}
       <div className="flex items-start gap-3">
         <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${tipoColors[item.tipo]}`}>
@@ -100,6 +180,7 @@ function LeituraCard({
             href={item.url}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={e => e.stopPropagation()}
             className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-400 hover:text-primary-600 transition-colors flex-shrink-0"
           >
             <ExternalLink size={14} />
@@ -115,7 +196,14 @@ function LeituraCard({
       )}
 
       {/* Ações */}
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex items-center gap-2 flex-wrap" onClick={e => e.stopPropagation()}>
+        <button
+          onClick={onAbrir}
+          className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-surface-50 dark:bg-surface-700 text-surface-600 dark:text-surface-200 hover:bg-surface-100 dark:hover:bg-surface-600 border border-surface-200 dark:border-surface-600 transition-colors"
+        >
+          <Eye size={12} />
+          Ler no SGP
+        </button>
         {!lido && !arquivado && (
           <button
             onClick={onLido}
@@ -172,36 +260,38 @@ export function LeituraDiariaPage() {
   const [ultimaSinc, setUltimaSinc] = useState<string | null>(null);
   const [modalTarefaAberto, setModalTarefaAberto] = useState(false);
   const [leituraParaTarefa, setLeituraParaTarefa] = useState<LeituraDiaria | null>(null);
+  const [leituraAbertaId, setLeituraAbertaId] = useState<string | null>(null);
   const [metaIdTarefa, setMetaIdTarefa] = useState<string>('');
   const [erroPadrao] = useState('');
 
   const leituras = data.leiturasDiarias ?? [];
   const leiturasLegadasDrive = useMemo(() => leituras.filter(isLeituraDriveLegada), [leituras]);
+  const leituraAberta = useMemo(
+    () => leituras.find(item => item.id === leituraAbertaId) ?? null,
+    [leituras, leituraAbertaId],
+  );
 
   const hoje = hojeISO();
   const kpis = useMemo(() => ({
-    pendentes: leituras.filter(l => l.status === 'pendente').length,
-    lidosHoje: leituras.filter(l => l.status === 'lido' && l.dataLeitura === hoje).length,
-    vagas: leituras.filter(l => l.tipo === 'vaga' && l.status !== 'arquivado').length,
-    tecnologia: leituras.filter(l => l.tipo === 'tecnologia' && l.status !== 'arquivado').length,
-    importantes: leituras.filter(l => l.prioridade === 'importante' && l.status !== 'arquivado').length,
-  }), [leituras, hoje]);
+    todos: contarLeituras(leituras, 'todos'),
+    pendentes: contarLeituras(leituras, 'pendente'),
+    lidos: contarLeituras(leituras, 'lido'),
+    arquivados: contarLeituras(leituras, 'arquivado'),
+    vagas: contarLeituras(leituras, 'vaga'),
+    tecnologia: contarLeituras(leituras, 'tecnologia'),
+    documentos: contarLeituras(leituras, 'documento'),
+    links: contarLeituras(leituras, 'link'),
+    artigos: contarLeituras(leituras, 'artigo'),
+    importantes: contarLeituras(leituras, 'importante'),
+  }), [leituras]);
 
   const listaFiltrada = useMemo(() => {
-    let lista = leituras;
-    if (busca) lista = lista.filter(l => l.titulo.toLowerCase().includes(busca.toLowerCase()));
-    switch (filtro) {
-      case 'pendente': return lista.filter(l => l.status === 'pendente');
-      case 'lido': return lista.filter(l => l.status === 'lido');
-      case 'arquivado': return lista.filter(l => l.status === 'arquivado');
-      case 'importante': return lista.filter(l => l.prioridade === 'importante');
-      case 'link':
-        // Inclui também itens com URL classificados como 'geral' (importados antes da correção de classificação)
-        return lista.filter(l => (l.tipo === 'link' || (l.tipo === 'geral' && Boolean(l.url))) && l.status !== 'arquivado');
-      case 'vaga': case 'tecnologia': case 'artigo': case 'documento': case 'geral':
-        return lista.filter(l => l.tipo === filtro && l.status !== 'arquivado');
-      default: return lista.filter(l => l.status !== 'arquivado');
-    }
+    const termoBusca = normalizarTexto(busca);
+    return leituras.filter(item => {
+      if (!leituraCorrespondeFiltro(item, filtro)) return false;
+      if (!termoBusca) return true;
+      return camposBusca(item).includes(termoBusca);
+    });
   }, [leituras, busca, filtro]);
 
   const marcarLido = (id: string) => {
@@ -310,8 +400,23 @@ export function LeituraDiariaPage() {
         const existentes = leiturasAtuais.filter(item => !isLeituraDriveLegada(item));
         const idsExistentes = new Set(existentes.map(l => l.driveFileId).filter(Boolean));
         novos = novosItens.filter(i => !i.driveFileId || !idsExistentes.has(i.driveFileId));
-        if (novos.length === 0 && existentes.length === leiturasAtuais.length) return d;
-        return { ...d, leiturasDiarias: [...existentes, ...novos] };
+        const porDriveId = new Map(novosItens.filter(i => i.driveFileId).map(i => [i.driveFileId, i]));
+        const atualizadas = existentes.map(item => {
+          const atualizado = item.driveFileId ? porDriveId.get(item.driveFileId) : undefined;
+          if (!atualizado) return item;
+          return {
+            ...item,
+            mimeType: atualizado.mimeType ?? item.mimeType,
+            contentText: atualizado.contentText ?? item.contentText,
+            contentHtml: atualizado.contentHtml ?? item.contentHtml,
+            tags: atualizado.tags ?? item.tags,
+            pastaOrigem: atualizado.pastaOrigem ?? item.pastaOrigem,
+            categoria: atualizado.categoria ?? item.categoria,
+          };
+        });
+        const mudouExistentes = atualizadas.some((item, index) => item !== existentes[index]);
+        if (novos.length === 0 && existentes.length === leiturasAtuais.length && !mudouExistentes) return d;
+        return { ...d, leiturasDiarias: [...atualizadas, ...novos] };
       });
 
       if (novos.length > 0) {
@@ -373,16 +478,16 @@ export function LeituraDiariaPage() {
   };
 
   const filtrosBotoes: { id: FiltroLeitura; label: string; badge?: number }[] = [
-    { id: 'todos', label: 'Todos', badge: leituras.filter(l => l.status !== 'arquivado').length },
+    { id: 'todos', label: 'Todos', badge: kpis.todos },
     { id: 'pendente', label: 'Pendentes', badge: kpis.pendentes },
     { id: 'vaga', label: 'Vagas', badge: kpis.vagas },
     { id: 'tecnologia', label: 'Tecnologia', badge: kpis.tecnologia },
-    { id: 'artigo', label: 'Artigos' },
-    { id: 'documento', label: 'Documentos' },
-    { id: 'link', label: 'Links' },
+    { id: 'artigo', label: 'Artigos', badge: kpis.artigos },
+    { id: 'documento', label: 'Documentos', badge: kpis.documentos },
+    { id: 'link', label: 'Links', badge: kpis.links },
     { id: 'importante', label: 'Importantes', badge: kpis.importantes },
-    { id: 'lido', label: 'Lidos' },
-    { id: 'arquivado', label: 'Arquivados' },
+    { id: 'lido', label: 'Lidos', badge: kpis.lidos },
+    { id: 'arquivado', label: 'Arquivados', badge: kpis.arquivados },
   ];
 
   return (
@@ -418,10 +523,10 @@ export function LeituraDiariaPage() {
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
           { label: 'Pendentes', value: kpis.pendentes, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/10' },
-          { label: 'Lidos hoje', value: kpis.lidosHoje, color: 'text-success-600 dark:text-success-400', bg: 'bg-success-50 dark:bg-success-900/10' },
+          { label: 'Lidos', value: kpis.lidos, color: 'text-success-600 dark:text-success-400', bg: 'bg-success-50 dark:bg-success-900/10' },
           { label: 'Vagas', value: kpis.vagas, color: 'text-green-600 dark:text-green-400', bg: 'bg-green-50 dark:bg-green-900/10' },
           { label: 'Tecnologia', value: kpis.tecnologia, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/10' },
-          { label: 'Importantes', value: kpis.importantes, color: 'text-amber-500 dark:text-amber-300', bg: 'bg-amber-50 dark:bg-amber-900/10' },
+          { label: 'Documentos', value: kpis.documentos, color: 'text-violet-600 dark:text-violet-300', bg: 'bg-violet-50 dark:bg-violet-900/10' },
         ].map(({ label, value, color, bg }) => (
           <div key={label} className={`${bg} rounded-xl p-3 text-center`}>
             <p className={`text-2xl font-bold ${color}`}>{value}</p>
@@ -523,6 +628,7 @@ export function LeituraDiariaPage() {
             <LeituraCard
               key={item.id}
               item={item}
+              onAbrir={() => setLeituraAbertaId(item.id)}
               onLido={() => marcarLido(item.id)}
               onImportante={() => marcarImportante(item.id)}
               onArquivar={() => arquivar(item.id)}
@@ -531,6 +637,112 @@ export function LeituraDiariaPage() {
           ))}
         </div>
       )}
+
+      {/* Modal leitor interno */}
+      <Modal
+        isOpen={Boolean(leituraAberta)}
+        onClose={() => setLeituraAbertaId(null)}
+        title="Leitor SGP"
+        size="xl"
+      >
+        {leituraAberta && (
+          <div className="space-y-5">
+            <div className="space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="text-lg font-semibold leading-snug text-surface-950 dark:text-white">
+                    {leituraAberta.titulo}
+                  </h3>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-surface-500 dark:text-surface-400">
+                    <span className={`rounded-full px-2 py-1 font-medium ${tipoColors[leituraAberta.tipo]}`}>
+                      {tipoLabels[leituraAberta.tipo]}
+                    </span>
+                    <span>{leituraAberta.categoria}</span>
+                    <span>{leituraAberta.dataCriacao}</span>
+                    <span>{leituraAberta.status}</span>
+                    <span>{leituraAberta.prioridade}</span>
+                    <span>{leituraAberta.origem === 'drive' ? 'Google Drive' : leituraAberta.origem}</span>
+                    {leituraAberta.pastaOrigem && <span>{leituraAberta.pastaOrigem}</span>}
+                  </div>
+                </div>
+                {leituraAberta.url && (
+                  <a
+                    href={leituraAberta.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-surface-200 px-3 py-2 text-xs font-semibold text-surface-600 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800"
+                  >
+                    <ExternalLink size={13} />
+                    Abrir no Google Drive
+                  </a>
+                )}
+              </div>
+
+              {leituraAberta.tags && leituraAberta.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {leituraAberta.tags.map(tag => (
+                    <span key={tag} className="rounded-full bg-surface-100 px-2 py-1 text-[10px] text-surface-500 dark:bg-surface-800 dark:text-surface-300">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-lg border border-surface-200 bg-surface-50 p-4 dark:border-surface-700 dark:bg-surface-800/60">
+              {leituraAberta.contentText ? (
+                <article className="prose prose-sm max-w-none whitespace-pre-wrap leading-relaxed text-surface-800 dark:prose-invert dark:text-surface-100">
+                  {leituraAberta.contentText}
+                </article>
+              ) : leituraAberta.mimeType === 'application/pdf' && leituraAberta.url ? (
+                <div className="space-y-3">
+                  <iframe
+                    title={leituraAberta.titulo}
+                    src={leituraAberta.url}
+                    className="h-[60vh] w-full rounded-lg border border-surface-200 bg-white dark:border-surface-700"
+                  />
+                  <p className="text-xs text-surface-500 dark:text-surface-400">
+                    Se a pré-visualização não carregar, use o botão secundário para abrir no Google Drive.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2 text-sm text-surface-600 dark:text-surface-300">
+                  <p className="font-medium text-surface-800 dark:text-surface-100">
+                    Pré-visualização não disponível dentro do SGP.
+                  </p>
+                  {leituraAberta.resumo && <p>{leituraAberta.resumo}</p>}
+                  {leituraAberta.mimeType && (
+                    <p className="text-xs text-surface-400 dark:text-surface-500">
+                      Tipo do arquivo: {leituraAberta.mimeType}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {leituraAberta.status !== 'lido' && leituraAberta.status !== 'arquivado' && (
+                <Button size="sm" variant="success" icon={<CheckCircle size={14} />} onClick={() => marcarLido(leituraAberta.id)}>
+                  Marcar como lido
+                </Button>
+              )}
+              {leituraAberta.prioridade !== 'importante' && leituraAberta.status !== 'arquivado' && (
+                <Button size="sm" variant="secondary" icon={<Star size={14} />} onClick={() => marcarImportante(leituraAberta.id)}>
+                  Importante
+                </Button>
+              )}
+              <Button size="sm" variant="secondary" icon={<Plus size={14} />} onClick={() => abrirModalTarefa(leituraAberta)}>
+                Transformar em tarefa
+              </Button>
+              {leituraAberta.status !== 'arquivado' && (
+                <Button size="sm" variant="secondary" icon={<Archive size={14} />} onClick={() => arquivar(leituraAberta.id)}>
+                  Arquivar
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Modal criar tarefa da leitura */}
       <Modal isOpen={modalTarefaAberto} onClose={() => setModalTarefaAberto(false)} title="Transformar em Tarefa" size="md">
