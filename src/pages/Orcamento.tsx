@@ -14,7 +14,7 @@ import type {
   Receita, Despesa, Cartao, Divida, Reserva, Bem,
   CategoriaFinanceira, FormaPagamento, StatusCartao,
   PrioridadeQuitacao, StatusBem, TipoBem, FaturaCartao,
-  AReceber, StatusPagamentoMensal
+  AReceber
 } from '../types';
 import {
   obterCompetenciaFatura,
@@ -33,7 +33,13 @@ import {
   calcularAReceberMes,
   calcularLimiteDisponivelCartao,
   calcularLimiteUsadoCartao,
+  converterRecebimentoEmReceita,
+  desfazerPagamentoItem,
   gerarItensPagarMes,
+  marcarItemComoPago,
+  marcarRecebimentoComoRecebido,
+  verificarPendenciasMesAnterior,
+  ajustarFaturaCartao,
   type ItemPagar,
 } from '../utils/orcamento';
 
@@ -181,6 +187,8 @@ export function OrcamentoPage() {
     status: 'a_receber',
   });
   const [formAReceberValorStr, setFormAReceberValorStr] = useState('');
+  const [pendenciasAnterior, setPendenciasAnterior] = useState<null | { mes: number; ano: number; itens: ItemPagar[] }>(null);
+  const [msgOrcamento, setMsgOrcamento] = useState('');
 
   useEffect(() => {
     setData(d => {
@@ -268,6 +276,15 @@ export function OrcamentoPage() {
   const totalPagoMes = itensPagos.reduce((acc, item) => acc + item.valor, 0);
   const aReceberMes = useMemo(() => calcularAReceberMes(mesFiltro.mes, mesFiltro.ano, data), [mesFiltro.mes, mesFiltro.ano, data]);
 
+  useEffect(() => {
+    if (aba !== 'resumo') return;
+    const pendencias = verificarPendenciasMesAnterior(mesFiltro.mes, mesFiltro.ano, data);
+    if (pendencias.itens.length === 0) return;
+    const key = `sgp-orcamento-pendencias-${pendencias.ano}-${pendencias.mes}`;
+    if (localStorage.getItem(key) === 'visto') return;
+    setPendenciasAnterior(pendencias);
+  }, [aba, data, mesFiltro.ano, mesFiltro.mes]);
+
   const abrirModal = (tipo: string, item?: { id: string }) => {
     setEditandoId(item?.id ?? null);
     setModal(tipo);
@@ -289,18 +306,9 @@ export function OrcamentoPage() {
     const { cartaoId, competencia } = modalFatura;
     const valorFaturaFinal = parseBRLMoney(formFaturaValorStr);
     setData(d => {
-      const faturasAtual = [...(d.faturas ?? [])];
-      const { fatura, isNova } = obterOuCriarFatura(cartaoId, competencia, faturasAtual);
-      const faturaAtualizada: FaturaCartao = {
-        ...fatura,
-        valorInformado: valorFaturaFinal > 0 ? valorFaturaFinal : null,
-        observacoes: formFatura.observacoes || undefined,
-      };
-      const faturaRecalculada = recalcularFatura(faturaAtualizada, d.despesas);
-      if (isNova) {
-        return { ...d, faturas: [...faturasAtual, faturaRecalculada] };
-      }
-      return { ...d, faturas: faturasAtual.map(f => f.id === faturaRecalculada.id ? faturaRecalculada : f) };
+      const resultado = ajustarFaturaCartao(d, cartaoId, competencia, valorFaturaFinal, formFatura.observacoes);
+      if (resultado.aviso) setMsgOrcamento(resultado.aviso);
+      return resultado.data;
     });
   }, [modalFatura, formFatura, formFaturaValorStr, setData]);
 
@@ -315,7 +323,7 @@ export function OrcamentoPage() {
       } else {
         const novaDespesa: Despesa = {
           id: gerarId(),
-          descricao: 'Ajuste de fatura não detalhado',
+          descricao: 'GASTO NÃO IDENTIFICADO',
           valor: fatura.diferenca,
           data: hojeISO(),
           categoria: 'Outros',
@@ -326,6 +334,9 @@ export function OrcamentoPage() {
           cartaoId: fatura.cartaoId,
           faturaId: fatura.id,
           origemAjuste: true,
+          adjustmentCartaoId: fatura.cartaoId,
+          adjustmentMes: fatura.mes,
+          adjustmentAno: fatura.ano,
         };
         novasDespesas = [...d.despesas, novaDespesa];
       }
@@ -337,33 +348,9 @@ export function OrcamentoPage() {
   }, [setData]);
 
   const alterarPagamentoMensal = useCallback((item: ItemPagar, pago: boolean) => {
-    setData(d => {
-      const statusAtual = d.statusPagamentos ?? [];
-      const itemId = item.tipo === 'fatura' ? item.faturaId ?? item.id : item.id;
-      const existente = statusAtual.find(s =>
-        s.itemId === itemId &&
-        s.tipo === item.tipo &&
-        s.mes === mesFiltro.mes &&
-        s.ano === mesFiltro.ano
-      );
-      const novoStatus: StatusPagamentoMensal = {
-        id: existente?.id ?? gerarId(),
-        itemId,
-        tipo: item.tipo,
-        mes: mesFiltro.mes,
-        ano: mesFiltro.ano,
-        pago,
-        dataPagamento: pago ? hojeISO() : undefined,
-        dataCriacao: existente?.dataCriacao ?? hojeISO(),
-      };
-      const statusPagamentos = existente
-        ? statusAtual.map(s => s.id === existente.id ? novoStatus : s)
-        : [...statusAtual, novoStatus];
-      const faturas = item.tipo === 'fatura'
-        ? (d.faturas ?? []).map(f => f.id === itemId ? { ...f, status: pago ? 'paga' as const : 'aberta' as const, dataAtualizacao: new Date().toISOString() } : f)
-        : d.faturas;
-      return { ...d, statusPagamentos, faturas };
-    });
+    setData(d => pago
+      ? marcarItemComoPago(d, item, mesFiltro.mes, mesFiltro.ano)
+      : desfazerPagamentoItem(d, item, mesFiltro.mes, mesFiltro.ano));
   }, [mesFiltro.ano, mesFiltro.mes, setData]);
 
   const salvarAReceber = useCallback(() => {
@@ -763,6 +750,11 @@ export function OrcamentoPage() {
       {/* RESUMO */}
       {aba === 'resumo' && (
         <div className="space-y-4 animate-fade-in">
+          {msgOrcamento && (
+            <div className="rounded-lg border border-warning-200 bg-warning-50 px-3 py-2 text-xs text-warning-700 dark:border-warning-800 dark:bg-warning-900/20 dark:text-warning-300">
+              {msgOrcamento}
+            </div>
+          )}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
               { label: 'Receitas do mês', valor: receitasMes, icon: <TrendingUp size={18} />, cor: 'text-success-600 dark:text-success-400', bg: 'bg-success-50 dark:bg-success-900/20' },
@@ -792,6 +784,25 @@ export function OrcamentoPage() {
               <p className="text-xs text-surface-400 dark:text-surface-500 mt-1">
                 {receitasMes > 0 ? `${Math.round((despesasMes / receitasMes) * 100)}% da renda comprometida` : 'Sem receitas cadastradas este mês'}
               </p>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardBody>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <p className="text-xs text-surface-400">A receber</p>
+                  <p className="text-sm font-bold text-primary-600 dark:text-primary-400">{formatarDinheiro(aReceberMes.totalAReceber)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-surface-400">Recebido</p>
+                  <p className="text-sm font-bold text-success-600 dark:text-success-400">{formatarDinheiro(aReceberMes.totalRecebido)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-surface-400">Em aberto</p>
+                  <p className="text-sm font-bold text-warning-600 dark:text-warning-400">{formatarDinheiro(aReceberMes.totalEmAberto)}</p>
+                </div>
+              </div>
             </CardBody>
           </Card>
 
@@ -832,6 +843,11 @@ export function OrcamentoPage() {
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
                             <span className={`text-sm font-semibold ${item.pago ? 'text-success-600 dark:text-success-400' : 'text-danger-600 dark:text-danger-400'}`}>{formatarDinheiro(item.valor)}</span>
+                            {item.tipo === 'fatura' && item.cartaoId && item.competencia && (
+                              <Button size="sm" variant="secondary" icon={<Info size={13} />} onClick={() => abrirModalFatura(item.cartaoId!, item.competencia!)}>
+                                Ajustar
+                              </Button>
+                            )}
                             {item.pago ? (
                               <Button size="sm" variant="secondary" icon={<RotateCcw size={13} />} onClick={() => alterarPagamentoMensal(item, false)}>
                                 Desfazer
@@ -1315,12 +1331,24 @@ export function OrcamentoPage() {
                           size="sm"
                           variant={item.status === 'recebido' ? 'secondary' : 'success'}
                           icon={item.status === 'recebido' ? <RotateCcw size={13} /> : <CheckCircle size={13} />}
-                          onClick={() => setData(d => ({
-                            ...d,
-                            aReceber: (d.aReceber ?? []).map(a => a.id === item.id
-                              ? { ...a, status: item.status === 'recebido' ? 'a_receber' : 'recebido', dataRecebimento: item.status === 'recebido' ? undefined : hojeISO(), dataAtualizacao: hojeISO() }
-                              : a),
-                          }))}
+                          onClick={() => {
+                            if (item.status === 'recebido') {
+                              const removerReceita = item.receitaVinculadaId && window.confirm('Deseja remover a receita vinculada a este recebimento?');
+                              setData(d => ({
+                                ...d,
+                                receitas: removerReceita ? d.receitas.filter(r => r.id !== item.receitaVinculadaId) : d.receitas,
+                                aReceber: (d.aReceber ?? []).map(a => a.id === item.id
+                                  ? { ...a, status: 'a_receber', dataRecebimento: undefined, receitaVinculadaId: removerReceita ? undefined : a.receitaVinculadaId, dataAtualizacao: hojeISO() }
+                                  : a),
+                              }));
+                              return;
+                            }
+                            const converter = !item.receitaVinculadaId && window.confirm('Quer inserir este valor como Nova Receita?');
+                            setData(d => {
+                              const recebido = marcarRecebimentoComoRecebido(d, item.id);
+                              return converter ? converterRecebimentoEmReceita(recebido, item.id) : recebido;
+                            });
+                          }}
                         >
                           {item.status === 'recebido' ? 'Desfazer' : 'Recebido'}
                         </Button>
@@ -1335,6 +1363,67 @@ export function OrcamentoPage() {
       )}
 
       {/* MODAIS */}
+      <Modal
+        isOpen={aba === 'resumo' && pendenciasAnterior !== null}
+        onClose={() => {
+          if (pendenciasAnterior) localStorage.setItem(`sgp-orcamento-pendencias-${pendenciasAnterior.ano}-${pendenciasAnterior.mes}`, 'visto');
+          setPendenciasAnterior(null);
+        }}
+        title="Pendências do mês anterior"
+        size="lg"
+      >
+        {pendenciasAnterior && (
+          <div className="space-y-4">
+            <p className="text-sm text-surface-600 dark:text-surface-300">
+              Existem itens de {MESES[pendenciasAnterior.mes]} {pendenciasAnterior.ano} ainda em aberto. Você já pagou esses itens?
+            </p>
+            <div className="space-y-2 max-h-72 overflow-y-auto">
+              {pendenciasAnterior.itens.map(item => (
+                <div key={`${item.tipo}-${item.id}`} className="flex items-center justify-between gap-3 rounded-xl border border-surface-200 p-3 dark:border-surface-700">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-surface-900 dark:text-white truncate">{item.descricao}</p>
+                    <p className="text-xs text-surface-400">{item.origemLabel} · {item.tipo}</p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="text-sm font-semibold text-danger-600 dark:text-danger-400">{formatarDinheiro(item.valor)}</span>
+                    <Button size="sm" variant="success" onClick={() => {
+                      setData(d => marcarItemComoPago(d, item, pendenciasAnterior.mes, pendenciasAnterior.ano));
+                      setPendenciasAnterior(p => p ? { ...p, itens: p.itens.filter(i => !(i.id === item.id && i.tipo === item.tipo)) } : p);
+                    }}>
+                      Pago
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <Button
+                variant="success"
+                onClick={() => {
+                  setData(d => pendenciasAnterior.itens.reduce((acc, item) => marcarItemComoPago(acc, item, pendenciasAnterior.mes, pendenciasAnterior.ano), d));
+                  localStorage.setItem(`sgp-orcamento-pendencias-${pendenciasAnterior.ano}-${pendenciasAnterior.mes}`, 'visto');
+                  setPendenciasAnterior(null);
+                }}
+              >
+                Sim, marcar todos
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  localStorage.setItem(`sgp-orcamento-pendencias-${pendenciasAnterior.ano}-${pendenciasAnterior.mes}`, 'visto');
+                  setPendenciasAnterior(null);
+                }}
+              >
+                Não, manter
+              </Button>
+              <Button variant="secondary" onClick={() => setAba('resumo')}>
+                Revisar itens
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
       <Modal isOpen={modal === 'receita'} onClose={() => setModal(null)} title={editandoId ? 'Editar Receita' : 'Nova Receita'}>
         <div className="space-y-4">
           <Input id="rec-desc" label="Descrição" required value={formReceita.descricao} onChange={e => setFormReceita(f => ({ ...f, descricao: e.target.value }))} placeholder="Ex: Salário, freelance..." />
