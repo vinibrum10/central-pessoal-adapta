@@ -25,6 +25,17 @@ import { useAuth } from '../contexts/AuthContext';
 
 type FiltroLeitura = 'todos' | StatusLeitura | TipoLeitura | 'importante';
 
+const LEGACY_DRIVE_FOLDER_IDS = [
+  '1IUBsDA5FZWUJWuwrqjTGvzMy87feVbpD',
+];
+
+function isLeituraDriveLegada(item: LeituraDiaria): boolean {
+  if (item.origem !== 'drive') return false;
+  const haystack = [item.url, item.driveFileId, item.titulo].filter(Boolean).join(' ');
+  if (LEGACY_DRIVE_FOLDER_IDS.some(id => haystack.includes(id))) return true;
+  return Boolean(item.url?.includes('drive.google.com/drive/folders/'));
+}
+
 const tipoIcons: Record<TipoLeitura, typeof BookOpen> = {
   vaga: Briefcase,
   tecnologia: Cpu,
@@ -266,6 +277,15 @@ export function LeituraDiariaPage() {
     setLeituraParaTarefa(null);
   };
 
+  const limparLeiturasDriveLegadas = useCallback(() => {
+    setData(d => {
+      const leiturasAtuais = d.leiturasDiarias ?? [];
+      const filtradas = leiturasAtuais.filter(item => !isLeituraDriveLegada(item));
+      if (filtradas.length === leiturasAtuais.length) return d;
+      return { ...d, leiturasDiarias: filtradas };
+    });
+  }, [setData]);
+
   const sincronizarDrive = useCallback(async (options: { interactive?: boolean; forceReconnect?: boolean } = {}) => {
     if (!isDriveConfigurado()) {
       setMsgSync(getMensagemDriveNaoConfigurado());
@@ -283,10 +303,12 @@ export function LeituraDiariaPage() {
       let novos: LeituraDiaria[] = [];
 
       setData(d => {
-        const existentes = d.leiturasDiarias ?? [];
+        const leiturasAtuais = d.leiturasDiarias ?? [];
+        const existentes = leiturasAtuais.filter(item => !isLeituraDriveLegada(item));
         const idsExistentes = new Set(existentes.map(l => l.driveFileId).filter(Boolean));
         novos = novosItens.filter(i => !i.driveFileId || !idsExistentes.has(i.driveFileId));
-        return novos.length > 0 ? { ...d, leiturasDiarias: [...existentes, ...novos] } : d;
+        if (novos.length === 0 && existentes.length === leiturasAtuais.length) return d;
+        return { ...d, leiturasDiarias: [...existentes, ...novos] };
       });
 
       if (novos.length > 0) {
@@ -295,7 +317,7 @@ export function LeituraDiariaPage() {
         }
         setMsgSync(`${novos.length} novo${novos.length > 1 ? 's itens importados' : ' item importado'} do Drive.`);
       } else {
-        setMsgSync(novosItens.length === 0 ? 'Nenhuma leitura encontrada nesta pasta.' : 'Nenhum item novo encontrado na pasta do Drive.');
+        setMsgSync(novosItens.length === 0 ? 'Nenhuma leitura encontrada nas pastas oficiais da Leitura Diária.' : 'Nenhum item novo encontrado nas pastas oficiais do Drive.');
       }
       setUltimaSinc(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
     } catch (e) {
@@ -311,6 +333,7 @@ export function LeituraDiariaPage() {
     let cancelado = false;
     async function autoSyncDrive() {
       if (!isDriveConfigurado()) return;
+      limparLeiturasDriveLegadas();
       const pronto = await prepararGoogleDriveComSessao(session).catch(() => false);
       if (cancelado) return;
       if (!pronto || !isDriveConectado()) {
@@ -324,7 +347,7 @@ export function LeituraDiariaPage() {
     }
     void autoSyncDrive();
     return () => { cancelado = true; };
-  }, [authLoading, session?.access_token, sincronizarDrive]);
+  }, [authLoading, session?.access_token, sincronizarDrive, limparLeiturasDriveLegadas]);
 
   const adicionarManual = () => {
     const url = prompt('URL do link para adicionar:');

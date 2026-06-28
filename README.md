@@ -171,6 +171,8 @@ Usuários seguintes entram como `pendente` e precisam ser aprovados pelo admin e
    - `01_LEITURA_DIARIA/Tecnologia`
    - `01_LEITURA_DIARIA/Inteligência Artificial`
    - `01_LEITURA_DIARIA/Engenharia de Dados`
+   - `01_LEITURA_DIARIA/Segurança do Trabalho`
+   - `01_LEITURA_DIARIA/Arquivados`
 3. Configure `VITE_GOOGLE_DRIVE_FOLDER_ID` e as variáveis `VITE_SGP_DRIVE_*` conforme `.env.example`.
 4. No app: **Leitura Diária → Sincronizar Drive**.
 
@@ -191,7 +193,7 @@ Rotinas diárias devem salvar assim:
 
 - Daily Tech News:
   - relatório completo em `03_RELATORIOS_AUTOMATICOS/Daily Tech News` (`1PGE7KY7trmuhsovS3Sx2rOfhcU-dMPhF`);
-  - leituras selecionadas em `01_LEITURA_DIARIA/Tecnologia`, `01_LEITURA_DIARIA/Inteligência Artificial` ou `01_LEITURA_DIARIA/Engenharia de Dados`.
+  - leituras selecionadas em `01_LEITURA_DIARIA/Tecnologia`, `01_LEITURA_DIARIA/Inteligência Artificial`, `01_LEITURA_DIARIA/Engenharia de Dados` ou `01_LEITURA_DIARIA/Segurança do Trabalho`.
 - Procurar Emprego:
   - relatório completo em `03_RELATORIOS_AUTOMATICOS/Procurar Emprego` (`1kVFcgUUK1ZxaErq7EuQ3CTcAPNwKnGHa`);
   - vagas em `02_PROCURAR_EMPREGO/Vagas Encontradas` (`1XrZ8zl10Z6j_-zLmK2D-68bx3_qqaG6I`);
@@ -228,6 +230,10 @@ Ação recomendada:
 Por que isso importa:
 Como isso entra no SGP:
 ```
+
+Em produção, se existir `VITE_GOOGLE_DRIVE_FOLDER_ID` antigo na Vercel, atualize para `1HIoT04CrKP_UzwbhivUpkEb6w7245Gvl` ou remova a variável. A Leitura Diária usa a árvore oficial do SGP no código, mas manter env antiga pode confundir diagnóstico e outras integrações.
+
+O app remove automaticamente itens legados de Drive que apontem para pastas antigas, preservando itens manuais. Para forçar uma nova carga, use **Leitura Diária → Sincronizar Drive** ou **Reconectar** quando houver erro de permissão/token.
 
 ---
 

@@ -26,6 +26,15 @@ import {
 
 const DRIVE_FOLDER_ID = SGP_DRIVE_FOLDERS.leituraDiaria.id;
 const DRIVE_API = 'https://www.googleapis.com/drive/v3';
+const GOOGLE_FOLDER_MIME = 'application/vnd.google-apps.folder';
+
+function driveLog(message: string, details: Record<string, unknown>): void {
+  console.info(`[SGP Drive][leitura] ${message}`, details);
+}
+
+function driveWarn(message: string, details: Record<string, unknown>): void {
+  console.warn(`[SGP Drive][leitura] ${message}`, details);
+}
 
 export function isDriveConfigurado(): boolean {
   return Boolean(DRIVE_FOLDER_ID && DRIVE_FOLDER_ID.trim() !== '' && isGoogleIntegrationConfigured('drive'));
@@ -107,6 +116,12 @@ export async function listarArquivosDaPasta(folderId?: string): Promise<DriveFil
   const pasta = folderId ?? DRIVE_FOLDER_ID;
   if (!pasta) throw new Error(getMensagemDriveNaoConfigurado());
 
+  driveLog('listando pasta', {
+    folderId: pasta,
+    modulo: 'leitura',
+    tokenStatus: getDriveConnectionStatus(),
+  });
+
   const params = new URLSearchParams({
     q: `'${pasta}' in parents and trashed=false`,
     fields: 'files(id,name,mimeType,modifiedTime,webViewLink,webContentLink,size)',
@@ -116,6 +131,12 @@ export async function listarArquivosDaPasta(folderId?: string): Promise<DriveFil
 
   const res = await fetch(`${DRIVE_API}/files?${params}`, {
     headers: { Authorization: `Bearer ${token}` },
+  });
+
+  driveLog('resposta da API', {
+    folderId: pasta,
+    modulo: 'leitura',
+    status: res.status,
   });
 
   if (!res.ok) {
@@ -131,10 +152,12 @@ export async function listarArquivosDaPasta(folderId?: string): Promise<DriveFil
   }
 
   const data = await res.json() as { files: DriveFile[] };
-  return (data.files ?? []).map(file => ({
-    ...file,
-    parentFolderId: pasta,
-  }));
+  return (data.files ?? [])
+    .filter(file => file.mimeType !== GOOGLE_FOLDER_MIME)
+    .map(file => ({
+      ...file,
+      parentFolderId: pasta,
+    }));
 }
 
 export async function sincronizarLeiturasDrive(folderId?: string): Promise<LeituraDiaria[]> {
@@ -145,17 +168,44 @@ export async function sincronizarLeiturasDrive(folderId?: string): Promise<Leitu
 }
 
 async function listarArquivosLeituraDiaria(): Promise<DriveFile[]> {
-  const results = await Promise.all(
-    SGP_LEITURA_SYNC_FOLDERS.map(async (folder: SgpDriveFolder) => {
+  const results: DriveFile[][] = [];
+  const failures: Array<{ folder: SgpDriveFolder; message: string }> = [];
+  let contentFolderSuccesses = 0;
+
+  for (const folder of SGP_LEITURA_SYNC_FOLDERS) {
+    try {
       const files = await listarArquivosDaPasta(folder.id);
-      return files.map(file => ({
+      if (folder.key !== SGP_DRIVE_FOLDERS.leituraDiaria.key) {
+        contentFolderSuccesses += 1;
+      }
+      results.push(files.map(file => ({
         ...file,
         parentFolderId: folder.id,
         parentFolderName: folder.nome,
         sgpCategoria: folder.categoria,
-      }));
-    })
-  );
+      })));
+      driveLog('pasta importada', {
+        folderId: folder.id,
+        pasta: folder.nome,
+        categoria: folder.categoria,
+        itens: files.length,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failures.push({ folder, message });
+      driveWarn('falha ao importar pasta', {
+        folderId: folder.id,
+        pasta: folder.nome,
+        categoria: folder.categoria,
+        erro: message,
+      });
+    }
+  }
+
+  if (contentFolderSuccesses === 0 && failures.length > 0) {
+    throw new Error('Não foi possível acessar as subpastas oficiais da Leitura Diária. Clique em Reconectar e confirme a conta Google correta.');
+  }
+
   const seen = new Set<string>();
   return results.flat().filter(file => {
     if (seen.has(file.id)) return false;

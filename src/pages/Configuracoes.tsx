@@ -13,7 +13,7 @@ import { Input, Select } from '../components/FormFields';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { isGoogleConfigured } from '../services/googleCalendar';
 import { isDriveConfigurado } from '../services/googleDrive';
-import { SGP_DRIVE_FOLDERS, SGP_DRIVE_ROOT_ID } from '../services/sgpDriveConfig';
+import { SGP_DRIVE_FOLDERS, SGP_DRIVE_LEITURA_ROOT_ID, SGP_DRIVE_ROOT_ID } from '../services/sgpDriveConfig';
 import { possuiDadosLocais, migracaoConcluida, migrarDadosParaSupabase } from '../services/dataMigration';
 import { exportarDadosExcel } from '../utils/exportExcel';
 import {
@@ -30,7 +30,7 @@ export function ConfiguracoesPage() {
   const [visualizacao, setVisualizacao] = useState(data.configuracoes.visualizacaoPadrao);
   const [salvo, setSalvo] = useState(false);
   const [driveFolderId, setDriveFolderId] = useState(
-    import.meta.env.VITE_GOOGLE_DRIVE_FOLDER_ID as string ?? ''
+    SGP_DRIVE_LEITURA_ROOT_ID
   );
   const [migrando, setMigrando] = useState(false);
   const [logMigracao, setLogMigracao] = useState<string[]>([]);

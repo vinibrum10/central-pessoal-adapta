@@ -16,7 +16,8 @@ function env(name: string, fallback: string): string {
   return (values[name] || fallback).trim();
 }
 
-export const SGP_DRIVE_ROOT_ID = env('VITE_SGP_DRIVE_ROOT_FOLDER_ID', '146Xbn1G3icqxjie2gBVbm_kdYoWSN1nO');
+export const SGP_DRIVE_ROOT_ID = '146Xbn1G3icqxjie2gBVbm_kdYoWSN1nO';
+export const SGP_DRIVE_LEITURA_ROOT_ID = '1HIoT04CrKP_UzwbhivUpkEb6w7245Gvl';
 
 export const SGP_DRIVE_FOLDERS = {
   leituraDiaria: {
@@ -24,7 +25,7 @@ export const SGP_DRIVE_FOLDERS = {
     nome: '01_LEITURA_DIARIA',
     modulo: 'Leitura Diária',
     categoria: 'Raiz',
-    id: env('VITE_GOOGLE_DRIVE_FOLDER_ID', '1HIoT04CrKP_UzwbhivUpkEb6w7245Gvl'),
+    id: SGP_DRIVE_LEITURA_ROOT_ID,
     tipoArquivoEsperado: 'LEITURA',
   },
   leituraTecnologia: {
@@ -32,7 +33,7 @@ export const SGP_DRIVE_FOLDERS = {
     nome: '01_LEITURA_DIARIA/Tecnologia',
     modulo: 'Leitura Diária',
     categoria: 'Tecnologia',
-    id: env('VITE_SGP_DRIVE_LEITURA_TECNOLOGIA_FOLDER_ID', '1shhLeRDHDVVTy-GqFAHh5AK6n61A3TgG'),
+    id: '1shhLeRDHDVVTy-GqFAHh5AK6n61A3TgG',
     tipoArquivoEsperado: 'LEITURA',
   },
   leituraIa: {
@@ -40,7 +41,7 @@ export const SGP_DRIVE_FOLDERS = {
     nome: '01_LEITURA_DIARIA/Inteligência Artificial',
     modulo: 'Leitura Diária',
     categoria: 'Inteligência Artificial',
-    id: env('VITE_SGP_DRIVE_LEITURA_IA_FOLDER_ID', '1IQ5oRv2wvNqlQihhsCjiP4MIJAntmHHK'),
+    id: '1IQ5oRv2wvNqlQihhsCjiP4MIJAntmHHK',
     tipoArquivoEsperado: 'LEITURA',
   },
   leituraEngenhariaDados: {
@@ -48,7 +49,23 @@ export const SGP_DRIVE_FOLDERS = {
     nome: '01_LEITURA_DIARIA/Engenharia de Dados',
     modulo: 'Leitura Diária',
     categoria: 'Engenharia de Dados',
-    id: env('VITE_SGP_DRIVE_LEITURA_ENG_DADOS_FOLDER_ID', '17RHSNHPsvIlBpGlLHc4a71kav7ddJD3c'),
+    id: '17RHSNHPsvIlBpGlLHc4a71kav7ddJD3c',
+    tipoArquivoEsperado: 'LEITURA',
+  },
+  leituraSegurancaTrabalho: {
+    key: 'leitura-seguranca-trabalho',
+    nome: '01_LEITURA_DIARIA/Segurança do Trabalho',
+    modulo: 'Leitura Diária',
+    categoria: 'Segurança do Trabalho',
+    id: '1cYG_x0MG0CkGxQFcD-g63XJ-IE8IhC1k',
+    tipoArquivoEsperado: 'LEITURA',
+  },
+  leituraArquivados: {
+    key: 'leitura-arquivados',
+    nome: '01_LEITURA_DIARIA/Arquivados',
+    modulo: 'Leitura Diária',
+    categoria: 'Arquivados',
+    id: '1OcEZiP8k33qKDXN3hyh6xAG-dkL4XhlY',
     tipoArquivoEsperado: 'LEITURA',
   },
   procurarEmprego: {
@@ -118,9 +135,12 @@ export const SGP_DRIVE_FOLDERS = {
 } satisfies Record<string, SgpDriveFolder>;
 
 export const SGP_LEITURA_SYNC_FOLDERS: SgpDriveFolder[] = [
+  SGP_DRIVE_FOLDERS.leituraDiaria,
   SGP_DRIVE_FOLDERS.leituraTecnologia,
   SGP_DRIVE_FOLDERS.leituraIa,
   SGP_DRIVE_FOLDERS.leituraEngenhariaDados,
+  SGP_DRIVE_FOLDERS.leituraSegurancaTrabalho,
+  SGP_DRIVE_FOLDERS.leituraArquivados,
 ];
 
 export function getSgpDocumentHeader(params: {
