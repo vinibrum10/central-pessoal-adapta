@@ -13,6 +13,7 @@
 import type { Session } from '@supabase/supabase-js';
 import type { LeituraDiaria, TipoLeitura } from '../types';
 import { gerarId, hojeISO } from '../utils';
+import { SGP_DRIVE_FOLDERS, SGP_LEITURA_SYNC_FOLDERS, type SgpDriveFolder } from './sgpDriveConfig';
 import {
   bootstrapGoogleIntegrationFromSession,
   clearGoogleIntegration,
@@ -23,7 +24,7 @@ import {
   revokeGoogleIntegration,
 } from './googleIntegrationService';
 
-const DRIVE_FOLDER_ID = import.meta.env.VITE_GOOGLE_DRIVE_FOLDER_ID as string | undefined;
+const DRIVE_FOLDER_ID = SGP_DRIVE_FOLDERS.leituraDiaria.id;
 const DRIVE_API = 'https://www.googleapis.com/drive/v3';
 
 export function isDriveConfigurado(): boolean {
@@ -95,6 +96,9 @@ export interface DriveFile {
   webViewLink?: string;
   webContentLink?: string;
   size?: string;
+  parentFolderId?: string;
+  parentFolderName?: string;
+  sgpCategoria?: string;
 }
 
 export async function listarArquivosDaPasta(folderId?: string): Promise<DriveFile[]> {
@@ -127,12 +131,37 @@ export async function listarArquivosDaPasta(folderId?: string): Promise<DriveFil
   }
 
   const data = await res.json() as { files: DriveFile[] };
-  return data.files ?? [];
+  return (data.files ?? []).map(file => ({
+    ...file,
+    parentFolderId: pasta,
+  }));
 }
 
 export async function sincronizarLeiturasDrive(folderId?: string): Promise<LeituraDiaria[]> {
-  const arquivos = await listarArquivosDaPasta(folderId);
+  const arquivos = folderId
+    ? await listarArquivosDaPasta(folderId)
+    : await listarArquivosLeituraDiaria();
   return arquivos.map(f => importarArquivoComoLeitura(f));
+}
+
+async function listarArquivosLeituraDiaria(): Promise<DriveFile[]> {
+  const results = await Promise.all(
+    SGP_LEITURA_SYNC_FOLDERS.map(async (folder: SgpDriveFolder) => {
+      const files = await listarArquivosDaPasta(folder.id);
+      return files.map(file => ({
+        ...file,
+        parentFolderId: folder.id,
+        parentFolderName: folder.nome,
+        sgpCategoria: folder.categoria,
+      }));
+    })
+  );
+  const seen = new Set<string>();
+  return results.flat().filter(file => {
+    if (seen.has(file.id)) return false;
+    seen.add(file.id);
+    return true;
+  });
 }
 
 export function importarArquivoComoLeitura(file: DriveFile): LeituraDiaria {
@@ -140,7 +169,7 @@ export function importarArquivoComoLeitura(file: DriveFile): LeituraDiaria {
   const tipo = classificarArquivo(file.name, file.mimeType, Boolean(url));
   const categoriaMap: Record<TipoLeitura, string> = {
     vaga: 'Vagas de emprego',
-    tecnologia: 'Atualização de tecnologia',
+    tecnologia: file.sgpCategoria ?? 'Atualização de tecnologia',
     artigo: 'Artigos',
     documento: 'Documentos',
     link: 'Links',
@@ -155,7 +184,7 @@ export function importarArquivoComoLeitura(file: DriveFile): LeituraDiaria {
     tipo,
     url,
     driveFileId: file.id,
-    categoria: categoriaMap[tipo],
+    categoria: file.sgpCategoria ?? categoriaMap[tipo],
     prioridade: importante ? 'importante' : 'normal',
     status: 'pendente',
     dataLeitura: null,

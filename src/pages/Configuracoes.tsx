@@ -13,6 +13,7 @@ import { Input, Select } from '../components/FormFields';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { isGoogleConfigured } from '../services/googleCalendar';
 import { isDriveConfigurado } from '../services/googleDrive';
+import { SGP_DRIVE_FOLDERS, SGP_DRIVE_ROOT_ID } from '../services/sgpDriveConfig';
 import { possuiDadosLocais, migracaoConcluida, migrarDadosParaSupabase } from '../services/dataMigration';
 import { exportarDadosExcel } from '../utils/exportExcel';
 import {
@@ -375,6 +376,23 @@ export function ConfiguracoesPage() {
             <p className="text-xs text-surface-400 dark:text-surface-500">
               Defina <code>VITE_GOOGLE_DRIVE_FOLDER_ID</code> no <code>.env</code> para aplicar permanentemente.
             </p>
+            <div className="rounded-xl border border-surface-200 bg-surface-50 p-3 dark:border-surface-700 dark:bg-surface-900/40">
+              <p className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
+                Árvore SGP Drive configurada
+              </p>
+              <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">
+                Raiz: <code>{SGP_DRIVE_ROOT_ID}</code>
+              </p>
+              <div className="mt-3 grid gap-2 text-xs">
+                {Object.values(SGP_DRIVE_FOLDERS).map(folder => (
+                  <div key={folder.key} className="flex flex-col gap-0.5 rounded-lg bg-white px-3 py-2 dark:bg-surface-800">
+                    <span className="font-medium text-surface-700 dark:text-surface-200">{folder.nome}</span>
+                    <span className="text-surface-400 dark:text-surface-500">{folder.modulo} · {folder.categoria}</span>
+                    <code className="break-all text-[11px] text-surface-500 dark:text-surface-400">{folder.id}</code>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </CardBody>
       </Card>

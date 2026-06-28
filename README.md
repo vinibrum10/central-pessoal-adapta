@@ -166,10 +166,68 @@ Usuários seguintes entram como `pendente` e precisam ser aprovados pelo admin e
 
 ## 10 · Google Drive (Leitura Diária)
 
-1. Crie uma pasta no Drive para seus arquivos de leitura
-2. Copie o ID da pasta da URL: `drive.google.com/drive/folders/**ID**`
-3. Configure `VITE_GOOGLE_DRIVE_FOLDER_ID` nas variáveis
-4. No app: **Leitura Diária → Sincronizar Drive**
+1. Use a pasta raiz `SGP - Sistema de Gestão Pessoal` e configure apenas IDs de pasta.
+2. A sincronização da Leitura Diária lê as subpastas configuradas:
+   - `01_LEITURA_DIARIA/Tecnologia`
+   - `01_LEITURA_DIARIA/Inteligência Artificial`
+   - `01_LEITURA_DIARIA/Engenharia de Dados`
+3. Configure `VITE_GOOGLE_DRIVE_FOLDER_ID` e as variáveis `VITE_SGP_DRIVE_*` conforme `.env.example`.
+4. No app: **Leitura Diária → Sincronizar Drive**.
+
+### Padrão SGP Drive
+
+Pasta raiz: `SGP - Sistema de Gestão Pessoal` (`146Xbn1G3icqxjie2gBVbm_kdYoWSN1nO`).
+
+Pastas principais:
+
+| Módulo | Pasta | ID |
+| --- | --- | --- |
+| Leitura Diária | `01_LEITURA_DIARIA` | `1HIoT04CrKP_UzwbhivUpkEb6w7245Gvl` |
+| Procurar Emprego | `02_PROCURAR_EMPREGO` | `1V1Xf2T0LveVlWjj2Z8UJzTB-XfBZIiN0` |
+| Relatórios Automáticos | `03_RELATORIOS_AUTOMATICOS` | `1LUGLjPEx9Fo9nap6DquAT6d9QmgRhZLf` |
+| Config | `00_CONFIG` | `1ftSfXxwhi2Lvs8eVfB9ATH53OAlJRVMh` |
+
+Rotinas diárias devem salvar assim:
+
+- Daily Tech News:
+  - relatório completo em `03_RELATORIOS_AUTOMATICOS/Daily Tech News` (`1PGE7KY7trmuhsovS3Sx2rOfhcU-dMPhF`);
+  - leituras selecionadas em `01_LEITURA_DIARIA/Tecnologia`, `01_LEITURA_DIARIA/Inteligência Artificial` ou `01_LEITURA_DIARIA/Engenharia de Dados`.
+- Procurar Emprego:
+  - relatório completo em `03_RELATORIOS_AUTOMATICOS/Procurar Emprego` (`1kVFcgUUK1ZxaErq7EuQ3CTcAPNwKnGHa`);
+  - vagas em `02_PROCURAR_EMPREGO/Vagas Encontradas` (`1XrZ8zl10Z6j_-zLmK2D-68bx3_qqaG6I`);
+  - empresas em `02_PROCURAR_EMPREGO/Empresas Alvo` (`1muvbWCeyGAFvw7ukuoNmWDkYNkrh_3wJ`);
+  - candidaturas em `02_PROCURAR_EMPREGO/Candidaturas Realizadas` (`1Nab4BBz4n0-3Op-lQvq_I8WZXlE-lUhd`).
+
+Nomes de arquivos:
+
+- `AAAA-MM-DD - LEITURA - Categoria - Título`
+- `AAAA-MM-DD - VAGA - Cargo - Empresa`
+- `AAAA-MM-DD - EMPRESA - Nome da Empresa`
+- `AAAA-MM-DD - CANDIDATURA - Cargo - Empresa`
+- `AAAA-MM-DD - RESUMO EMPREGO - Busca diária`
+- `AAAA-MM-DD - RELATORIO - Daily Tech News`
+- `AAAA-MM-DD - RELATORIO - Procurar Emprego`
+- `AAAA-MM-DD - LOG - Nome da tarefa`
+
+Todo documento criado para o SGP deve começar com:
+
+```text
+Módulo:
+Categoria:
+Data:
+Status:
+Prioridade:
+Fonte:
+URL original:
+Tags:
+Próxima revisão:
+
+Resumo:
+Principais pontos:
+Ação recomendada:
+Por que isso importa:
+Como isso entra no SGP:
+```
 
 ---
 
