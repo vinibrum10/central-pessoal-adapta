@@ -233,6 +233,8 @@ Como isso entra no SGP:
 
 Em produção, se existir `VITE_GOOGLE_DRIVE_FOLDER_ID` antigo na Vercel, atualize para `1HIoT04CrKP_UzwbhivUpkEb6w7245Gvl` ou remova a variável. A Leitura Diária usa a árvore oficial do SGP no código, mas manter env antiga pode confundir diagnóstico e outras integrações.
 
+O escopo OAuth usado para Google Drive é `https://www.googleapis.com/auth/drive.readonly`, necessário para listar documentos em pastas existentes do usuário.
+
 O app remove automaticamente itens legados de Drive que apontem para pastas antigas, preservando itens manuais. Para forçar uma nova carga, use **Leitura Diária → Sincronizar Drive** ou **Reconectar** quando houver erro de permissão/token.
 
 ---

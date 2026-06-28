@@ -195,7 +195,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           'email',
           'profile',
           'https://www.googleapis.com/auth/calendar.readonly',
-          'https://www.googleapis.com/auth/drive.metadata.readonly',
+          'https://www.googleapis.com/auth/drive.readonly',
         ].join(' '),
         queryParams: { access_type: 'offline' },
       },

@@ -31,7 +31,7 @@ const CONFIG: Record<GoogleIntegrationKind, {
     clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined,
   },
   drive: {
-    scope: 'https://www.googleapis.com/auth/drive.metadata.readonly',
+    scope: 'https://www.googleapis.com/auth/drive.readonly',
     storageKey: 'google_drive_connection',
     clientId: (import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID || import.meta.env.VITE_GOOGLE_CLIENT_ID) as string | undefined,
   },
@@ -52,6 +52,15 @@ export function getGoogleIntegrationScope(kind: GoogleIntegrationKind): string {
 
 function hasScope(scopes: string[], requiredScope: string): boolean {
   return scopes.includes(requiredScope);
+}
+
+export async function inspectGoogleIntegrationToken(kind: GoogleIntegrationKind): Promise<{ present: boolean; valid: boolean; expectedScope: string; scopes: string[] }> {
+  const expectedScope = getConfig(kind).scope;
+  const token = getStoredGoogleToken(kind);
+  if (!token) return { present: false, valid: false, expectedScope, scopes: [] };
+  const info = await inspectGoogleToken(token).catch(() => null);
+  const scopes = info?.scopes ?? [];
+  return { present: true, valid: hasScope(scopes, expectedScope), expectedScope, scopes };
 }
 
 function readConnection(kind: GoogleIntegrationKind): StoredConnection | null {
@@ -145,7 +154,7 @@ async function loadGsi(): Promise<void> {
 
 export async function requestGoogleIntegrationToken(
   kind: GoogleIntegrationKind,
-  options: { prompt?: '' | 'consent' | 'select_account' } = {},
+  options: { prompt?: string } = {},
 ): Promise<string> {
   const config = getConfig(kind);
   if (!isGoogleIntegrationConfigured(kind)) {
@@ -187,8 +196,20 @@ export async function requestGoogleIntegrationToken(
             : resp.error ?? 'Falha na autenticação com o Google'));
           return;
         }
-        saveConnection(kind, resp.access_token, resp.expires_in, [config.scope], 'gsi');
-        resolve(resp.access_token);
+        inspectGoogleToken(resp.access_token)
+          .then(info => {
+            const scopes = info?.scopes ?? [config.scope];
+            saveConnection(kind, resp.access_token!, resp.expires_in, scopes, 'gsi');
+            if (!hasScope(scopes, config.scope)) {
+              reject(new Error(`Permissão Google insuficiente. Escopo esperado: ${config.scope}.`));
+              return;
+            }
+            resolve(resp.access_token!);
+          })
+          .catch(() => {
+            saveConnection(kind, resp.access_token!, resp.expires_in, [config.scope], 'gsi');
+            resolve(resp.access_token!);
+          });
       },
     });
 

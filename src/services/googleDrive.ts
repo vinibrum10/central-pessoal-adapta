@@ -18,7 +18,9 @@ import {
   bootstrapGoogleIntegrationFromSession,
   clearGoogleIntegration,
   getGoogleIntegrationStatus,
+  getGoogleIntegrationScope,
   getStoredGoogleToken,
+  inspectGoogleIntegrationToken,
   isGoogleIntegrationConfigured,
   requestGoogleIntegrationToken,
   revokeGoogleIntegration,
@@ -57,7 +59,7 @@ export async function conectarGoogleDrive(): Promise<string> {
 
 export async function reconectarGoogleDrive(): Promise<string> {
   clearGoogleIntegration('drive');
-  return requestGoogleIntegrationToken('drive', { prompt: 'consent' });
+  return requestGoogleIntegrationToken('drive', { prompt: 'consent select_account' });
 }
 
 export function desconectarGoogleDrive(): void {
@@ -115,11 +117,20 @@ export async function listarArquivosDaPasta(folderId?: string): Promise<DriveFil
 
   const pasta = folderId ?? DRIVE_FOLDER_ID;
   if (!pasta) throw new Error(getMensagemDriveNaoConfigurado());
+  const tokenInfo = await inspectGoogleIntegrationToken('drive').catch(() => ({
+    present: Boolean(token),
+    valid: false,
+    expectedScope: getGoogleIntegrationScope('drive'),
+    scopes: [],
+  }));
 
   driveLog('listando pasta', {
     folderId: pasta,
     modulo: 'leitura',
     tokenStatus: getDriveConnectionStatus(),
+    tokenPresente: tokenInfo.present,
+    escopoEsperado: tokenInfo.expectedScope,
+    escopoValido: tokenInfo.valid,
   });
 
   const params = new URLSearchParams({
@@ -152,6 +163,12 @@ export async function listarArquivosDaPasta(folderId?: string): Promise<DriveFil
   }
 
   const data = await res.json() as { files: DriveFile[] };
+  const files = data.files ?? [];
+  driveLog('arquivos retornados', {
+    folderId: pasta,
+    quantidade: files.length,
+    mimeTypes: Array.from(new Set(files.map(file => file.mimeType))).sort(),
+  });
   return (data.files ?? [])
     .filter(file => file.mimeType !== GOOGLE_FOLDER_MIME)
     .map(file => ({

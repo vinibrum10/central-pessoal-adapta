@@ -186,6 +186,7 @@ export function LeituraDiariaPage() {
   const [erroPadrao] = useState('');
 
   const leituras = data.leiturasDiarias ?? [];
+  const leiturasLegadasDrive = useMemo(() => leituras.filter(isLeituraDriveLegada), [leituras]);
 
   const hoje = hojeISO();
   const kpis = useMemo(() => ({
@@ -277,14 +278,23 @@ export function LeituraDiariaPage() {
     setLeituraParaTarefa(null);
   };
 
-  const limparLeiturasDriveLegadas = useCallback(() => {
+  const limparLeiturasDriveLegadas = useCallback(async (showFeedback = false) => {
+    const removidas = leiturasLegadasDrive;
     setData(d => {
       const leiturasAtuais = d.leiturasDiarias ?? [];
       const filtradas = leiturasAtuais.filter(item => !isLeituraDriveLegada(item));
       if (filtradas.length === leiturasAtuais.length) return d;
       return { ...d, leiturasDiarias: filtradas };
     });
-  }, [setData]);
+    if (user && removidas.length > 0) {
+      await Promise.allSettled(removidas.map(item => leituraRepository.excluir(item.id)));
+    }
+    if (showFeedback) {
+      setMsgSync(removidas.length > 0
+        ? `${removidas.length} item${removidas.length > 1 ? 's legados removidos' : ' legado removido'} do Drive antigo.`
+        : 'Nenhum item legado do Drive antigo encontrado.');
+    }
+  }, [leiturasLegadasDrive, setData, user]);
 
   const sincronizarDrive = useCallback(async (options: { interactive?: boolean; forceReconnect?: boolean } = {}) => {
     if (!isDriveConfigurado()) {
@@ -333,7 +343,7 @@ export function LeituraDiariaPage() {
     let cancelado = false;
     async function autoSyncDrive() {
       if (!isDriveConfigurado()) return;
-      limparLeiturasDriveLegadas();
+      void limparLeiturasDriveLegadas();
       const pronto = await prepararGoogleDriveComSessao(session).catch(() => false);
       if (cancelado) return;
       if (!pronto || !isDriveConectado()) {
@@ -394,6 +404,11 @@ export function LeituraDiariaPage() {
           <Button variant="secondary" icon={<Plus size={15} />} onClick={adicionarManual} size="sm">
             Adicionar
           </Button>
+          {leiturasLegadasDrive.length > 0 && (
+            <Button variant="secondary" size="sm" onClick={() => { void limparLeiturasDriveLegadas(true); }}>
+              Limpar itens legados do Drive
+            </Button>
+          )}
           {isDriveConfigurado() ? (
             <Button icon={<RefreshCw size={15} className={sincronizando ? 'animate-spin' : ''} />} onClick={() => sincronizarDrive({ interactive: true })} loading={sincronizando} size="sm">
               Sincronizar Drive
