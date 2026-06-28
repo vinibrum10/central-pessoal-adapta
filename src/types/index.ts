@@ -348,6 +348,11 @@ export interface LeituraDiaria {
   tipo: TipoLeitura;
   url?: string;
   driveFileId?: string;
+  mimeType?: string;
+  contentText?: string;
+  contentHtml?: string;
+  tags?: string[];
+  pastaOrigem?: string;
   categoria: string;
   prioridade: PrioridadeLeitura;
   status: StatusLeitura;
