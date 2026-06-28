@@ -232,6 +232,12 @@ function migrarDados(raw: Record<string, unknown>): AppData {
     sugestoes: Array.isArray(raw.sugestoes)
       ? (raw.sugestoes as SugestaoCalendario[])
       : [],
+    statusPagamentos: Array.isArray(raw.statusPagamentos)
+      ? (raw.statusPagamentos as AppData['statusPagamentos'])
+      : [],
+    aReceber: Array.isArray(raw.aReceber)
+      ? (raw.aReceber as AppData['aReceber'])
+      : [],
   };
 }
 
@@ -395,6 +401,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       fontesLeitura: [],
       faturas: [],
       sugestoes: [],
+      statusPagamentos: [],
+      aReceber: [],
     };
     setDataState(empty);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(empty));

@@ -132,6 +132,11 @@ export interface Receita {
   recorrenciaMesTermino?: number | null;
   recorrenciaAnoTermino?: number | null;
   dataCriacao: string;
+  // Campos de vínculo com A Receber
+  aReceberOrigemId?: string;
+  parcelaAReceber?: number;
+  totalParcelasAReceber?: number;
+  statusAReceber?: 'a_receber' | 'recebido';
 }
 
 export interface Despesa {
@@ -152,6 +157,10 @@ export interface Despesa {
   grupoParcelamentoId?: string;
   mesInicioCobranca?: string; // "YYYY-MM"
   origemAjuste?: boolean;
+  // Campos de ajuste de fatura
+  adjustmentCartaoId?: string;
+  adjustmentMes?: number;
+  adjustmentAno?: number;
 }
 
 export type StatusCartao = 'ativo' | 'bloqueado' | 'cancelado';
@@ -260,6 +269,38 @@ export interface Bem {
   status: StatusBem;
   observacoes: string;
   dataCriacao: string;
+}
+
+// ---- STATUS DE PAGAMENTO MENSAL ----
+export interface StatusPagamentoMensal {
+  id: string;
+  itemId: string;
+  tipo: 'despesa' | 'fatura' | 'divida';
+  mes: number;
+  ano: number;
+  pago: boolean;
+  dataPagamento?: string;
+  dataCriacao: string;
+}
+
+// ---- A RECEBER ----
+export type StatusAReceber = 'a_receber' | 'recebido' | 'cancelado';
+
+export interface AReceber {
+  id: string;
+  pessoa: string;
+  descricao: string;
+  valor: number;
+  mes: number;
+  ano: number;
+  diaPrevisto?: number;
+  formaPrevista?: string;
+  observacao?: string;
+  status: StatusAReceber;
+  dataRecebimento?: string;
+  receitaVinculadaId?: string;
+  dataCriacao: string;
+  dataAtualizacao: string;
 }
 
 // ---- CONFIGURAÇÕES ----
@@ -405,4 +446,6 @@ export interface AppData {
   fontesLeitura: FonteLeitura[];
   faturas: FaturaCartao[];
   sugestoes: SugestaoCalendario[];
+  statusPagamentos: StatusPagamentoMensal[];
+  aReceber: AReceber[];
 }
