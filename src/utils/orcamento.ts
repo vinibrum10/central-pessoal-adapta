@@ -1,4 +1,4 @@
-import type { AppData, Despesa, FaturaCartao, Receita, StatusPagamentoMensal } from '../types';
+import type { AppData, Despesa, Divida, FaturaCartao, Receita, StatusPagamentoMensal } from '../types';
 import { calcularValorEfetivo, obterOuCriarFatura, recalcularFatura } from './faturaCartao';
 import { gerarId, hojeISO } from '.';
 
@@ -15,6 +15,16 @@ export interface ItemPagar {
   faturaId?: string;
   competencia?: string;
   cartaoId?: string;
+}
+
+export interface TotaisDespesasMes {
+  gastosDesseMes: number;
+  parcelasCartao: number;
+  emprestimos: number;
+  total: number;
+  quantidadeGastos: number;
+  quantidadeParcelasCartao: number;
+  quantidadeEmprestimos: number;
 }
 
 function mesAnoDeIso(iso: string): { mes: number; ano: number } {
@@ -122,6 +132,54 @@ export function gerarItensPagarMes(mes: number, ano: number, data: AppData): Ite
     });
 
   return items;
+}
+
+export function calcularTotaisDespesasMes(
+  mes: number,
+  ano: number,
+  despesas: Despesa[],
+  dividas: Divida[],
+  faturas: FaturaCartao[] = [],
+): TotaisDespesasMes {
+  const competencia = `${ano}-${String(mes + 1).padStart(2, '0')}`;
+  const despesasDoMes = despesas.filter(d => {
+    if (d.formaPagamento === 'Cartão de crédito' && d.faturaId) {
+      const fatura = faturas.find(f => f.id === d.faturaId);
+      return fatura?.competencia === competencia;
+    }
+    const dataDespesa = mesAnoDeIso(d.data);
+    return dataDespesa.mes === mes && dataDespesa.ano === ano;
+  });
+
+  const isParcelaCartao = (d: Despesa) =>
+    d.formaPagamento === 'Cartão de crédito' &&
+    (d.tipoCobrancaCartao === 'parcelado' || (d.quantidadeParcelas ?? 1) > 1 || Boolean(d.grupoParcelamentoId && d.parcelaAtual));
+
+  const parcelasCartaoItens = despesasDoMes.filter(isParcelaCartao);
+  const gastosDesseMesItens = despesasDoMes.filter(d => !isParcelaCartao(d));
+
+  const emprestimosItens = dividas
+    .filter(d => (d.status === 'ativa' || !d.status) && d.dataInicio)
+    .filter(div => {
+      const [inicioAno, inicioMes] = div.dataInicio!.slice(0, 7).split('-').map(Number);
+      const mesesDecorridos = (ano - inicioAno) * 12 + (mes - (inicioMes - 1));
+      const numeroParcela = mesesDecorridos + 1;
+      return numeroParcela >= 1 && numeroParcela <= div.totalParcelas;
+    });
+
+  const gastosDesseMes = gastosDesseMesItens.reduce((acc, d) => acc + d.valor, 0);
+  const parcelasCartao = parcelasCartaoItens.reduce((acc, d) => acc + d.valor, 0);
+  const emprestimos = emprestimosItens.reduce((acc, d) => acc + d.valorParcela, 0);
+
+  return {
+    gastosDesseMes,
+    parcelasCartao,
+    emprestimos,
+    total: gastosDesseMes + parcelasCartao + emprestimos,
+    quantidadeGastos: gastosDesseMesItens.length,
+    quantidadeParcelasCartao: parcelasCartaoItens.length,
+    quantidadeEmprestimos: emprestimosItens.length,
+  };
 }
 
 // Limite usado = soma de todas as despesas do cartão cujas faturas ainda NÃO foram pagas

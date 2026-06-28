@@ -33,6 +33,7 @@ import {
   calcularAReceberMes,
   calcularLimiteDisponivelCartao,
   calcularLimiteUsadoCartao,
+  calcularTotaisDespesasMes,
   converterRecebimentoEmReceita,
   desfazerPagamentoItem,
   gerarItensPagarMes,
@@ -269,6 +270,10 @@ export function OrcamentoPage() {
   const totalDividas = data.dividas.reduce((a, d) => a + Math.max(0, d.valorTotal - calcularParcelasPagasAuto(d) * d.valorParcela), 0);
   const totalReservas = data.reservas.reduce((a, r) => a + r.valorAtual, 0);
   const totalMetaReservas = data.reservas.reduce((a, r) => a + r.metaReserva, 0);
+  const totaisDespesasMes = useMemo(
+    () => calcularTotaisDespesasMes(mesFiltro.mes, mesFiltro.ano, data.despesas, data.dividas, data.faturas ?? []),
+    [data.despesas, data.dividas, data.faturas, mesFiltro.ano, mesFiltro.mes],
+  );
   const itensPagarMes = useMemo(() => gerarItensPagarMes(mesFiltro.mes, mesFiltro.ano, data), [mesFiltro.mes, mesFiltro.ano, data]);
   const itensEmAberto = itensPagarMes.filter(item => !item.pago);
   const itensPagos = itensPagarMes.filter(item => item.pago);
@@ -938,11 +943,6 @@ export function OrcamentoPage() {
             )}
           </div>
           {(despesasFiltradas.length > 0 || parcelasDividasNoMes.length > 0) && (() => {
-            const parcelados = despesasFiltradas.filter(d => d.faturaId && (d.quantidadeParcelas ?? 1) > 1);
-            const naoParcelados = despesasFiltradas.filter(d => !(d.faturaId && (d.quantidadeParcelas ?? 1) > 1));
-            const totalParcelados = parcelados.reduce((acc, d) => acc + d.valor, 0);
-            const totalNormal = naoParcelados.reduce((acc, d) => acc + d.valor, 0);
-            const totalGeralMes = totalNormal + totalParcelasDividas;
             const countTotal = despesasFiltradas.length + parcelasDividasNoMes.length;
             return (
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-1">
@@ -950,18 +950,21 @@ export function OrcamentoPage() {
                   {countTotal} {countTotal === 1 ? 'despesa' : 'despesas'} em {MESES[mesFiltro.mes]} {mesFiltro.ano}
                 </span>
                 <div className="flex flex-col sm:items-end gap-0.5">
-                  {parcelados.length > 0 && (
+                  <span className="text-xs text-surface-400 dark:text-surface-500">
+                    Gastos desse mês ({totaisDespesasMes.quantidadeGastos}): <span className="font-semibold text-danger-600 dark:text-danger-400">{formatarDinheiro(totaisDespesasMes.gastosDesseMes)}</span>
+                  </span>
+                  {totaisDespesasMes.quantidadeParcelasCartao > 0 && (
                     <span className="text-xs text-surface-400 dark:text-surface-500">
-                      Parcelas cartão ({parcelados.length}): <span className="font-semibold text-warning-600 dark:text-warning-400">{formatarDinheiro(totalParcelados)}</span>
+                      Parcelas cartão ({totaisDespesasMes.quantidadeParcelasCartao}): <span className="font-semibold text-warning-600 dark:text-warning-400">{formatarDinheiro(totaisDespesasMes.parcelasCartao)}</span>
                     </span>
                   )}
-                  {parcelasDividasNoMes.length > 0 && (
+                  {totaisDespesasMes.quantidadeEmprestimos > 0 && (
                     <span className="text-xs text-surface-400 dark:text-surface-500">
-                      Empréstimos ({parcelasDividasNoMes.length}): <span className="font-semibold text-amber-600 dark:text-amber-400">{formatarDinheiro(totalParcelasDividas)}</span>
+                      Empréstimos ({totaisDespesasMes.quantidadeEmprestimos}): <span className="font-semibold text-amber-600 dark:text-amber-400">{formatarDinheiro(totaisDespesasMes.emprestimos)}</span>
                     </span>
                   )}
                   <span className="text-base font-bold text-danger-600 dark:text-danger-400">
-                    Total: {formatarDinheiro(totalGeralMes)}
+                    Total: {formatarDinheiro(totaisDespesasMes.total)}
                   </span>
                 </div>
               </div>
