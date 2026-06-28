@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../hooks/useApp';
 import { useCalendario } from '../hooks/useCalendario';
+import { useAuth } from '../contexts/AuthContext';
 import type { EventoAgenda, Meta, SugestaoCalendario } from '../types';
 import { getWeekDays, classifyWeek, getFreeWeekNights } from '../utils/nightAvailability';
 import { selectTasksForFreeNights } from '../utils/taskSuggestionEngine';
@@ -30,6 +31,7 @@ import {
   getGoogleConnectionStatus,
   getMensagemNaoConfigurado as googleMsg,
   conectarGoogleCalendar, desconectarGoogleCalendar,
+  prepararGoogleCalendarComSessao,
   sincronizarGoogleCalendar, deduplicarEventos,
 } from '../services/googleCalendar';
 import {
@@ -71,6 +73,14 @@ const iconFonte = (fonte: Fonte): React.ReactNode => {
     default:          return <Clock size={13} className="text-surface-500" />;
   }
 };
+
+function googleCalendarStatusLabel() {
+  const status = getGoogleConnectionStatus();
+  if (status === 'conectado') return 'Conectado';
+  if (status === 'expirado') return 'Sessão expirada';
+  if (status === 'permissao_necessaria') return 'Permissão necessária';
+  return 'Desconectado';
+}
 
 // ============================================================
 // EVENTO CARD — reutilizável, expandível
@@ -234,9 +244,9 @@ function ModalClassificar({ evento, metas, onVincular, onSemClassificacao, onIgn
 // INTEGRAÇÃO CARD
 // ============================================================
 
-function IntegracaoCard({ nome, icone, configurado, conectado, sincronizadaEm, msgNaoConfigurado, onConectar, onDesconectar, onSincronizar, carregando, cor }: {
+function IntegracaoCard({ nome, icone, configurado, conectado, statusLabel, sincronizadaEm, msgNaoConfigurado, onConectar, onDesconectar, onSincronizar, carregando, cor }: {
   nome: string; icone: React.ReactNode; configurado: boolean; conectado: boolean;
-  sincronizadaEm?: string | null; msgNaoConfigurado: string;
+  statusLabel?: string; sincronizadaEm?: string | null; msgNaoConfigurado: string;
   onConectar: () => void; onDesconectar: () => void; onSincronizar: () => void;
   carregando: boolean; cor: string;
 }) {
@@ -250,8 +260,8 @@ function IntegracaoCard({ nome, icone, configurado, conectado, sincronizadaEm, m
             {!configurado
               ? <span className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1"><AlertTriangle size={10} /> Não configurado</span>
               : conectado
-                ? <span className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1"><CheckCircle2 size={10} /> Conectado</span>
-                : <span className="text-xs text-surface-400 dark:text-surface-500 flex items-center gap-1"><XCircle size={10} /> Desconectado</span>
+                ? <span className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1"><CheckCircle2 size={10} /> {statusLabel ?? 'Conectado'}</span>
+                : <span className="text-xs text-surface-400 dark:text-surface-500 flex items-center gap-1"><XCircle size={10} /> {statusLabel ?? 'Desconectado'}</span>
             }
             {sincronizadaEm && <span className="text-xs text-surface-400 dark:text-surface-500">· Sincronizado {format(new Date(sincronizadaEm), 'dd/MM HH:mm')}</span>}
           </div>
@@ -538,6 +548,7 @@ function VistaLista({ eventos, filtroFonte }: { eventos: EventoAgenda[]; filtroF
 
 export function AgendaTempoPage() {
   const { data, setData } = useApp();
+  const { session, loading: authLoading } = useAuth();
 
   const hoje = hojeISO();
   const [abaAtiva, setAbaAtiva] = useState<'agenda' | 'disponibilidade' | 'fds' | 'fontes' | 'planejamento'>('agenda');
@@ -613,9 +624,13 @@ export function AgendaTempoPage() {
 
   // ── Auto-sync ao montar: revalida token e sincroniza fontes conectadas ──
   useEffect(() => {
+    if (authLoading) return;
     let cancelado = false;
     const autoSync = async () => {
-      if (isGoogleConfigured() && getGoogleConnectionStatus() === 'conectado') {
+      const googlePronto = isGoogleConfigured()
+        ? await prepararGoogleCalendarComSessao(session).catch(() => false)
+        : false;
+      if (googlePronto && getGoogleConnectionStatus() === 'conectado') {
         try {
           const eventos = await sincronizarGoogleCalendar(range30.ini, range30.fim);
           if (!cancelado) {
@@ -647,7 +662,7 @@ export function AgendaTempoPage() {
     autoSync();
     return () => { cancelado = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // roda só no mount
+  }, [authLoading, session?.access_token]); // roda quando a sessão OAuth fica disponível
 
   // ── Google ──
   const handleConectarGoogle = async () => {
@@ -1154,6 +1169,7 @@ export function AgendaTempoPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <IntegracaoCard nome="Google Calendar" icone={googleIcon}
               configurado={isGoogleConfigured()} conectado={isGoogleConectado()}
+              statusLabel={googleCalendarStatusLabel()}
               sincronizadaEm={sincGoogleEm} msgNaoConfigurado={googleMsg()}
               onConectar={handleConectarGoogle} onDesconectar={handleDesconectarGoogle} onSincronizar={handleSincronizarGoogle}
               carregando={carregandoGoogle}
@@ -1238,7 +1254,7 @@ export function AgendaTempoPage() {
               <div className="flex-1">
                 <p className="text-sm font-bold text-surface-900 dark:text-white">Google Calendar</p>
                 <p className="text-xs text-surface-400 dark:text-surface-500">
-                  {!isGoogleConfigured() ? 'Não configurado' : isGoogleConectado() ? '✓ Conectado · todos os calendários' : 'Desconectado'}
+                  {!isGoogleConfigured() ? 'Não configurado' : isGoogleConectado() ? '✓ Conectado · todos os calendários' : googleCalendarStatusLabel()}
                 </p>
               </div>
             </div>

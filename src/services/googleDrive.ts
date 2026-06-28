@@ -10,137 +10,62 @@
  */
 
 /// <reference types="vite/client" />
+import type { Session } from '@supabase/supabase-js';
 import type { LeituraDiaria, TipoLeitura } from '../types';
 import { gerarId, hojeISO } from '../utils';
+import {
+  bootstrapGoogleIntegrationFromSession,
+  clearGoogleIntegration,
+  getGoogleIntegrationStatus,
+  getStoredGoogleToken,
+  isGoogleIntegrationConfigured,
+  requestGoogleIntegrationToken,
+  revokeGoogleIntegration,
+} from './googleIntegrationService';
 
-const CLIENT_ID = (import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID || import.meta.env.VITE_GOOGLE_CLIENT_ID) as string | undefined;
 const DRIVE_FOLDER_ID = import.meta.env.VITE_GOOGLE_DRIVE_FOLDER_ID as string | undefined;
-const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.metadata.readonly';
 const DRIVE_API = 'https://www.googleapis.com/drive/v3';
-const GSI_URL = 'https://accounts.google.com/gsi/client';
-const STORAGE_KEY = 'google_drive_connection';
-
-type DriveConnectionState = {
-  accessToken: string;
-  expiresAt: number;
-};
 
 export function isDriveConfigurado(): boolean {
-  return Boolean(DRIVE_FOLDER_ID && DRIVE_FOLDER_ID.trim() !== '');
+  return Boolean(DRIVE_FOLDER_ID && DRIVE_FOLDER_ID.trim() !== '' && isGoogleIntegrationConfigured('drive'));
 }
 
 export function isDriveConectado(): boolean {
-  return tokenValido() !== null;
+  return getStoredGoogleToken('drive') !== null;
 }
 
 export function getMensagemDriveNaoConfigurado(): string {
+  if (!isGoogleIntegrationConfigured('drive')) {
+    return 'Google Drive não configurado. Configure VITE_GOOGLE_CLIENT_ID ou VITE_GOOGLE_DRIVE_CLIENT_ID nas variáveis de ambiente.';
+  }
   return 'Google Drive não configurado. Configure VITE_GOOGLE_DRIVE_FOLDER_ID e conecte sua conta Google para sincronizar leituras.';
 }
 
-function carregarScriptGSI(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const win = window as unknown as Record<string, unknown>;
-    if (win.google) return resolve();
-
-    const existing = document.getElementById('google-gsi-script');
-    if (existing) {
-      const check = setInterval(() => {
-        if ((window as unknown as Record<string, unknown>).google) {
-          clearInterval(check);
-          resolve();
-        }
-      }, 100);
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.id = 'google-gsi-script';
-    script.src = GSI_URL;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Falha ao carregar script do Google Identity Services'));
-    document.head.appendChild(script);
-  });
-}
-
-function lerEstado(): DriveConnectionState | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<DriveConnectionState>;
-    if (!parsed.accessToken || !parsed.expiresAt) return null;
-    return { accessToken: parsed.accessToken, expiresAt: parsed.expiresAt };
-  } catch {
-    return null;
-  }
-}
-
-function salvarEstado(accessToken: string, expiresInSeconds = 3600): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({
-    accessToken,
-    expiresAt: Date.now() + expiresInSeconds * 1000 - 60_000,
-  }));
-}
-
-function limparEstado(): void {
-  localStorage.removeItem(STORAGE_KEY);
-}
-
-function tokenValido(): string | null {
-  const estado = lerEstado();
-  if (!estado) return null;
-  if (estado.expiresAt <= Date.now()) {
-    limparEstado();
-    return null;
-  }
-  return estado.accessToken;
-}
-
 export async function conectarGoogleDrive(): Promise<string> {
-  if (!CLIENT_ID) throw new Error('Google Drive não configurado. Configure VITE_GOOGLE_CLIENT_ID ou VITE_GOOGLE_DRIVE_CLIENT_ID.');
-  await carregarScriptGSI();
+  return requestGoogleIntegrationToken('drive', { prompt: '' });
+}
 
-  return new Promise((resolve, reject) => {
-    const win = window as unknown as {
-      google?: {
-        accounts: {
-          oauth2: {
-            initTokenClient: (config: {
-              client_id: string;
-              scope: string;
-              callback: (resp: { access_token?: string; expires_in?: number; error?: string }) => void;
-            }) => { requestAccessToken: () => void };
-          };
-        };
-      };
-    };
+export async function reconectarGoogleDrive(): Promise<string> {
+  clearGoogleIntegration('drive');
+  return requestGoogleIntegrationToken('drive', { prompt: 'consent' });
+}
 
-    if (!win.google?.accounts?.oauth2) {
-      reject(new Error('Google Identity Services não carregado corretamente'));
-      return;
-    }
+export function desconectarGoogleDrive(): void {
+  void revokeGoogleIntegration('drive');
+}
 
-    const tokenClient = win.google.accounts.oauth2.initTokenClient({
-      client_id: CLIENT_ID,
-      scope: DRIVE_SCOPE,
-      callback: (resp) => {
-        if (resp.error || !resp.access_token) {
-          reject(new Error(resp.error ?? 'Falha na autenticação com Google Drive'));
-          return;
-        }
-        salvarEstado(resp.access_token, resp.expires_in);
-        resolve(resp.access_token);
-      },
-    });
-    tokenClient.requestAccessToken();
-  });
+export function getDriveConnectionStatus(): 'desconectado' | 'permissao_necessaria' | 'conectado' | 'expirado' {
+  return getGoogleIntegrationStatus('drive');
+}
+
+export async function prepararGoogleDriveComSessao(session: Session | null | undefined): Promise<boolean> {
+  return bootstrapGoogleIntegrationFromSession('drive', session);
 }
 
 async function getToken(): Promise<string> {
-  const token = tokenValido();
+  const token = getStoredGoogleToken('drive');
   if (token) return token;
-  return conectarGoogleDrive();
+  throw new Error('Permissão do Google Drive necessária.');
 }
 
 function classificarArquivo(nome: string, mimeType?: string, temUrl = false): TipoLeitura {
@@ -191,8 +116,8 @@ export async function listarArquivosDaPasta(folderId?: string): Promise<DriveFil
 
   if (!res.ok) {
     if (res.status === 401) {
-      limparEstado();
-      throw new Error('Sessão do Google Drive expirada. Clique em "Sincronizar Drive" para reconectar.');
+      clearGoogleIntegration('drive');
+      throw new Error('Sessão do Google Drive expirada. Clique em "Reconectar" para conceder permissão novamente.');
     }
     if (res.status === 403) {
       throw new Error('Acesso negado ao Google Drive. Verifique se a pasta está compartilhada com a conta conectada e se o escopo de permissão está correto.');

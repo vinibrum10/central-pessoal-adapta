@@ -63,6 +63,8 @@ const emptyStudyData: EnglishStudyData = {
 
 const passingScorePercent = 60;
 const unlockPercent = 80;
+const defaultLibraryLevel = 'Intermediário';
+const defaultLibraryDuration: 'curto' | 'medio' | 'longo' = 'medio';
 
 function formatTime(seconds: number) {
   const safeSeconds = Math.max(0, Math.floor(seconds || 0));
@@ -87,6 +89,21 @@ function createDailyStudy(date: string, video: DailyEnglishVideo): EnglishDailyS
     quizGenerated: false,
     quizCompleted: false,
     completed: false,
+  };
+}
+
+function resolveDailyVideoFromStudy(study: EnglishDailyStudy): DailyEnglishVideo {
+  const localVideo = dailyEnglishVideos.find(video => video.videoId === study.videoId);
+  if (localVideo) return localVideo;
+  return {
+    videoId: study.videoId,
+    title: study.title,
+    channel: 'YouTube',
+    level: 'intermediário',
+    cefrLevel: 'B1',
+    theme: 'Listening',
+    durationSeconds: study.durationSeconds,
+    summary: '',
   };
 }
 
@@ -184,9 +201,8 @@ export function InglesPage() {
   const [quizMessage, setQuizMessage] = useState('');
   const [shortcutModal, setShortcutModal] = useState<'Biblioteca' | 'Histórico' | 'Configurações' | null>(null);
 
-  const initialVideo = useMemo(() => getDailyEnglishVideoById(getTodayStudy(data, dailyEnglishVideos[0]).videoId), [data]);
-  const todayStudy = useMemo(() => getTodayStudy(data, initialVideo), [data, initialVideo]);
-  const currentVideo = useMemo(() => getDailyEnglishVideoById(todayStudy.videoId), [todayStudy.videoId]);
+  const todayStudy = useMemo(() => getTodayStudy(data, dailyEnglishVideos[0]), [data]);
+  const currentVideo = useMemo(() => resolveDailyVideoFromStudy(todayStudy), [todayStudy]);
   const generatedQuiz = useMemo(
     () => data.generatedQuizzes.find(quiz => quiz.videoId === currentVideo.videoId),
     [currentVideo.videoId, data.generatedQuizzes],
@@ -402,8 +418,51 @@ export function InglesPage() {
   async function handleChangeVideo() {
     stopWatchTimer();
     setIsPlayerPlaying(false);
-    const currentIndex = dailyEnglishVideos.findIndex(video => video.videoId === todayStudy.videoId);
-    const nextVideo = dailyEnglishVideos[(currentIndex + 1) % dailyEnglishVideos.length];
+    setError('');
+    setPlayerStatus('loading');
+    const recentVideoIds = new Set([
+      todayStudy.videoId,
+      ...latestDataRef.current.dailyStudies.slice(0, 12).map(study => study.videoId),
+      ...latestDataRef.current.sessions.slice(0, 12)
+        .map(session => new URL(session.url ?? '', window.location.origin).searchParams.get('v') ?? '')
+        .filter(Boolean),
+    ]);
+    let nextVideo: DailyEnglishVideo | null = null;
+
+    if (isYouTubeEnglishConfigured()) {
+      try {
+        for (let queryIndex = 0; queryIndex < 4 && !nextVideo; queryIndex += 1) {
+          const result = await buscarVideosIngles({
+            nivel: defaultLibraryLevel,
+            duracao: defaultLibraryDuration,
+            queryIndex,
+            seenVideoIds: recentVideoIds,
+          });
+          const candidate = result.videos.find(video => !recentVideoIds.has(video.id));
+          if (candidate) {
+            nextVideo = {
+              videoId: candidate.id,
+              title: candidate.title,
+              channel: candidate.channelTitle,
+              level: 'intermediário',
+              cefrLevel: 'B1',
+              theme: 'Listening',
+              durationSeconds: candidate.durationSeconds,
+              summary: '',
+            };
+          }
+        }
+      } catch (err) {
+        setError(err instanceof Error ? `${err.message} Usando fallback local temporariamente.` : 'Falha ao buscar vídeos. Usando fallback local temporariamente.');
+      }
+    }
+
+    if (!nextVideo) {
+      nextVideo = dailyEnglishVideos.find(video => !recentVideoIds.has(video.videoId))
+        ?? dailyEnglishVideos.find(video => video.videoId !== todayStudy.videoId)
+        ?? dailyEnglishVideos[0];
+    }
+
     const nextStudy = createDailyStudy(hojeISO(), nextVideo);
     setAnswers({});
     setQuizMessage('');
@@ -697,6 +756,9 @@ export function InglesPage() {
             <BibliotecaVideos
               allVideos={dailyEnglishVideos}
               onSelectVideo={(video) => {
+                setAnswers({});
+                setQuizMessage('');
+                setPlayerStatus('loading');
                 void saveStudy(createDailyStudy(hojeISO(), video));
                 setShortcutModal(null);
               }}

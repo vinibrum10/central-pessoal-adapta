@@ -12,59 +12,26 @@
  */
 
 /// <reference types="vite/client" />
+import type { Session } from '@supabase/supabase-js';
 import type { EventoAgenda } from '../types';
+import {
+  bootstrapGoogleIntegrationFromSession,
+  clearGoogleIntegration,
+  getGoogleIntegrationStatus,
+  getStoredGoogleToken,
+  isGoogleIntegrationConfigured,
+  requestGoogleIntegrationToken,
+  revokeGoogleIntegration,
+} from './googleIntegrationService';
 
-const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
-const SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
-const GSI_URL = 'https://accounts.google.com/gsi/client';
 const CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
-const STORAGE_KEY = 'google_calendar_connection';
-
-type GoogleConnectionState = {
-  accessToken: string;
-  expiresAt: number;
-};
-
-function lerEstado(): GoogleConnectionState | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<GoogleConnectionState>;
-    if (!parsed.accessToken || !parsed.expiresAt) return null;
-    return { accessToken: parsed.accessToken, expiresAt: parsed.expiresAt };
-  } catch {
-    return null;
-  }
-}
-
-function salvarEstado(accessToken: string, expiresInSeconds = 3600): void {
-  const margemSegurancaMs = 60_000;
-  const expiresAt = Date.now() + expiresInSeconds * 1000 - margemSegurancaMs;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ accessToken, expiresAt }));
-}
-
-function limparEstado(): void {
-  localStorage.removeItem(STORAGE_KEY);
-}
-
-function tokenValido(): string | null {
-  const estado = lerEstado();
-  if (!estado) return null;
-  if (estado.expiresAt <= Date.now()) {
-    limparEstado();
-    return null;
-  }
-  return estado.accessToken;
-}
-
-let tokenEmMemoria: string | null = tokenValido();
 
 // ============================================================
 // VERIFICAÇÃO DE CONFIGURAÇÃO
 // ============================================================
 
 export function isGoogleConfigured(): boolean {
-  return Boolean(CLIENT_ID && CLIENT_ID.trim() !== '');
+  return isGoogleIntegrationConfigured('calendar');
 }
 
 export function getMensagemNaoConfigurado(): string {
@@ -72,128 +39,40 @@ export function getMensagemNaoConfigurado(): string {
 }
 
 // ============================================================
-// CARREGAMENTO DINÂMICO DO SCRIPT GSI
-// ============================================================
-
-function carregarScriptGSI(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (typeof window === 'undefined') return reject(new Error('Browser não disponível'));
-    const win = window as unknown as Record<string, unknown>;
-    if (win['google']) return resolve();
-
-    const existing = document.getElementById('google-gsi-script');
-    if (existing) {
-      const check = setInterval(() => {
-        if ((window as unknown as Record<string, unknown>)['google']) {
-          clearInterval(check);
-          resolve();
-        }
-      }, 100);
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.id = 'google-gsi-script';
-    script.src = GSI_URL;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Falha ao carregar script do Google Identity Services'));
-    document.head.appendChild(script);
-  });
-}
-
-// ============================================================
 // AUTENTICAÇÃO
 // ============================================================
 
 export async function conectarGoogleCalendar(): Promise<string> {
-  if (!isGoogleConfigured()) {
-    throw new Error(getMensagemNaoConfigurado());
-  }
+  if (!isGoogleConfigured()) throw new Error(getMensagemNaoConfigurado());
+  return requestGoogleIntegrationToken('calendar', { prompt: '' });
+}
 
-  await carregarScriptGSI();
-
-  return new Promise((resolve, reject) => {
-    const win = window as unknown as {
-      google?: {
-        accounts: {
-          oauth2: {
-            initTokenClient: (config: {
-              client_id: string;
-              scope: string;
-              callback: (resp: { access_token?: string; expires_in?: number; error?: string }) => void;
-            }) => { requestAccessToken: () => void };
-          };
-        };
-      };
-    };
-
-    if (!win.google?.accounts?.oauth2) {
-      return reject(new Error('Google Identity Services não carregado corretamente'));
-    }
-
-    const tokenClient = win.google.accounts.oauth2.initTokenClient({
-      client_id: CLIENT_ID!,
-      scope: SCOPE,
-      callback: (resp) => {
-        if (resp.error || !resp.access_token) {
-          if (resp.error === 'access_denied') {
-            reject(new Error('Permissão negada. Você pode conectar novamente a qualquer momento.'));
-          } else {
-            reject(new Error(resp.error ?? 'Falha na autenticação com o Google'));
-          }
-          return;
-        }
-        tokenEmMemoria = resp.access_token;
-        salvarEstado(resp.access_token, resp.expires_in);
-        resolve(resp.access_token);
-      },
-    });
-
-    tokenClient.requestAccessToken();
-  });
+export async function reconectarGoogleCalendar(): Promise<string> {
+  clearGoogleIntegration('calendar');
+  return requestGoogleIntegrationToken('calendar', { prompt: 'consent' });
 }
 
 export function desconectarGoogleCalendar(): void {
-  const win = window as unknown as {
-    google?: { accounts: { oauth2: { revoke: (token: string, cb: () => void) => void } } };
-  };
-  if (tokenEmMemoria && win.google?.accounts?.oauth2) {
-    win.google.accounts.oauth2.revoke(tokenEmMemoria, () => {
-      tokenEmMemoria = null;
-      limparEstado();
-    });
-  } else {
-    tokenEmMemoria = null;
-    limparEstado();
-  }
+  void revokeGoogleIntegration('calendar');
 }
 
 export function isGoogleConectado(): boolean {
-  tokenEmMemoria = tokenValido();
-  return Boolean(tokenEmMemoria);
+  return getStoredGoogleToken('calendar') !== null;
 }
 
-export function getGoogleConnectionStatus(): 'desconectado' | 'conectado' | 'expirado' {
-  const estado = lerEstado();
-  if (!estado) return 'desconectado';
-  if (estado.expiresAt <= Date.now()) {
-    limparEstado();
-    tokenEmMemoria = null;
-    return 'expirado';
-  }
-  tokenEmMemoria = estado.accessToken;
-  return 'conectado';
+export function getGoogleConnectionStatus(): 'desconectado' | 'permissao_necessaria' | 'conectado' | 'expirado' {
+  return getGoogleIntegrationStatus('calendar');
+}
+
+export async function prepararGoogleCalendarComSessao(session: Session | null | undefined): Promise<boolean> {
+  return bootstrapGoogleIntegrationFromSession('calendar', session);
 }
 
 function obterTokenOuErro(): string {
-  const token = tokenValido();
+  const token = getStoredGoogleToken('calendar');
   if (!token) {
-    tokenEmMemoria = null;
-    throw new Error('Sessão expirada — reconectar Google Calendar');
+    throw new Error('Permissão do Google Calendar necessária.');
   }
-  tokenEmMemoria = token;
   return token;
 }
 
@@ -218,8 +97,7 @@ export async function listarCalendarios(): Promise<CalendarioGoogle[]> {
 
   if (!resp.ok) {
     if (resp.status === 401) {
-      tokenEmMemoria = null;
-      limparEstado();
+      clearGoogleIntegration('calendar');
       throw new Error('Sessão expirada — reconectar Google Calendar');
     }
     throw new Error(`Erro ao listar calendários: ${resp.status}`);
@@ -281,8 +159,7 @@ async function buscarEventosCalendario(
 
   if (!resp.ok) {
     if (resp.status === 401) {
-      tokenEmMemoria = null;
-      limparEstado();
+      clearGoogleIntegration('calendar');
       throw new Error('Sessão expirada — reconectar Google Calendar');
     }
     // Calendários sem acesso de leitura retornam 403/404 — ignorar silenciosamente

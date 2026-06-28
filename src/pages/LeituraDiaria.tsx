@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   BookOpen, Search, RefreshCw, CheckCircle, Archive,
   ExternalLink, Plus, AlertCircle, Briefcase, Cpu,
@@ -10,7 +10,16 @@ import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { Select } from '../components/FormFields';
 import { gerarId, hojeISO } from '../utils';
-import { isDriveConfigurado, isDriveConectado, getMensagemDriveNaoConfigurado, sincronizarLeiturasDrive } from '../services/googleDrive';
+import {
+  conectarGoogleDrive,
+  getDriveConnectionStatus,
+  getMensagemDriveNaoConfigurado,
+  isDriveConfigurado,
+  isDriveConectado,
+  prepararGoogleDriveComSessao,
+  reconectarGoogleDrive,
+  sincronizarLeiturasDrive,
+} from '../services/googleDrive';
 import { leituraRepository } from '../repositories/leituraRepository';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -153,7 +162,7 @@ function LeituraCard({
 // ---- Página principal ----
 export function LeituraDiariaPage() {
   const { data, setData } = useApp();
-  const { user } = useAuth();
+  const { user, session, loading: authLoading } = useAuth();
 
   const [filtro, setFiltro] = useState<FiltroLeitura>('todos');
   const [busca, setBusca] = useState('');
@@ -257,7 +266,7 @@ export function LeituraDiariaPage() {
     setLeituraParaTarefa(null);
   };
 
-  const sincronizarDrive = async () => {
+  const sincronizarDrive = useCallback(async (options: { interactive?: boolean; forceReconnect?: boolean } = {}) => {
     if (!isDriveConfigurado()) {
       setMsgSync(getMensagemDriveNaoConfigurado());
       return;
@@ -265,13 +274,22 @@ export function LeituraDiariaPage() {
     setSincronizando(true);
     setMsgSync('');
     try {
+      if (options.forceReconnect) {
+        await reconectarGoogleDrive();
+      } else if (options.interactive && !isDriveConectado()) {
+        await conectarGoogleDrive();
+      }
       const novosItens = await sincronizarLeiturasDrive();
-      // Filtrar duplicados por driveFileId
-      const idsExistentes = new Set(leituras.map(l => l.driveFileId).filter(Boolean));
-      const novos = novosItens.filter(i => !i.driveFileId || !idsExistentes.has(i.driveFileId));
+      let novos: LeituraDiaria[] = [];
+
+      setData(d => {
+        const existentes = d.leiturasDiarias ?? [];
+        const idsExistentes = new Set(existentes.map(l => l.driveFileId).filter(Boolean));
+        novos = novosItens.filter(i => !i.driveFileId || !idsExistentes.has(i.driveFileId));
+        return novos.length > 0 ? { ...d, leiturasDiarias: [...existentes, ...novos] } : d;
+      });
 
       if (novos.length > 0) {
-        setData(d => ({ ...d, leiturasDiarias: [...(d.leiturasDiarias ?? []), ...novos] }));
         if (user) {
           await leituraRepository.sincronizarDrive(user.id, novos);
         }
@@ -285,19 +303,28 @@ export function LeituraDiariaPage() {
       setMsgSync(`Erro: ${(e as Error).message}`);
     }
     setSincronizando(false);
-  };
+  }, [setData, user]);
 
   // Auto-sync ao abrir a página, se já estiver conectado e com token válido
   useEffect(() => {
-    if (!isDriveConfigurado()) return;
-    if (!isDriveConectado()) {
-      // Token expirado — mantém itens locais, pede reconexão sem bloquear a tela
-      setMsgSync('Sessão do Google Drive expirada. Clique em "Sincronizar Drive" para reconectar.');
-      return;
+    if (authLoading) return;
+    let cancelado = false;
+    async function autoSyncDrive() {
+      if (!isDriveConfigurado()) return;
+      const pronto = await prepararGoogleDriveComSessao(session).catch(() => false);
+      if (cancelado) return;
+      if (!pronto || !isDriveConectado()) {
+        const status = getDriveConnectionStatus();
+        setMsgSync(status === 'expirado'
+          ? 'Sessão do Google Drive expirada. Clique em "Reconectar" para conceder permissão novamente.'
+          : 'Permissão do Google Drive necessária. Clique em "Sincronizar Drive" para conceder acesso.');
+        return;
+      }
+      await sincronizarDrive();
     }
-    sincronizarDrive();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // roda só no mount
+    void autoSyncDrive();
+    return () => { cancelado = true; };
+  }, [authLoading, session?.access_token, sincronizarDrive]);
 
   const adicionarManual = () => {
     const url = prompt('URL do link para adicionar:');
@@ -345,7 +372,7 @@ export function LeituraDiariaPage() {
             Adicionar
           </Button>
           {isDriveConfigurado() ? (
-            <Button icon={<RefreshCw size={15} className={sincronizando ? 'animate-spin' : ''} />} onClick={sincronizarDrive} loading={sincronizando} size="sm">
+            <Button icon={<RefreshCw size={15} className={sincronizando ? 'animate-spin' : ''} />} onClick={() => sincronizarDrive({ interactive: true })} loading={sincronizando} size="sm">
               Sincronizar Drive
             </Button>
           ) : (
@@ -396,10 +423,11 @@ export function LeituraDiariaPage() {
           <span className="flex-1">{msgSync}</span>
           {(msgSync.startsWith('Erro') || msgSync.includes('expirada')) && (
             <button
-              onClick={() => { setMsgSync(''); sincronizarDrive(); }}
+              onClick={() => { setMsgSync(''); void sincronizarDrive({ interactive: true, forceReconnect: true }); }}
+              disabled={sincronizando}
               className="underline font-medium flex-shrink-0 hover:no-underline"
             >
-              Reconectar
+              {sincronizando ? 'Reconectando...' : 'Reconectar'}
             </button>
           )}
         </div>
