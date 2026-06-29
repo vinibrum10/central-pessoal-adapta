@@ -301,6 +301,9 @@ export function OrcamentoPage() {
   const aReceberExcluirItem = modalExcluirAReceber
     ? (data.aReceber ?? []).find(item => item.id === modalExcluirAReceber.itemId)
     : null;
+  const itensAReceberPendentes = aReceberMes.lista.filter(item => item.status === 'a_receber');
+  const itensAReceberRecebidos = aReceberMes.lista.filter(item => item.status === 'recebido');
+  const [mostrarAReceberRecebidos, setMostrarAReceberRecebidos] = useState(false);
 
   useEffect(() => {
     if (aba !== 'resumo') return;
@@ -839,6 +842,71 @@ export function OrcamentoPage() {
     }));
     setModal(null);
   }, [formBem, formBemValorStr, editandoId, setData]);
+
+  const renderAReceberItem = (item: AReceber) => (
+    <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-surface-200 p-3 dark:border-surface-700">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-surface-900 dark:text-white truncate">{item.descricao}</p>
+        <p className="text-xs text-surface-400">
+          {item.pessoa} · {item.status}
+          {item.tipoRecebimento === 'parcelado' && item.parcelaAtual && item.totalParcelas ? ` · parcela ${item.parcelaAtual}/${item.totalParcelas}` : ''}
+          {item.diaPrevisto ? ` · dia ${item.diaPrevisto}` : ''}
+        </p>
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        <span className="text-sm font-semibold text-primary-600 dark:text-primary-400">{formatarDinheiro(item.valor)}</span>
+        <button onClick={() => {
+          const grupo = item.grupoRecebimentoId
+            ? (data.aReceber ?? [])
+              .filter(a => a.grupoRecebimentoId === item.grupoRecebimentoId)
+              .sort((a, b) => (a.parcelaAtual ?? 0) - (b.parcelaAtual ?? 0))
+            : [];
+          const primeiraParcela = grupo[0] ?? item;
+          const valorTotalGrupo = grupo.length > 0
+            ? grupo.reduce((total, parcela) => total + parcela.valor, 0)
+            : item.valor;
+          setEditandoId(item.id);
+          setFormAReceber({
+            pessoa: item.pessoa,
+            descricao: item.descricao,
+            valor: valorTotalGrupo,
+            mes: primeiraParcela.mes,
+            ano: primeiraParcela.ano,
+            diaPrevisto: primeiraParcela.diaPrevisto,
+            formaPrevista: primeiraParcela.formaPrevista,
+            observacao: item.observacao,
+            status: item.status,
+            dataRecebimento: item.dataRecebimento,
+            receitaVinculadaId: item.receitaVinculadaId,
+            tipoRecebimento: item.tipoRecebimento ?? 'unico',
+            grupoRecebimentoId: item.grupoRecebimentoId,
+            parcelaAtual: item.parcelaAtual,
+            totalParcelas: item.totalParcelas ?? (grupo.length > 0 ? grupo.length : undefined),
+          });
+          setFormAReceberValorStr(moneyToInputBR(valorTotalGrupo));
+          setErroAReceber('');
+          setModal('aReceber');
+        }} className="p-1.5 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
+        <button
+          onClick={() => setModalExcluirAReceber({ itemId: item.id })}
+          className="p-1.5 rounded text-surface-400 hover:text-danger-600 transition-colors"
+          title="Excluir"
+        >
+          <Trash2 size={13} />
+        </button>
+        <Button
+          size="sm"
+          variant={item.status === 'recebido' ? 'secondary' : 'success'}
+          icon={item.status === 'recebido' ? <RotateCcw size={13} /> : <CheckCircle size={13} />}
+          onClick={() => {
+            setModalAReceberAcao({ itemId: item.id, tipo: item.status === 'recebido' ? 'desfazer' : 'receber' });
+          }}
+        >
+          {item.status === 'recebido' ? 'Desfazer' : 'Recebido'}
+        </Button>
+      </div>
+    </div>
+  );
 
   const tabs: { id: Aba; label: string }[] = [
     { id: 'resumo', label: 'Resumo' },
@@ -1494,71 +1562,35 @@ export function OrcamentoPage() {
               {aReceberMes.lista.length === 0 ? (
                 <p className="text-center py-8 text-surface-400">Nenhum valor a receber em {MESES[mesFiltro.mes]} {mesFiltro.ano}</p>
               ) : (
-                <div className="space-y-2">
-                  {aReceberMes.lista.map(item => (
-                    <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-surface-200 p-3 dark:border-surface-700">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-surface-900 dark:text-white truncate">{item.descricao}</p>
-                        <p className="text-xs text-surface-400">
-                          {item.pessoa} · {item.status}
-                          {item.tipoRecebimento === 'parcelado' && item.parcelaAtual && item.totalParcelas ? ` · parcela ${item.parcelaAtual}/${item.totalParcelas}` : ''}
-                          {item.diaPrevisto ? ` · dia ${item.diaPrevisto}` : ''}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <span className="text-sm font-semibold text-primary-600 dark:text-primary-400">{formatarDinheiro(item.valor)}</span>
-                        <button onClick={() => {
-                          const grupo = item.grupoRecebimentoId
-                            ? (data.aReceber ?? [])
-                              .filter(a => a.grupoRecebimentoId === item.grupoRecebimentoId)
-                              .sort((a, b) => (a.parcelaAtual ?? 0) - (b.parcelaAtual ?? 0))
-                            : [];
-                          const primeiraParcela = grupo[0] ?? item;
-                          const valorTotalGrupo = grupo.length > 0
-                            ? grupo.reduce((total, parcela) => total + parcela.valor, 0)
-                            : item.valor;
-                          setEditandoId(item.id);
-                          setFormAReceber({
-                            pessoa: item.pessoa,
-                            descricao: item.descricao,
-                            valor: valorTotalGrupo,
-                            mes: primeiraParcela.mes,
-                            ano: primeiraParcela.ano,
-                            diaPrevisto: primeiraParcela.diaPrevisto,
-                            formaPrevista: primeiraParcela.formaPrevista,
-                            observacao: item.observacao,
-                            status: item.status,
-                            dataRecebimento: item.dataRecebimento,
-                            receitaVinculadaId: item.receitaVinculadaId,
-                            tipoRecebimento: item.tipoRecebimento ?? 'unico',
-                            grupoRecebimentoId: item.grupoRecebimentoId,
-                            parcelaAtual: item.parcelaAtual,
-                            totalParcelas: item.totalParcelas ?? (grupo.length > 0 ? grupo.length : undefined),
-                          });
-                          setFormAReceberValorStr(moneyToInputBR(valorTotalGrupo));
-                          setErroAReceber('');
-                          setModal('aReceber');
-                        }} className="p-1.5 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
-                        <button
-                          onClick={() => setModalExcluirAReceber({ itemId: item.id })}
-                          className="p-1.5 rounded text-surface-400 hover:text-danger-600 transition-colors"
-                          title="Excluir"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                        <Button
-                          size="sm"
-                          variant={item.status === 'recebido' ? 'secondary' : 'success'}
-                          icon={item.status === 'recebido' ? <RotateCcw size={13} /> : <CheckCircle size={13} />}
-                          onClick={() => {
-                            setModalAReceberAcao({ itemId: item.id, tipo: item.status === 'recebido' ? 'desfazer' : 'receber' });
-                          }}
-                        >
-                          {item.status === 'recebido' ? 'Desfazer' : 'Recebido'}
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-surface-400">A receber</h4>
+                      <span className="text-xs text-surface-400">{itensAReceberPendentes.length} item{itensAReceberPendentes.length === 1 ? '' : 's'}</span>
+                    </div>
+                    {itensAReceberPendentes.length === 0 ? (
+                      <p className="text-xs text-surface-400">Nenhum item pendente.</p>
+                    ) : itensAReceberPendentes.map(renderAReceberItem)}
+                  </div>
+
+                  {itensAReceberRecebidos.length > 0 && (
+                    <div className="space-y-2 border-t border-surface-100 pt-3 dark:border-surface-700">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <h4 className="text-xs font-semibold uppercase tracking-wide text-surface-400">Recebido</h4>
+                          <p className="text-xs text-surface-400">{formatarDinheiro(aReceberMes.totalRecebido)} · {itensAReceberRecebidos.length} item{itensAReceberRecebidos.length === 1 ? '' : 's'}</p>
+                        </div>
+                        <Button size="sm" variant="secondary" onClick={() => setMostrarAReceberRecebidos(v => !v)}>
+                          {mostrarAReceberRecebidos ? 'Ocultar recebidos' : 'Mostrar recebidos'}
                         </Button>
                       </div>
+                      {mostrarAReceberRecebidos && (
+                        <div className="space-y-2">
+                          {itensAReceberRecebidos.map(renderAReceberItem)}
+                        </div>
+                      )}
                     </div>
-                  ))}
+                  )}
                 </div>
               )}
             </CardBody>
