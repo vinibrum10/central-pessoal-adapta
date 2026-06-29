@@ -187,17 +187,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = async (): Promise<{ error: string | null }> => {
     if (!isSupabaseConfigured) return { error: 'Supabase não configurado.' };
+    const redirectTo = `${window.location.origin}${window.location.pathname}`;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin,
-        scopes: [
-          'email',
-          'profile',
-          'https://www.googleapis.com/auth/calendar.readonly',
-          'https://www.googleapis.com/auth/drive.readonly',
-        ].join(' '),
-        queryParams: { access_type: 'offline' },
+        redirectTo,
+        scopes: 'email profile',
       },
     });
     return { error: error?.message ?? null };

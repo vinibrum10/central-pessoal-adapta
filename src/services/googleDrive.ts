@@ -13,7 +13,7 @@
 import type { Session } from '@supabase/supabase-js';
 import type { LeituraDiaria, TipoLeitura } from '../types';
 import { gerarId, hojeISO } from '../utils';
-import { SGP_DRIVE_FOLDERS, SGP_LEITURA_SYNC_FOLDERS, type SgpDriveFolder } from './sgpDriveConfig';
+import { SGP_AUTOMATIC_REPORT_FOLDERS, SGP_DRIVE_FOLDERS, SGP_LEITURA_SYNC_FOLDERS, type SgpDriveFolder } from './sgpDriveConfig';
 import {
   bootstrapGoogleIntegrationFromSession,
   clearGoogleIntegration,
@@ -124,12 +124,17 @@ function classificarArquivo(nome: string, mimeType?: string, temUrl = false): Ti
   // Classificação pelo nome do arquivo
   if (/vaga|emprego|job|linkedin|curr[ií]culo|resume|career|candidatura|recrutamento|oportunidade/.test(n)) return 'vaga';
   if (/tecnologia|tech|ia\b|ai\b|programação|framework|javascript|python|react|llm|gpt|claude/.test(n)) return 'tecnologia';
+  if (/relat[oó]rio|resumo|daily tech news|procurar emprego/.test(n)) return 'documento';
   if (/artigo|article|post|blog|paper|pesquisa/.test(n)) return 'artigo';
   if (/doc|documento|relatorio|relatório|draft/.test(n)) return 'documento';
   if (/link|url|http/.test(n)) return 'link';
   // Arquivo com URL mas sem palavra-chave reconhecida → link (melhor que geral)
   if (temUrl) return 'link';
   return 'geral';
+}
+
+function escapeDriveQueryValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
 export interface DriveFile {
@@ -241,6 +246,45 @@ export async function listarArquivosDaPasta(folderId?: string): Promise<DriveFil
     }));
 }
 
+async function buscarSubpastaPorNome(parentFolderId: string, nome: string): Promise<DriveFile | null> {
+  const token = await getToken();
+  const params = new URLSearchParams({
+    q: `'${parentFolderId}' in parents and mimeType='${GOOGLE_FOLDER_MIME}' and name='${escapeDriveQueryValue(nome)}' and trashed=false`,
+    fields: 'files(id,name,mimeType,modifiedTime,webViewLink)',
+    pageSize: '1',
+  });
+  const res = await fetch(`${DRIVE_API}/files?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    let apiMessage = `Erro ${res.status} ao localizar pasta "${nome}".`;
+    try {
+      const err = await res.json() as { error?: { message?: string; status?: string } };
+      apiMessage = err.error?.message ?? err.error?.status ?? apiMessage;
+    } catch {
+      // Mantém a mensagem padrão quando o corpo não é JSON.
+    }
+    throw new DriveFolderError(parentFolderId, res.status, apiMessage);
+  }
+  const body = await res.json() as { files?: DriveFile[] };
+  return body.files?.[0] ?? null;
+}
+
+async function resolverPastaSync(folder: SgpDriveFolder): Promise<SgpDriveFolder> {
+  if (folder.id) return folder;
+
+  if (folder.key === SGP_DRIVE_FOLDERS.resumosDiariosEmprego.key) {
+    const encontrada = await buscarSubpastaPorNome(SGP_DRIVE_FOLDERS.procurarEmprego.id, 'Resumos Diarios')
+      ?? await buscarSubpastaPorNome(SGP_DRIVE_FOLDERS.procurarEmprego.id, 'Resumos Diários');
+    if (encontrada?.id) {
+      return { ...folder, id: encontrada.id };
+    }
+    throw new Error(`Pasta "${folder.nome}" não encontrada. Configure VITE_SGP_DRIVE_RESUMOS_DIARIOS_FOLDER_ID ou confirme se ela existe dentro de 02_PROCURAR_EMPREGO.`);
+  }
+
+  throw new Error(`Pasta "${folder.nome}" sem ID configurado.`);
+}
+
 export async function sincronizarLeiturasDrive(folderId?: string): Promise<LeituraDiaria[]> {
   const arquivos = folderId
     ? await listarArquivosDaPasta(folderId)
@@ -284,8 +328,10 @@ async function listarArquivosLeituraDiaria(): Promise<DriveFile[]> {
   const failures: Array<{ folder: SgpDriveFolder; message: string; status?: number }> = [];
   let contentFolderSuccesses = 0;
 
-  for (const folder of SGP_LEITURA_SYNC_FOLDERS) {
+  for (const configuredFolder of [...SGP_LEITURA_SYNC_FOLDERS, ...SGP_AUTOMATIC_REPORT_FOLDERS]) {
+    let folder = configuredFolder;
     try {
+      folder = await resolverPastaSync(configuredFolder);
       const files = await listarArquivosDaPasta(folder.id);
       if (folder.key !== SGP_DRIVE_FOLDERS.leituraDiaria.key) {
         contentFolderSuccesses += 1;

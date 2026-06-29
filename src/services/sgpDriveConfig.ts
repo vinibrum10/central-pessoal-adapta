@@ -124,6 +124,14 @@ export const SGP_DRIVE_FOLDERS = {
     id: env('VITE_SGP_DRIVE_REL_EMPREGO_FOLDER_ID', '1kVFcgUUK1ZxaErq7EuQ3CTcAPNwKnGHa'),
     tipoArquivoEsperado: 'RELATORIO',
   },
+  resumosDiariosEmprego: {
+    key: 'resumos-diarios-emprego',
+    nome: '02_PROCURAR_EMPREGO/Resumos Diarios',
+    modulo: 'Procurar Emprego',
+    categoria: 'Resumos Diarios',
+    id: env('VITE_SGP_DRIVE_RESUMOS_DIARIOS_FOLDER_ID', ''),
+    tipoArquivoEsperado: 'RESUMO',
+  },
   config: {
     key: 'config',
     nome: '00_CONFIG',
@@ -141,6 +149,13 @@ export const SGP_LEITURA_SYNC_FOLDERS: SgpDriveFolder[] = [
   SGP_DRIVE_FOLDERS.leituraEngenhariaDados,
   SGP_DRIVE_FOLDERS.leituraSegurancaTrabalho,
   SGP_DRIVE_FOLDERS.leituraArquivados,
+];
+
+export const SGP_AUTOMATIC_REPORT_FOLDERS: SgpDriveFolder[] = [
+  SGP_DRIVE_FOLDERS.relatoriosAutomaticos,
+  SGP_DRIVE_FOLDERS.relatorioDailyTechNews,
+  SGP_DRIVE_FOLDERS.relatorioProcurarEmprego,
+  SGP_DRIVE_FOLDERS.resumosDiariosEmprego,
 ];
 
 export function getSgpDocumentHeader(params: {

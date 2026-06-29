@@ -106,7 +106,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="flex h-screen overflow-hidden text-surface-900 dark:text-white">
+    <div className="flex h-screen overflow-hidden overflow-x-hidden text-surface-900 dark:text-white">
       {/* === SIDEBAR DESKTOP === */}
       <aside
         className={`hidden lg:flex flex-col border-r border-surface-200/70 bg-white/80 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-surface-950/70 flex-shrink-0 transition-all duration-200 ${collapsed ? 'w-16' : 'w-72'}`}
@@ -570,8 +570,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {/* === MAIN CONTENT === */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-white/85 backdrop-blur-xl dark:bg-surface-950/80 border-b border-surface-200/70 dark:border-white/10 flex-shrink-0">
-          <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-white/10">
+        <header className="lg:hidden relative z-40 flex items-center justify-between px-4 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] bg-white/95 backdrop-blur-xl dark:bg-surface-950/95 border-b border-surface-200/70 dark:border-white/10 flex-shrink-0">
+          <button onClick={() => setSidebarOpen(true)} className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-surface-100 dark:hover:bg-white/10" aria-label="Abrir menu">
             <Menu size={20} className="text-surface-600 dark:text-surface-400" />
           </button>
           <div className="flex items-center gap-2">
@@ -580,7 +580,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
             <span className="font-semibold text-sm text-surface-950 dark:text-white tracking-tight">SGP</span>
           </div>
-          <button onClick={toggleTema} className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-white/10">
+          <button onClick={toggleTema} className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-surface-100 dark:hover:bg-white/10" aria-label={tema === 'escuro' ? 'Ativar modo claro' : 'Ativar modo escuro'}>
             {tema === 'escuro' ? <Sun size={18} className="text-surface-500" /> : <Moon size={18} className="text-surface-500" />}
           </button>
         </header>
@@ -596,14 +596,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto min-w-0">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden min-w-0">
           <MigrationBanner />
           <div className="app-container">
             {children}
           </div>
         </main>
 
-        <nav className="lg:hidden flex bg-white/90 dark:bg-surface-950/90 backdrop-blur-xl border-t border-surface-200/70 dark:border-white/10 flex-shrink-0">
+        <nav className="lg:hidden relative z-30 flex bg-white/95 dark:bg-surface-950/95 backdrop-blur-xl border-t border-surface-200/70 dark:border-white/10 flex-shrink-0 pb-[env(safe-area-inset-bottom)]">
           <button
             type="button"
             onClick={() => {

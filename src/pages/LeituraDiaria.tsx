@@ -24,7 +24,7 @@ import { leituraRepository } from '../repositories/leituraRepository';
 import { useAuth } from '../contexts/AuthContext';
 import { isLeituraDriveLegada } from '../services/leituraLegacy';
 
-type FiltroLeitura = 'todos' | StatusLeitura | TipoLeitura | 'importante';
+type FiltroLeitura = 'todos' | StatusLeitura | TipoLeitura | 'importante' | 'relatorios';
 type FiltroContador = FiltroLeitura;
 
 const tipoIcons: Record<TipoLeitura, typeof BookOpen> = {
@@ -85,6 +85,14 @@ function leituraCorrespondeFiltro(item: LeituraDiaria, filtro: FiltroContador): 
       return item.status === 'arquivado';
     case 'importante':
       return item.prioridade === 'importante' && naoArquivado;
+    case 'relatorios':
+      return naoArquivado && (
+        campos.includes('relatorios automaticos')
+        || campos.includes('relatorio')
+        || campos.includes('resumo')
+        || campos.includes('daily tech news')
+        || campos.includes('03_relatorios_automaticos')
+      );
     case 'tecnologia':
       return naoArquivado && /\b(tecnologia|tech|ia|ai|programacao|software|framework)\b/.test(campos);
     case 'documento':
@@ -334,6 +342,7 @@ export function LeituraDiariaPage() {
     vagas: contarLeituras(leituras, 'vaga'),
     tecnologia: contarLeituras(leituras, 'tecnologia'),
     documentos: contarLeituras(leituras, 'documento'),
+    relatorios: contarLeituras(leituras, 'relatorios'),
     links: contarLeituras(leituras, 'link'),
     artigos: contarLeituras(leituras, 'artigo'),
     importantes: contarLeituras(leituras, 'importante'),
@@ -578,6 +587,7 @@ export function LeituraDiariaPage() {
     { id: 'pendente', label: 'Pendentes', badge: kpis.pendentes },
     { id: 'vaga', label: 'Vagas', badge: kpis.vagas },
     { id: 'tecnologia', label: 'Tecnologia', badge: kpis.tecnologia },
+    { id: 'relatorios', label: 'Relatórios', badge: kpis.relatorios },
     { id: 'artigo', label: 'Artigos', badge: kpis.artigos },
     { id: 'documento', label: 'Documentos', badge: kpis.documentos },
     { id: 'link', label: 'Links', badge: kpis.links },

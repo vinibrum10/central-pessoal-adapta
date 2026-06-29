@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/Button';
 import type { RoleUsuario, StatusUsuario, TipoAcesso } from '../types';
 import { canManageUsers } from '../utils/permissions';
+import { addUserToPrimaryWorkspace } from '../services/appDataRepository';
 
 interface UsuarioLista {
   id: string;
@@ -87,9 +88,22 @@ export function UsuariosPage() {
     if (error) {
       setMsg('Erro ao salvar: ' + error.message);
     } else {
-      setMsg('Salvo!');
-      await carregar();
-      setTimeout(() => setMsg(''), 2000);
+      try {
+        const acessoFinanceiro = campos.tipo_acesso === 'financas' || campos.tipo_acesso === 'total';
+        const desbloqueado = campos.status === 'ativo';
+        if (user?.id && id !== user.id && (acessoFinanceiro || desbloqueado)) {
+          await addUserToPrimaryWorkspace(
+            user.id,
+            id,
+            campos.tipo_acesso === 'total' ? 'admin' : campos.tipo_acesso === 'financas' ? 'editor' : 'viewer',
+          );
+        }
+        setMsg('Salvo! Usuário vinculado ao workspace compartilhado quando aplicável.');
+        await carregar();
+        setTimeout(() => setMsg(''), 2500);
+      } catch (workspaceError) {
+        setMsg(`Permissão salva, mas não consegui vincular ao workspace: ${(workspaceError as Error).message}`);
+      }
     }
     setSalvando(null);
   };

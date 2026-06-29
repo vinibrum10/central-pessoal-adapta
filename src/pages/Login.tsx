@@ -1,9 +1,23 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Mail, Lock, User, Eye, EyeOff, AlertCircle, KeyRound } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/Button';
 
 const googleAtivo = import.meta.env.VITE_GOOGLE_ENABLED === 'true';
+
+function getOAuthErrorMessage(): string {
+  const params = new URLSearchParams(window.location.search);
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const error = params.get('error') ?? hash.get('error');
+  const description = params.get('error_description') ?? hash.get('error_description') ?? '';
+  if (!error && !description) return '';
+
+  const raw = `${error ?? ''} ${description}`.toLowerCase();
+  if (raw.includes('access_denied')) {
+    return 'Acesso pelo Google não autorizado. O app ainda está em modo de testes no Google Cloud ou seu e-mail não foi adicionado como testador. Use e-mail e senha ou peça ao administrador para liberar seu acesso Google.';
+  }
+  return description || 'Não foi possível concluir o login com Google. Tente novamente ou use e-mail e senha.';
+}
 
 function AppLogo() {
   return (
@@ -38,6 +52,13 @@ export function LoginPage() {
   const [carregandoGoogle, setCarregandoGoogle] = useState(false);
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState('');
+
+  useEffect(() => {
+    const oauthError = getOAuthErrorMessage();
+    if (!oauthError) return;
+    setErro(oauthError);
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }, []);
 
   const trocarModo = (m: Modo) => { setModo(m); setErro(''); setSucesso(''); };
 

@@ -958,10 +958,10 @@ export function OrcamentoPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex overflow-x-auto gap-1 pb-1">
+      <div className="-mx-4 flex gap-1 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
         {tabs.map(tab => (
           <button key={tab.id} onClick={() => setAba(tab.id)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all
+            className={`min-h-11 flex-shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all
               ${aba === tab.id ? 'bg-primary-600 text-white' : 'text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700'}`}>
             {tab.label}
           </button>

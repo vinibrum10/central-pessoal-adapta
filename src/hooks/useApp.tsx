@@ -229,14 +229,14 @@ function migrarDados(raw: Record<string, unknown>): AppData {
     faturas: Array.isArray(raw.faturas)
       ? (raw.faturas as AppData['faturas'])
       : [],
-    sugestoes: Array.isArray(raw.sugestoes)
-      ? (raw.sugestoes as SugestaoCalendario[])
-      : [],
     statusPagamentos: Array.isArray(raw.statusPagamentos)
       ? (raw.statusPagamentos as AppData['statusPagamentos'])
       : [],
     aReceber: Array.isArray(raw.aReceber)
       ? (raw.aReceber as AppData['aReceber'])
+      : [],
+    sugestoes: Array.isArray(raw.sugestoes)
+      ? (raw.sugestoes as SugestaoCalendario[])
       : [],
   };
 }
@@ -275,6 +275,7 @@ const AppContext = createContext<AppContextType | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const { user, supabaseAtivo, loading: authLoading } = useAuth();
+  const storageKey = user?.id ? `${STORAGE_KEY}:${user.id}` : STORAGE_KEY;
 
   const [data, setDataState] = useState<AppData>(() => {
     try {
@@ -302,6 +303,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const supabaseLoadedRef = useRef(false);
+  const loadedUserRef = useRef<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -316,6 +318,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (authLoading) return;
     if (!supabaseAtivo || !user) return;
+    if (loadedUserRef.current !== user.id) {
+      supabaseLoadedRef.current = false;
+      loadedUserRef.current = user.id;
+    }
     if (supabaseLoadedRef.current) return;
 
     supabaseLoadedRef.current = true;
@@ -327,7 +333,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const migrado = migrarDados(remoteData as unknown as Record<string, unknown>);
         const comRotinas = { ...migrado, tarefas: processarRotinas(migrado.tarefas) };
         setDataState(comRotinas);
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(comRotinas)); } catch { /* ignore */ }
+        try { localStorage.setItem(storageKey, JSON.stringify(comRotinas)); } catch { /* ignore */ }
         setSyncStatus('synced');
       } else {
         // No Supabase record yet
@@ -340,7 +346,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }).catch(() => {
       setSyncStatus('error');
     });
-  }, [authLoading, supabaseAtivo, user]);
+  }, [authLoading, supabaseAtivo, user, storageKey]);
 
   // Debounce save to Supabase on data changes
   useEffect(() => {
@@ -362,10 +368,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setData = useCallback((value: AppData | ((prev: AppData) => AppData)) => {
     setDataState(prev => {
       const next = value instanceof Function ? value(prev) : value;
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* ignore */ }
       return next;
     });
-  }, []);
+  }, [storageKey]);
 
   const toggleTema = useCallback(() => {
     setTema(prev => {
@@ -377,11 +383,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const resetToDemo = useCallback(() => {
     setDataState(dadosDemonstracaoInicial);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(dadosDemonstracaoInicial));
+    localStorage.setItem(storageKey, JSON.stringify(dadosDemonstracaoInicial));
     if (supabaseAtivo && user?.id) {
       saveAppData(user.id, dadosDemonstracaoInicial).catch(() => { /* ignore */ });
     }
-  }, [supabaseAtivo, user?.id]);
+  }, [supabaseAtivo, user?.id, storageKey]);
 
   const clearAll = useCallback(() => {
     const empty: AppData = {
@@ -400,16 +406,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       leiturasDiarias: [],
       fontesLeitura: [],
       faturas: [],
-      sugestoes: [],
       statusPagamentos: [],
       aReceber: [],
+      sugestoes: [],
     };
     setDataState(empty);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(empty));
+    localStorage.setItem(storageKey, JSON.stringify(empty));
     if (supabaseAtivo && user?.id) {
       saveAppData(user.id, empty).catch(() => { /* ignore */ });
     }
-  }, [supabaseAtivo, user?.id]);
+  }, [supabaseAtivo, user?.id, storageKey]);
 
   const exportData = useCallback(() => {
     const json = JSON.stringify(data, null, 2);
@@ -427,7 +433,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const raw = JSON.parse(jsonString) as Record<string, unknown>;
       const migrado = migrarDados(raw);
       setDataState(migrado);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(migrado));
+      localStorage.setItem(storageKey, JSON.stringify(migrado));
       if (supabaseAtivo && user?.id) {
         saveAppData(user.id, migrado).catch(() => { /* ignore */ });
       }
@@ -435,7 +441,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch {
       return false;
     }
-  }, [supabaseAtivo, user?.id]);
+  }, [supabaseAtivo, user?.id, storageKey]);
 
   const migrateLocalToSupabase = useCallback(async (): Promise<boolean> => {
     if (!supabaseAtivo || !user?.id) return false;
