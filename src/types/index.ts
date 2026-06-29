@@ -174,6 +174,9 @@ export interface Cartao {
   status: StatusCartao;
   dataCriacao: string;
   diaFechamento?: number;
+  cor?: string;
+  icone?: string;
+  banco?: string;
 }
 
 export interface FaturaCartao {

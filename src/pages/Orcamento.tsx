@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   Plus, Trash2, Pencil, TrendingUp, TrendingDown,
-  CreditCard, AlertTriangle, PiggyBank, Package,
+  AlertTriangle, PiggyBank, Package,
   ChevronLeft, ChevronRight, Info, CheckCircle, RotateCcw
 } from 'lucide-react';
 import { parseBRLMoney, moneyToInputBR } from '../utils/money';
@@ -54,6 +54,9 @@ interface FormDespesaExtra {
 
 type FormAReceber = Omit<AReceber, 'id' | 'dataCriacao' | 'dataAtualizacao'>;
 
+const CARTAO_COR_PADRAO = '#2563eb';
+const CARTAO_CORES = ['#2563eb', '#7c3aed', '#db2777', '#dc2626', '#ea580c', '#16a34a', '#0891b2', '#475569'];
+
 const novoFormAReceber = (mes: number, ano: number): FormAReceber => ({
   pessoa: '',
   descricao: '',
@@ -64,6 +67,25 @@ const novoFormAReceber = (mes: number, ano: number): FormAReceber => ({
   tipoRecebimento: 'unico',
   diaPrevisto: 10,
 });
+
+const novoCartaoForm = (): Omit<Cartao, 'id' | 'dataCriacao'> => ({
+  nome: '',
+  banco: '',
+  cor: CARTAO_COR_PADRAO,
+  icone: '',
+  limite: 0,
+  faturaAtual: 0,
+  vencimento: 10,
+  status: 'ativo',
+  diaFechamento: undefined,
+});
+
+const corCartao = (cartao?: Pick<Cartao, 'cor'>) => cartao?.cor || CARTAO_COR_PADRAO;
+
+const iconeCartao = (cartao?: Pick<Cartao, 'icone' | 'banco' | 'nome'>) => {
+  const base = cartao?.icone || cartao?.banco || cartao?.nome || '?';
+  return base.trim().slice(0, 2).toUpperCase();
+};
 
 function calcularParcelasPagasAuto(divida: { dataInicio?: string; diaVencimento?: number; totalParcelas: number; parcelasPagas: number }): number {
   if (!divida.dataInicio) return divida.parcelasPagas;
@@ -180,7 +202,7 @@ export function OrcamentoPage() {
   const [formDespesaValorStr, setFormDespesaValorStr] = useState('');
   const [formDespesaMesFatura, setFormDespesaMesFatura] = useState<string>(hojeISO().slice(0, 7)); // YYYY-MM para edição de cartão
   const [formDespesaExtra, setFormDespesaExtra] = useState<FormDespesaExtra>({ tipoCobrancaCartao: 'avista', quantidadeParcelas: 2, mesInicioParcelas: hojeISO().slice(0, 7) });
-  const [formCartao, setFormCartao] = useState<Omit<Cartao, 'id' | 'dataCriacao'>>({ nome: '', limite: 0, faturaAtual: 0, vencimento: 10, status: 'ativo', diaFechamento: undefined });
+  const [formCartao, setFormCartao] = useState<Omit<Cartao, 'id' | 'dataCriacao'>>(() => novoCartaoForm());
   const [formCartaoLimiteStr, setFormCartaoLimiteStr] = useState('');
   const [formCartaoFaturaStr, setFormCartaoFaturaStr] = useState('');
   const [formDivida, setFormDivida] = useState<Omit<Divida, 'id' | 'dataCriacao'>>({ nome: '', valorTotal: 0, valorParcela: 0, totalParcelas: 1, parcelasPagas: 0, taxaJuros: 0, prioridadeQuitacao: 'média', dataInicio: hojeISO(), diaVencimento: 10, status: 'ativa' });
@@ -196,6 +218,7 @@ export function OrcamentoPage() {
   const [formAReceberValorStr, setFormAReceberValorStr] = useState('');
   const [erroAReceber, setErroAReceber] = useState('');
   const [modalAReceberAcao, setModalAReceberAcao] = useState<null | { itemId: string; tipo: 'receber' | 'desfazer' }>(null);
+  const [mostrarContasPagas, setMostrarContasPagas] = useState(false);
   const [pendenciasAnterior, setPendenciasAnterior] = useState<null | { mes: number; ano: number; itens: ItemPagar[] }>(null);
   const [msgOrcamento, setMsgOrcamento] = useState('');
 
@@ -919,7 +942,7 @@ export function OrcamentoPage() {
                 <div className="space-y-4">
                   {[
                     { titulo: 'Em aberto', itens: itensEmAberto },
-                    { titulo: 'Pago', itens: itensPagos },
+                    ...(mostrarContasPagas ? [{ titulo: 'Pago', itens: itensPagos }] : []),
                   ].map(grupo => (
                     <div key={grupo.titulo} className="space-y-2">
                       <div className="flex items-center justify-between">
@@ -955,6 +978,16 @@ export function OrcamentoPage() {
                       ))}
                     </div>
                   ))}
+                  {itensPagos.length > 0 && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="w-full"
+                      onClick={() => setMostrarContasPagas(v => !v)}
+                    >
+                      {mostrarContasPagas ? `Ocultar pagos (${itensPagos.length})` : `Mostrar pagos (${itensPagos.length})`}
+                    </Button>
+                  )}
                 </div>
               )}
             </CardBody>
@@ -1067,24 +1100,35 @@ export function OrcamentoPage() {
                   {despesasFiltradas.map(d => {
                     const isCartaoCredito = d.formaPagamento === 'Cartão de crédito';
                     const cartaoDespesa = isCartaoCredito && d.cartaoId ? data.cartoes.find(c => c.id === d.cartaoId) : undefined;
+                    const destaqueCartao = corCartao(cartaoDespesa);
                     return (
-                    <div key={d.id} className={`flex items-center justify-between p-3 rounded-xl border ${isCartaoCredito ? 'border-l-4 border-l-primary-500 border-primary-200 bg-primary-50/60 dark:border-primary-800 dark:border-l-primary-400 dark:bg-primary-950/20' : 'border-surface-200 dark:border-surface-700'}`}>
+                    <div
+                      key={d.id}
+                      className={`flex items-center justify-between p-3 rounded-xl border ${isCartaoCredito ? 'border-l-4 border-primary-200 bg-primary-50/60 dark:border-primary-800 dark:bg-primary-950/20' : 'border-surface-200 dark:border-surface-700'}`}
+                      style={isCartaoCredito ? { borderLeftColor: destaqueCartao } : undefined}
+                    >
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isCartaoCredito ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300' : d.essencial ? 'bg-surface-100 dark:bg-surface-700' : 'bg-warning-50 dark:bg-warning-900/20'}`}>
-                          {isCartaoCredito ? <CreditCard size={14} /> : <TrendingDown size={14} className="text-danger-600 dark:text-danger-400" />}
+                        <div
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center ${isCartaoCredito ? 'text-xs font-bold' : d.essencial ? 'bg-surface-100 dark:bg-surface-700' : 'bg-warning-50 dark:bg-warning-900/20'}`}
+                          style={isCartaoCredito ? { backgroundColor: `${destaqueCartao}20`, color: destaqueCartao } : undefined}
+                        >
+                          {isCartaoCredito ? iconeCartao(cartaoDespesa) : <TrendingDown size={14} className="text-danger-600 dark:text-danger-400" />}
                         </div>
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-surface-900 dark:text-white truncate" title={d.descricao}>{d.descricao}</p>
                           <p className="text-xs text-surface-400 dark:text-surface-500">
                             {formatarData(d.data)} · {d.categoria} · {d.formaPagamento}
-                            {cartaoDespesa && ` · ${cartaoDespesa.nome}`}
+                            {cartaoDespesa && ` · ${cartaoDespesa.banco ? `${cartaoDespesa.banco} • ` : ''}${cartaoDespesa.nome}`}
                             {!d.essencial && ' · Não essencial'}
                             {d.recorrente && ' · Recorrente'}
                           </p>
                           {isCartaoCredito && (
                             <div className="mt-1 flex flex-wrap gap-1.5">
-                              <span className="px-1.5 py-0.5 rounded-full bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 text-[10px] font-medium">
-                                Cartão: {cartaoDespesa?.nome ?? 'não vinculado'}
+                              <span
+                                className="px-1.5 py-0.5 rounded-full text-[10px] font-medium"
+                                style={{ backgroundColor: `${destaqueCartao}20`, color: destaqueCartao }}
+                              >
+                                Cartão: {cartaoDespesa ? `${cartaoDespesa.banco ? `${cartaoDespesa.banco} • ` : ''}${cartaoDespesa.nome}` : 'não vinculado'}
                               </span>
                               {d.faturaId && <span className="px-1.5 py-0.5 rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 text-[10px] font-medium">Compõe fatura do cartão</span>}
                             </div>
@@ -1149,28 +1193,42 @@ export function OrcamentoPage() {
       {aba === 'cartoes' && (
         <div className="space-y-4 animate-fade-in">
           <div className="flex justify-end">
-            <Button icon={<Plus size={16} />} onClick={() => { setFormCartao({ nome: '', limite: 0, faturaAtual: 0, vencimento: 10, status: 'ativo', diaFechamento: undefined }); abrirModal('cartao'); }}>
+            <Button icon={<Plus size={16} />} onClick={() => { setFormCartao(novoCartaoForm()); setFormCartaoLimiteStr(''); setFormCartaoFaturaStr(''); abrirModal('cartao'); }}>
               Novo Cartão
             </Button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {data.cartoes.map(c => (
-              <Card key={c.id}>
+            {data.cartoes.map(c => {
+              const destaqueCartao = corCartao(c);
+              return (
+              <Card key={c.id} className="overflow-hidden">
                 <CardBody>
+                  <div className="h-1 -mx-5 mb-4" style={{ backgroundColor: destaqueCartao }} />
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-primary-50 dark:bg-primary-900/20 flex items-center justify-center">
-                        <CreditCard size={14} className="text-primary-600 dark:text-primary-400" />
+                      <div
+                        className="w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold"
+                        style={{ backgroundColor: `${destaqueCartao}20`, color: destaqueCartao }}
+                      >
+                        {iconeCartao(c)}
                       </div>
                       <div>
                         <p className="font-semibold text-surface-900 dark:text-white text-sm">{c.nome}</p>
-                        <p className="text-xs text-surface-400">Vence dia {c.vencimento}</p>
+                        <p className="text-xs text-surface-400">{c.banco ? `${c.banco} · ` : ''}Vence dia {c.vencimento}</p>
                       </div>
                     </div>
                     <div className="flex gap-1">
-                      <button onClick={() => { setFormCartao({ nome: c.nome, limite: c.limite, faturaAtual: c.faturaAtual, vencimento: c.vencimento, status: c.status, diaFechamento: c.diaFechamento }); setFormCartaoLimiteStr(moneyToInputBR(c.limite)); setFormCartaoFaturaStr(moneyToInputBR(c.faturaAtual)); abrirModal('cartao', c); }} className="p-1 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
+                      <button onClick={() => { setFormCartao({ nome: c.nome, banco: c.banco ?? '', cor: corCartao(c), icone: c.icone ?? '', limite: c.limite, faturaAtual: c.faturaAtual, vencimento: c.vencimento, status: c.status, diaFechamento: c.diaFechamento }); setFormCartaoLimiteStr(moneyToInputBR(c.limite)); setFormCartaoFaturaStr(moneyToInputBR(c.faturaAtual)); abrirModal('cartao', c); }} className="p-1 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
                       <button onClick={() => setData(d => ({ ...d, cartoes: d.cartoes.filter(x => x.id !== c.id) }))} className="p-1 rounded text-surface-400 hover:text-danger-600 transition-colors"><Trash2 size={13} /></button>
                     </div>
+                  </div>
+                  <div className="mb-3 flex flex-wrap gap-1.5">
+                    <span className="px-2 py-1 rounded-full text-[10px] font-semibold" style={{ backgroundColor: `${destaqueCartao}20`, color: destaqueCartao }}>
+                      {iconeCartao(c)} · {c.banco || c.nome}
+                    </span>
+                    <span className="px-2 py-1 rounded-full bg-surface-100 text-[10px] font-medium text-surface-600 dark:bg-surface-800 dark:text-surface-300">
+                      {c.status}
+                    </span>
                   </div>
                   {(() => {
                     const faturasMesAtual = (data.faturas ?? []).filter(f => f.cartaoId === c.id && f.competencia === competenciaMesFiltro);
@@ -1231,7 +1289,8 @@ export function OrcamentoPage() {
                   })()}
                 </CardBody>
               </Card>
-            ))}
+              );
+            })}
             {data.cartoes.length === 0 && (
               <div className="col-span-2 text-center py-10 text-surface-400">Nenhum cartão cadastrado</div>
             )}
@@ -1863,7 +1922,38 @@ export function OrcamentoPage() {
 
       <Modal isOpen={modal === 'cartao'} onClose={() => setModal(null)} title={editandoId ? 'Editar Cartão' : 'Novo Cartão'}>
         <div className="space-y-4">
+          <div className="flex items-center gap-3 rounded-lg border border-surface-200 p-3 dark:border-surface-700">
+            <div
+              className="w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold"
+              style={{ backgroundColor: `${corCartao(formCartao)}20`, color: corCartao(formCartao) }}
+            >
+              {iconeCartao(formCartao)}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-surface-900 dark:text-white truncate">{formCartao.nome || 'Novo cartão'}</p>
+              <p className="text-xs text-surface-400">{formCartao.banco || 'Banco não informado'}</p>
+            </div>
+          </div>
           <Input id="cart-nome" label="Nome do cartão" required value={formCartao.nome} onChange={e => setFormCartao(f => ({ ...f, nome: e.target.value }))} placeholder="Ex: Nubank, Bradesco..." />
+          <div className="grid grid-cols-2 gap-3">
+            <Input id="cart-banco" label="Banco / emissor" value={formCartao.banco ?? ''} onChange={e => setFormCartao(f => ({ ...f, banco: e.target.value }))} placeholder="Ex: Santander" />
+            <Input id="cart-icone" label="Símbolo" maxLength={3} value={formCartao.icone ?? ''} onChange={e => setFormCartao(f => ({ ...f, icone: e.target.value }))} placeholder="Ex: NU" />
+          </div>
+          <div className="space-y-2">
+            <Input id="cart-cor" label="Cor do cartão" type="color" value={corCartao(formCartao)} onChange={e => setFormCartao(f => ({ ...f, cor: e.target.value }))} />
+            <div className="flex flex-wrap gap-2">
+              {CARTAO_CORES.map(cor => (
+                <button
+                  key={cor}
+                  type="button"
+                  className="h-7 w-7 rounded-full border border-surface-200 dark:border-surface-700"
+                  style={{ backgroundColor: cor }}
+                  onClick={() => setFormCartao(f => ({ ...f, cor }))}
+                  aria-label={`Selecionar cor ${cor}`}
+                />
+              ))}
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <Input id="cart-limite" label="Limite (R$)" type="text" inputMode="decimal" placeholder="0,00" value={formCartaoLimiteStr} onChange={e => setFormCartaoLimiteStr(e.target.value)} />
             <Input id="cart-fatura" label="Fatura atual (R$)" type="text" inputMode="decimal" placeholder="0,00" value={formCartaoFaturaStr} onChange={e => setFormCartaoFaturaStr(e.target.value)} />
