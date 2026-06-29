@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 
 interface ModalProps {
@@ -17,6 +17,8 @@ const sizeMap = {
 };
 
 export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalProps) {
+  const mouseDownStartedOnBackdrop = useRef(false);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     if (isOpen) document.addEventListener('keydown', handler);
@@ -33,14 +35,23 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onMouseDown={(e) => {
+        mouseDownStartedOnBackdrop.current = e.target === e.currentTarget;
+      }}
+      onMouseUp={(e) => {
+        if (mouseDownStartedOnBackdrop.current && e.target === e.currentTarget) {
+          onClose();
+        }
+        mouseDownStartedOnBackdrop.current = false;
+      }}
     >
-      <div className="absolute inset-0 bg-surface-950/70 backdrop-blur-md" />
+      <div className="pointer-events-none absolute inset-0 bg-surface-950/70 backdrop-blur-md" />
       <div className={`relative flex max-h-[90vh] w-full ${sizeMap[size]} animate-scale-in flex-col rounded-lg border border-surface-200 bg-white shadow-2xl shadow-black/20 dark:border-white/10 dark:bg-surface-900`}>
         {/* Header */}
         <div className="flex flex-shrink-0 items-center justify-between border-b border-surface-200 px-5 py-4 dark:border-white/10">
           <h2 className="text-sm font-semibold text-surface-950 dark:text-white">{title}</h2>
           <button
+            type="button"
             onClick={onClose}
             className="rounded-lg p-2 text-surface-400 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-white/10 dark:hover:text-surface-100"
           >
