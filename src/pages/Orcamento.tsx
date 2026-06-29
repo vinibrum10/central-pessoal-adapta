@@ -1064,20 +1064,31 @@ export function OrcamentoPage() {
                 <p className="text-center py-8 text-surface-400">Nenhuma despesa em {MESES[mesFiltro.mes]} {mesFiltro.ano}</p>
               ) : (
                 <div className="space-y-2">
-                  {despesasFiltradas.map(d => (
-                    <div key={d.id} className="flex items-center justify-between p-3 rounded-xl border border-surface-200 dark:border-surface-700">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${d.essencial ? 'bg-surface-100 dark:bg-surface-700' : 'bg-warning-50 dark:bg-warning-900/20'}`}>
-                          <TrendingDown size={14} className="text-danger-600 dark:text-danger-400" />
+                  {despesasFiltradas.map(d => {
+                    const isCartaoCredito = d.formaPagamento === 'Cartão de crédito';
+                    const cartaoDespesa = isCartaoCredito && d.cartaoId ? data.cartoes.find(c => c.id === d.cartaoId) : undefined;
+                    return (
+                    <div key={d.id} className={`flex items-center justify-between p-3 rounded-xl border ${isCartaoCredito ? 'border-l-4 border-l-primary-500 border-primary-200 bg-primary-50/60 dark:border-primary-800 dark:border-l-primary-400 dark:bg-primary-950/20' : 'border-surface-200 dark:border-surface-700'}`}>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isCartaoCredito ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300' : d.essencial ? 'bg-surface-100 dark:bg-surface-700' : 'bg-warning-50 dark:bg-warning-900/20'}`}>
+                          {isCartaoCredito ? <CreditCard size={14} /> : <TrendingDown size={14} className="text-danger-600 dark:text-danger-400" />}
                         </div>
-                        <div>
-                          <p className="text-sm font-medium text-surface-900 dark:text-white">{d.descricao}</p>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-surface-900 dark:text-white truncate" title={d.descricao}>{d.descricao}</p>
                           <p className="text-xs text-surface-400 dark:text-surface-500">
                             {formatarData(d.data)} · {d.categoria} · {d.formaPagamento}
-                            {!d.essencial && ' · ⚠ Não essencial'}
+                            {cartaoDespesa && ` · ${cartaoDespesa.nome}`}
+                            {!d.essencial && ' · Não essencial'}
                             {d.recorrente && ' · Recorrente'}
-                            {d.faturaId && <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 text-[10px] font-medium">Compõe fatura do cartão</span>}
                           </p>
+                          {isCartaoCredito && (
+                            <div className="mt-1 flex flex-wrap gap-1.5">
+                              <span className="px-1.5 py-0.5 rounded-full bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 text-[10px] font-medium">
+                                Cartão: {cartaoDespesa?.nome ?? 'não vinculado'}
+                              </span>
+                              {d.faturaId && <span className="px-1.5 py-0.5 rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 text-[10px] font-medium">Compõe fatura do cartão</span>}
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -1102,7 +1113,8 @@ export function OrcamentoPage() {
                         )}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                   {parcelasDividasNoMes.length > 0 && (
                     <>
                       {despesasFiltradas.length > 0 && <div className="border-t border-surface-100 dark:border-surface-700 my-1" />}
