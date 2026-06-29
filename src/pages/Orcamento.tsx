@@ -307,6 +307,12 @@ export function OrcamentoPage() {
 
   useEffect(() => {
     if (aba !== 'resumo') return;
+    const hoje = new Date();
+    const estaNoMesAtual = mesFiltro.mes === hoje.getMonth() && mesFiltro.ano === hoje.getFullYear();
+    if (!estaNoMesAtual) {
+      setPendenciasAnterior(null);
+      return;
+    }
     const pendencias = verificarPendenciasMesAnterior(mesFiltro.mes, mesFiltro.ano, data);
     if (pendencias.itens.length === 0) return;
     const key = `sgp-orcamento-pendencias-${pendencias.ano}-${pendencias.mes}`;
