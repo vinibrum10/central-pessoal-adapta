@@ -266,10 +266,10 @@ export function OrcamentoPage() {
   const itensPagarMes = useMemo(() => gerarItensPagarMes(mesFiltro.mes, mesFiltro.ano, data), [mesFiltro.mes, mesFiltro.ano, data]);
   const itensEmAberto = itensPagarMes.filter(item => !item.pago);
   const itensPagos = itensPagarMes.filter(item => item.pago);
-  const despesasMes = totaisDespesasMes.total;
+  const despesasMes = itensPagarMes.reduce((acc, item) => acc + item.valor, 0);
   const saldoMes = receitasMes - despesasMes;
-  const totalPagoMes = Math.min(despesasMes, itensPagos.reduce((acc, item) => acc + item.valor, 0));
-  const totalEmAbertoMes = Math.max(0, despesasMes - totalPagoMes);
+  const totalPagoMes = itensPagos.reduce((acc, item) => acc + item.valor, 0);
+  const totalEmAbertoMes = itensEmAberto.reduce((acc, item) => acc + item.valor, 0);
   const aReceberMes = useMemo(() => calcularAReceberMes(mesFiltro.mes, mesFiltro.ano, data), [mesFiltro.mes, mesFiltro.ano, data]);
   const aReceberAcaoItem = modalAReceberAcao
     ? (data.aReceber ?? []).find(item => item.id === modalAReceberAcao.itemId)
