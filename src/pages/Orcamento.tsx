@@ -218,6 +218,7 @@ export function OrcamentoPage() {
   const [formAReceberValorStr, setFormAReceberValorStr] = useState('');
   const [erroAReceber, setErroAReceber] = useState('');
   const [modalAReceberAcao, setModalAReceberAcao] = useState<null | { itemId: string; tipo: 'receber' | 'desfazer' }>(null);
+  const [modalExcluirAReceber, setModalExcluirAReceber] = useState<null | { itemId: string; escopo?: 'item' | 'grupo' }>(null);
   const [mostrarContasPagas, setMostrarContasPagas] = useState(false);
   const [pendenciasAnterior, setPendenciasAnterior] = useState<null | { mes: number; ano: number; itens: ItemPagar[] }>(null);
   const [msgOrcamento, setMsgOrcamento] = useState('');
@@ -296,6 +297,9 @@ export function OrcamentoPage() {
   const aReceberMes = useMemo(() => calcularAReceberMes(mesFiltro.mes, mesFiltro.ano, data), [mesFiltro.mes, mesFiltro.ano, data]);
   const aReceberAcaoItem = modalAReceberAcao
     ? (data.aReceber ?? []).find(item => item.id === modalAReceberAcao.itemId)
+    : null;
+  const aReceberExcluirItem = modalExcluirAReceber
+    ? (data.aReceber ?? []).find(item => item.id === modalExcluirAReceber.itemId)
     : null;
 
   useEffect(() => {
@@ -476,6 +480,33 @@ export function OrcamentoPage() {
     setFormAReceberValorStr('');
     setErroAReceber('');
   }, [data.aReceber, editandoId, formAReceber, formAReceberValorStr, mesFiltro.ano, mesFiltro.mes, setData]);
+
+  const excluirAReceber = useCallback((idsAReceber: string[], removerReceitasVinculadas: boolean) => {
+    setData(d => {
+      const itensRemovidos = (d.aReceber ?? []).filter(item => idsAReceber.includes(item.id));
+      const receitasVinculadas = itensRemovidos
+        .map(item => item.receitaVinculadaId)
+        .filter((id): id is string => Boolean(id));
+      const idsRemovidos = new Set(idsAReceber);
+      const receitasSet = new Set(receitasVinculadas);
+      return {
+        ...d,
+        aReceber: (d.aReceber ?? []).filter(item => !idsRemovidos.has(item.id)),
+        receitas: removerReceitasVinculadas
+          ? d.receitas.filter(receita => !receitasSet.has(receita.id))
+          : d.receitas.map(receita => receitasSet.has(receita.id)
+            ? {
+              ...receita,
+              aReceberOrigemId: undefined,
+              parcelaAReceber: undefined,
+              totalParcelasAReceber: undefined,
+              statusAReceber: undefined,
+            }
+            : receita),
+      };
+    });
+    setModalExcluirAReceber(null);
+  }, [setData]);
 
   const salvarReceita = useCallback(() => {
     const valorFinal = parseBRLMoney(formReceitaValorStr);
@@ -1508,6 +1539,13 @@ export function OrcamentoPage() {
                           setErroAReceber('');
                           setModal('aReceber');
                         }} className="p-1.5 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
+                        <button
+                          onClick={() => setModalExcluirAReceber({ itemId: item.id })}
+                          className="p-1.5 rounded text-surface-400 hover:text-danger-600 transition-colors"
+                          title="Excluir"
+                        >
+                          <Trash2 size={13} />
+                        </button>
                         <Button
                           size="sm"
                           variant={item.status === 'recebido' ? 'secondary' : 'success'}
@@ -1529,6 +1567,86 @@ export function OrcamentoPage() {
       )}
 
       {/* MODAIS */}
+      <Modal
+        isOpen={modalExcluirAReceber !== null && aReceberExcluirItem !== null}
+        onClose={() => setModalExcluirAReceber(null)}
+        title="Excluir A Receber"
+        size="md"
+      >
+        {aReceberExcluirItem && (() => {
+          const grupo = aReceberExcluirItem.grupoRecebimentoId
+            ? (data.aReceber ?? []).filter(item => item.grupoRecebimentoId === aReceberExcluirItem.grupoRecebimentoId)
+            : [aReceberExcluirItem];
+          const isParcelado = Boolean(aReceberExcluirItem.grupoRecebimentoId && grupo.length > 1);
+          const precisaEscolherEscopo = isParcelado && !modalExcluirAReceber?.escopo;
+          const escopo = modalExcluirAReceber?.escopo ?? 'item';
+          const itensAlvo = escopo === 'grupo' ? grupo : [aReceberExcluirItem];
+          const idsAlvo = itensAlvo.map(item => item.id);
+          const temReceitaVinculada = itensAlvo.some(item => item.receitaVinculadaId);
+          const temRecebido = itensAlvo.some(item => item.status === 'recebido');
+
+          const escolherEscopo = (novoEscopo: 'item' | 'grupo') => {
+            const alvo = novoEscopo === 'grupo' ? grupo : [aReceberExcluirItem];
+            const alvoTemReceita = alvo.some(item => item.receitaVinculadaId);
+            if (alvoTemReceita) {
+              setModalExcluirAReceber({ itemId: aReceberExcluirItem.id, escopo: novoEscopo });
+              return;
+            }
+            excluirAReceber(alvo.map(item => item.id), false);
+          };
+
+          return (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-surface-200 p-3 dark:border-surface-700">
+                <p className="text-sm font-semibold text-surface-900 dark:text-white">{aReceberExcluirItem.descricao}</p>
+                <p className="mt-1 text-xs text-surface-400">
+                  {aReceberExcluirItem.pessoa} · {formatarDinheiro(aReceberExcluirItem.valor)}
+                  {aReceberExcluirItem.parcelaAtual && aReceberExcluirItem.totalParcelas ? ` · parcela ${aReceberExcluirItem.parcelaAtual}/${aReceberExcluirItem.totalParcelas}` : ''}
+                </p>
+              </div>
+
+              {precisaEscolherEscopo ? (
+                <>
+                  <p className="text-sm text-surface-600 dark:text-surface-300">
+                    Este item faz parte de um recebimento parcelado. O que deseja excluir?
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    <Button variant="danger" onClick={() => escolherEscopo('item')}>Excluir apenas esta parcela</Button>
+                    <Button variant="danger" onClick={() => escolherEscopo('grupo')}>Excluir todas as parcelas deste recebimento</Button>
+                    <Button variant="ghost" onClick={() => setModalExcluirAReceber(null)}>Cancelar</Button>
+                  </div>
+                </>
+              ) : temReceitaVinculada ? (
+                <>
+                  <p className="text-sm text-surface-600 dark:text-surface-300">
+                    Este recebimento possui receita vinculada. O que deseja fazer?
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    <Button variant="danger" onClick={() => excluirAReceber(idsAlvo, true)}>
+                      Excluir A Receber e remover receita vinculada
+                    </Button>
+                    <Button variant="secondary" onClick={() => excluirAReceber(idsAlvo, false)}>
+                      Excluir A Receber e manter receita
+                    </Button>
+                    <Button variant="ghost" onClick={() => setModalExcluirAReceber(null)}>Cancelar</Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-surface-600 dark:text-surface-300">
+                    {temRecebido ? 'Este valor já foi marcado como recebido. Deseja excluir mesmo assim?' : 'Deseja excluir este valor a receber?'}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button variant="secondary" className="flex-1" onClick={() => setModalExcluirAReceber(null)}>Cancelar</Button>
+                    <Button variant="danger" className="flex-1" onClick={() => excluirAReceber(idsAlvo, false)}>Excluir</Button>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
+      </Modal>
+
       <Modal
         isOpen={modalAReceberAcao !== null && aReceberAcaoItem !== null}
         onClose={() => setModalAReceberAcao(null)}
