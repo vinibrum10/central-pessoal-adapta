@@ -122,6 +122,11 @@ function trimString(value: unknown, maxLength: number) {
   return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
 }
 
+function normalizeQuizLevel(level: string) {
+  if (level === 'A1' || level === 'A2' || level === 'B1' || level === 'B2') return level;
+  return 'B2';
+}
+
 function resolveSource(body: GenerateQuizRequest): { source: QuizSource; content: string; warning?: string } {
   const transcript = trimString(body.transcript, MAX_TRANSCRIPT_LENGTH);
   if (transcript) return { source: 'transcript', content: transcript };
@@ -286,14 +291,15 @@ export default async function handler(req: ServerRequest, res: ServerResponse) {
   const videoId = trimString(body.videoId, 120);
   const title = trimString(body.title, 240);
   const channel = trimString(body.channel, 160);
-  const level = trimString(body.level, 20);
+  const requestedLevel = trimString(body.level, 20);
+  const level = normalizeQuizLevel(requestedLevel);
   const theme = trimString(body.theme, 160);
   const durationSeconds = typeof body.durationSeconds === 'number' && Number.isFinite(body.durationSeconds)
     ? Math.max(1, Math.round(body.durationSeconds))
     : 1;
   const questionCount = clampQuestionCount(body.questionCount);
 
-  if (!videoId || !title || !channel || !level || !theme) {
+  if (!videoId || !title || !requestedLevel || !channel || !theme) {
     json(res, 400, { success: false, error: 'Dados do vídeo incompletos para gerar o questionário.' });
     return;
   }

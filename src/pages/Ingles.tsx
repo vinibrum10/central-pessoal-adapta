@@ -13,6 +13,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { dailyEnglishVideos, getDailyEnglishVideoById, type DailyEnglishVideo } from '../data/englishDailyVideos';
 import { buscarVideosIngles, isYouTubeEnglishConfigured, DURACAO_MAX_SECONDS } from '../services/youtubeEnglish';
 import { generateEnglishQuiz } from '../services/englishQuizApi';
+import { translateWeeklyWord } from '../services/englishWordTranslateApi';
 import {
   addDaysISO,
   addPreplyAula,
@@ -613,8 +614,9 @@ export function InglesPage() {
     };
     await saveStudy(generatingStudy);
 
+    let quiz: GeneratedEnglishQuiz;
     try {
-      const quiz = await generateEnglishQuiz({
+      quiz = await generateEnglishQuiz({
         videoId: currentVideo.videoId,
         title: currentVideo.title,
         channel: currentVideo.channel,
@@ -625,14 +627,6 @@ export function InglesPage() {
         summary: currentVideo.summary,
         questionCount: 5,
       });
-
-      const nextStudy: EnglishDailyStudy = {
-        ...generatingStudy,
-        quizStatus: 'available',
-        quizGenerated: true,
-      };
-      await saveData(mergeDailyStudy(mergeGeneratedQuiz(latestDataRef.current, quiz), nextStudy));
-      setQuizMessage(quiz.warning ?? 'Questionário gerado com IA.');
     } catch {
       const nextStudy: EnglishDailyStudy = {
         ...generatingStudy,
@@ -641,6 +635,34 @@ export function InglesPage() {
       };
       await saveStudy(nextStudy);
       setError('Não foi possível gerar o questionário agora. Tente novamente.');
+      setQuizLoading(false);
+      return;
+    }
+
+    try {
+      const nextStudy: EnglishDailyStudy = {
+        ...generatingStudy,
+        quizStatus: 'available',
+        quizGenerated: true,
+      };
+      await saveData(mergeDailyStudy(mergeGeneratedQuiz(latestDataRef.current, quiz), nextStudy));
+      setQuizMessage(quiz.warning ?? 'Questionário gerado com IA.');
+    } catch (err) {
+      console.error('English quiz save failed', err);
+      const nextData = mergeDailyStudy(mergeGeneratedQuiz(latestDataRef.current, quiz), {
+        ...generatingStudy,
+        quizStatus: 'available',
+        quizGenerated: true,
+      });
+      latestDataRef.current = nextData;
+      setData(nextData);
+      const nextStudy: EnglishDailyStudy = {
+        ...generatingStudy,
+        quizStatus: 'available',
+        quizGenerated: true,
+      };
+      await saveStudy(nextStudy).catch(saveErr => console.error('English quiz status save failed', saveErr));
+      setQuizMessage('Questionário gerado, mas não foi possível salvar automaticamente. Ele pode ser perdido ao recarregar a página.');
     } finally {
       setQuizLoading(false);
     }
@@ -1711,8 +1733,37 @@ function PalavrasDaSemanaCard({
   const [translation, setTranslation] = useState('');
   const [example, setExample] = useState('');
   const [adding, setAdding] = useState(false);
+  const [translating, setTranslating] = useState(false);
+  const [translateError, setTranslateError] = useState('');
+  const lastTranslatedWordRef = useRef('');
 
   const capReached = wordsThisWeek.length >= 10;
+
+  async function handleTranslate() {
+    const term = word.trim();
+    if (!term || translating || capReached) return;
+    setTranslating(true);
+    setTranslateError('');
+    try {
+      const result = await translateWeeklyWord(term);
+      // Only apply if the word field hasn't changed in the meantime
+      if (word.trim() === term) {
+        setTranslation(result.translation);
+        setExample(result.example);
+      }
+      lastTranslatedWordRef.current = term;
+    } catch (err) {
+      setTranslateError(err instanceof Error ? err.message : 'Não foi possível traduzir agora.');
+    } finally {
+      setTranslating(false);
+    }
+  }
+
+  function handleWordBlur() {
+    const term = word.trim();
+    if (!term || term === lastTranslatedWordRef.current) return;
+    void handleTranslate();
+  }
 
   async function handleAdd() {
     if (!word.trim() || !translation.trim() || capReached) return;
@@ -1722,6 +1773,7 @@ function PalavrasDaSemanaCard({
       setWord('');
       setTranslation('');
       setExample('');
+      lastTranslatedWordRef.current = '';
     } finally {
       setAdding(false);
     }
@@ -1739,28 +1791,41 @@ function PalavrasDaSemanaCard({
           <input
             value={word}
             onChange={e => setWord(e.target.value)}
-            placeholder="Palavra/expressão"
+            onBlur={handleWordBlur}
+            placeholder="Palavra/expressão em inglês"
             disabled={capReached}
             className="flex-1 rounded-lg border border-surface-200 px-3 py-2 text-sm disabled:opacity-50 dark:border-surface-700 dark:bg-surface-800 dark:text-white"
           />
           <input
             value={translation}
             onChange={e => setTranslation(e.target.value)}
-            placeholder="Tradução"
-            disabled={capReached}
+            placeholder={translating ? 'Traduzindo com IA...' : 'Tradução (preenchida pela IA)'}
+            disabled={capReached || translating}
             className="flex-1 rounded-lg border border-surface-200 px-3 py-2 text-sm disabled:opacity-50 dark:border-surface-700 dark:bg-surface-800 dark:text-white"
           />
           <input
             value={example}
             onChange={e => setExample(e.target.value)}
-            placeholder="Exemplo (opcional)"
-            disabled={capReached}
+            placeholder={translating ? '...' : 'Exemplo (preenchido pela IA)'}
+            disabled={capReached || translating}
             className="flex-1 rounded-lg border border-surface-200 px-3 py-2 text-sm disabled:opacity-50 dark:border-surface-700 dark:bg-surface-800 dark:text-white"
           />
-          <Button size="sm" icon={<Plus size={14} />} disabled={capReached || adding} loading={adding} onClick={handleAdd}>
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={<Sparkles size={14} />}
+            disabled={capReached || translating || !word.trim()}
+            loading={translating}
+            onClick={handleTranslate}
+          >
+            Traduzir
+          </Button>
+          <Button size="sm" icon={<Plus size={14} />} disabled={capReached || adding || translating || !translation.trim()} loading={adding} onClick={handleAdd}>
             Adicionar
           </Button>
         </div>
+
+        {translateError && <StateNote>{translateError}</StateNote>}
 
         {capReached && <StateNote>Limite de 10 palavras desta semana atingido. Volte na próxima semana para adicionar mais.</StateNote>}
 
