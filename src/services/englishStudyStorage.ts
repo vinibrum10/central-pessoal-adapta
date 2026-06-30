@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured, modoLocalAtivo } from '../lib/supabase';
 import { gerarId } from '../utils';
+import { calculateNextReview, INITIAL_EASE_FACTOR, type ReviewGrade } from './spacedRepetitionEngine';
 import type {
   DailyPlanItem,
   DuolingoStreak,
@@ -13,6 +14,7 @@ import type {
   VocabularyItem,
   WatchedVideoEntry,
   WeeklyWord,
+  WeeklyWordSource,
 } from '../types/englishStudy';
 
 const TABLE = 'english_study_data';
@@ -92,8 +94,53 @@ function normalizeData(raw: Partial<EnglishStudyData> | null | undefined): Engli
     shadowingSessions: raw?.shadowingSessions ?? [],
     preplyAulas: raw?.preplyAulas ?? [],
     duolingoStreak: raw?.duolingoStreak ?? base.duolingoStreak,
-    weeklyWords: raw?.weeklyWords ?? [],
+    weeklyWords: (raw?.weeklyWords ?? []).map(migrateWeeklyWord),
     watchedVideos: raw?.watchedVideos ?? [],
+  };
+}
+
+/**
+ * Converte uma WeeklyWord no formato antigo (reviewStage/mastered) para o
+ * modelo de repetição espaçada atual. Idempotente: palavras já no formato
+ * novo passam direto. Garante que nenhuma palavra seja perdida na migração.
+ */
+function migrateWeeklyWord(raw: Partial<WeeklyWord> & { word: string; translation: string; id: string; weekStart: string }): WeeklyWord {
+  if (raw.status && typeof raw.intervalDays === 'number') {
+    return {
+      ...raw,
+      createdAt: raw.createdAt ?? raw.addedAt ?? new Date().toISOString(),
+      updatedAt: raw.updatedAt ?? raw.addedAt ?? new Date().toISOString(),
+      easeFactor: raw.easeFactor ?? INITIAL_EASE_FACTOR,
+      lapses: raw.lapses ?? 0,
+      totalReviews: raw.totalReviews ?? 0,
+      correctReviews: raw.correctReviews ?? 0,
+      source: raw.source ?? 'manual',
+    } as WeeklyWord;
+  }
+
+  const legacyStage = raw.reviewStage ?? 0;
+  const legacyIntervals = [1, 3, 7, 14, 30, 60, 90];
+  const addedAt = raw.addedAt ?? new Date().toISOString();
+  console.log('[EnglishWords] Migrando palavra do formato antigo:', raw.word);
+  return {
+    id: raw.id,
+    word: raw.word,
+    translation: raw.translation,
+    example: raw.example,
+    weekStart: raw.weekStart,
+    addedAt,
+    createdAt: addedAt,
+    updatedAt: new Date().toISOString(),
+    status: raw.mastered ? 'learned' : 'learning',
+    lastReviewedAt: raw.lastReviewedAt,
+    nextReviewAt: raw.nextReviewAt ?? getCurrentStudyDate(),
+    intervalDays: legacyIntervals[legacyStage] ?? 1,
+    repetitions: legacyStage,
+    easeFactor: INITIAL_EASE_FACTOR,
+    lapses: 0,
+    totalReviews: legacyStage,
+    correctReviews: legacyStage,
+    source: 'manual',
   };
 }
 
@@ -168,6 +215,7 @@ export async function getEnglishStudyData(userId?: string | null): Promise<Engli
 }
 
 export async function saveEnglishStudyData(userId: string | null | undefined, data: EnglishStudyData): Promise<void> {
+  console.log('[EnglishStudy] Salvando dados | weeklyWords:', data.weeklyWords.length, '| modo:', shouldUseLocal(userId) ? 'local' : 'supabase');
   if (shouldUseLocal(userId)) {
     saveLocal(data, userId);
     return;
@@ -272,7 +320,20 @@ export const saveDuolingoStreak = (userId: string | null | undefined, streak: Du
 // ============================================================
 // PALAVRAS DA SEMANA (spaced repetition)
 // ============================================================
-const REVIEW_INTERVALS_DAYS = [1, 3, 7, 14, 30, 60, 90];
+// IMPORTANTE: estas funções são PURAS e SÍNCRONAS — elas recebem o
+// `EnglishStudyData` que a página já tem em memória (latestDataRef.current) e
+// devolvem o próximo estado, sem ler/escrever storage por conta própria.
+//
+// Causa raiz do bug de "palavra some sozinha": antes, addWeeklyWord/
+// deleteWeeklyWord/reviewWeeklyWord buscavam os dados direto do storage
+// (via mutate -> getEnglishStudyData) em vez de usar o estado em memória da
+// página. Como a página também salva o progresso do vídeo a cada segundo
+// usando o estado em memória (latestDataRef.current), havia uma janela de
+// corrida: se esse "save" do vídeo disparasse durante o await da leitura do
+// storage feita por addWeeklyWord (especialmente com Supabase, onde a leitura
+// é uma chamada de rede), ele sobrescrevia o storage com uma cópia antiga dos
+// dados — sem a palavra recém-adicionada — apagando-a. Eliminar a leitura
+// paralela do storage remove essa janela de corrida.
 const WEEKLY_WORD_CAP = 10;
 
 export function addDaysISO(dateISO: string, days: number): string {
@@ -291,40 +352,59 @@ export function countWordsInWeek(words: WeeklyWord[], weekStart: string): number
   return words.filter(w => w.weekStart === weekStart).length;
 }
 
-export const addWeeklyWord = (userId: string | null | undefined, word: Omit<WeeklyWord, 'id' | 'addedAt' | 'nextReviewAt' | 'reviewStage' | 'mastered'>) =>
-  mutate(userId, data => {
-    const weekCount = countWordsInWeek(data.weeklyWords, word.weekStart);
-    if (weekCount >= WEEKLY_WORD_CAP) return data;
-    const newWord: WeeklyWord = {
-      ...word,
-      id: gerarId(),
-      addedAt: new Date().toISOString(),
-      nextReviewAt: addDaysISO(getCurrentStudyDate(), REVIEW_INTERVALS_DAYS[0]),
-      reviewStage: 0,
-      mastered: false,
-    };
-    return { ...data, weeklyWords: [newWord, ...data.weeklyWords] };
-  });
+export function createWeeklyWord(word: { word: string; translation: string; example?: string; weekStart: string; source?: WeeklyWordSource }): WeeklyWord {
+  const now = new Date().toISOString();
+  return {
+    id: gerarId(),
+    word: word.word,
+    translation: word.translation,
+    example: word.example,
+    weekStart: word.weekStart,
+    addedAt: now,
+    createdAt: now,
+    updatedAt: now,
+    status: 'learning',
+    nextReviewAt: addDaysISO(getCurrentStudyDate(), 1),
+    intervalDays: 0,
+    repetitions: 0,
+    easeFactor: INITIAL_EASE_FACTOR,
+    lapses: 0,
+    totalReviews: 0,
+    correctReviews: 0,
+    source: word.source ?? 'manual',
+  };
+}
 
-export const deleteWeeklyWord = (userId: string | null | undefined, id: string) =>
-  mutate(userId, data => ({ ...data, weeklyWords: data.weeklyWords.filter(w => w.id !== id) }));
+export function addWeeklyWordToData(data: EnglishStudyData, word: { word: string; translation: string; example?: string; weekStart: string; source?: WeeklyWordSource }): EnglishStudyData {
+  const weekCount = countWordsInWeek(data.weeklyWords, word.weekStart);
+  if (weekCount >= WEEKLY_WORD_CAP) {
+    console.warn('[EnglishWords] Limite semanal (10) atingido — palavra não adicionada:', word.word);
+    return data;
+  }
+  const newWord = createWeeklyWord(word);
+  console.log('[EnglishWords] Palavra adicionada:', newWord.word, '| id:', newWord.id, '| nextReviewAt:', newWord.nextReviewAt);
+  const next = { ...data, weeklyWords: [newWord, ...data.weeklyWords] };
+  console.log('[EnglishWords] Total de palavras salvas (todas as semanas):', next.weeklyWords.length);
+  return next;
+}
 
-export const reviewWeeklyWord = (userId: string | null | undefined, id: string, remembered: boolean) =>
-  mutate(userId, data => ({
+export function deleteWeeklyWordFromData(data: EnglishStudyData, id: string): EnglishStudyData {
+  console.log('[EnglishWords] Removendo palavra id:', id);
+  return { ...data, weeklyWords: data.weeklyWords.filter(w => w.id !== id) };
+}
+
+export function reviewWeeklyWordInData(data: EnglishStudyData, id: string, grade: ReviewGrade): EnglishStudyData {
+  const today = getCurrentStudyDate();
+  return {
     ...data,
     weeklyWords: data.weeklyWords.map(w => {
       if (w.id !== id) return w;
-      const nextStage = remembered ? Math.min(w.reviewStage + 1, REVIEW_INTERVALS_DAYS.length - 1) : 0;
-      const mastered = remembered && w.reviewStage >= REVIEW_INTERVALS_DAYS.length - 1;
-      return {
-        ...w,
-        reviewStage: nextStage,
-        lastReviewedAt: new Date().toISOString(),
-        nextReviewAt: addDaysISO(getCurrentStudyDate(), REVIEW_INTERVALS_DAYS[nextStage]),
-        mastered,
-      };
+      const result = calculateNextReview(w, grade, today, addDaysISO);
+      console.log('[EnglishWords] Revisão registrada:', w.word, '| nota:', grade, '| próxima revisão:', result.nextReviewAt, '| status:', result.status, '| intervalo(dias):', result.intervalDays);
+      return { ...w, ...result, updatedAt: new Date().toISOString() };
     }),
-  }));
+  };
+}
 
 // ============================================================
 // HISTÓRICO DE VÍDEOS ASSISTIDOS (Inglês Diário)

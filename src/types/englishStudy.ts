@@ -167,17 +167,33 @@ export interface DuolingoStreak {
   history: { date: string; xp: number }[];
 }
 
+export type WeeklyWordStatus = 'learning' | 'review' | 'learned' | 'archived';
+export type WeeklyWordSource = 'manual' | 'video' | 'ai';
+
 export interface WeeklyWord {
   id: string;
   word: string;
   translation: string;
   example?: string;
+  /** Início (domingo) da semana em que a palavra foi adicionada — usado só para o contador/filtro visual "Palavras da Semana". */
   weekStart: string;
   addedAt: string;
-  nextReviewAt: string;
-  reviewStage: number;
+  createdAt: string;
+  updatedAt: string;
+  status: WeeklyWordStatus;
   lastReviewedAt?: string;
-  mastered: boolean;
+  nextReviewAt: string;
+  intervalDays: number;
+  repetitions: number;
+  easeFactor: number;
+  lapses: number;
+  totalReviews: number;
+  correctReviews: number;
+  source: WeeklyWordSource;
+  /** @deprecated mantido só para migração de dados antigos. */
+  reviewStage?: number;
+  /** @deprecated mantido só para migração de dados antigos — use `status === 'learned'`. */
+  mastered?: boolean;
 }
 
 /** Histórico permanente de vídeos do "Inglês Diário" já assistidos pelo usuário — usado para nunca repetir um vídeo na seleção do vídeo do dia / "Trocar vídeo". */

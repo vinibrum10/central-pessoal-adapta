@@ -26,18 +26,19 @@ import {
   addDaysISO,
   addPreplyAula,
   addShadowingSession,
-  addWeeklyWord,
+  addWeeklyWordToData,
   deletePreplyAula,
-  deleteWeeklyWord,
+  deleteWeeklyWordFromData,
   getCurrentStudyDate,
   getEnglishStudyData,
   getWatchedVideoIds,
   getWeekStartISO,
   markVideoWatched,
-  reviewWeeklyWord,
+  reviewWeeklyWordInData,
   saveDuolingoStreak,
   saveEnglishStudyData,
 } from '../services/englishStudyStorage';
+import type { ReviewGrade } from '../services/spacedRepetitionEngine';
 import { gerarId } from '../utils';
 import type {
   DuolingoStreak,
@@ -50,6 +51,7 @@ import type {
   ShadowingSession,
   StudySession,
   WeeklyWord,
+  WeeklyWordStatus,
 } from '../types/englishStudy';
 
 type YouTubePlayerState = -1 | 0 | 1 | 2 | 3 | 5;
@@ -475,7 +477,7 @@ export function InglesPage() {
     [data.weeklyWords, currentWeekStart],
   );
   const wordsDueForReview = useMemo(
-    () => data.weeklyWords.filter(w => !w.mastered && w.nextReviewAt <= todayDate),
+    () => data.weeklyWords.filter(w => w.status !== 'learned' && w.status !== 'archived' && w.nextReviewAt <= todayDate),
     [data.weeklyWords, todayDate],
   );
   // Shadowing usa sempre nível avançado e vídeos curtos (2-5 min) — sem busca livre/manual.
@@ -1187,23 +1189,23 @@ export function InglesPage() {
     await saveData(next);
   }
 
+  // As três funções abaixo operam sobre `latestDataRef.current` (estado em
+  // memória da página) em vez de buscar os dados do storage de novo — isso é
+  // o que corrige o bug de palavras somindo: evita a corrida com o save
+  // automático do progresso do vídeo, que também escreve com base no estado
+  // em memória. Ver comentário em englishStudyStorage.ts.
   async function handleAddWeeklyWord(word: { word: string; translation: string; example?: string }) {
-    const next = await addWeeklyWord(userId, {
-      word: word.word,
-      translation: word.translation,
-      example: word.example,
-      weekStart: currentWeekStart,
-    });
+    const next = addWeeklyWordToData(latestDataRef.current, { ...word, weekStart: currentWeekStart, source: 'manual' });
     await saveData(next);
   }
 
-  async function handleReviewWeeklyWord(id: string, remembered: boolean) {
-    const next = await reviewWeeklyWord(userId, id, remembered);
+  async function handleReviewWeeklyWord(id: string, grade: ReviewGrade) {
+    const next = reviewWeeklyWordInData(latestDataRef.current, id, grade);
     await saveData(next);
   }
 
   async function handleDeleteWeeklyWord(id: string) {
-    const next = await deleteWeeklyWord(userId, id);
+    const next = deleteWeeklyWordFromData(latestDataRef.current, id);
     await saveData(next);
   }
 
@@ -2179,7 +2181,7 @@ function PalavrasDaSemanaCard({
   wordsDueForReview: WeeklyWord[];
   allWords: WeeklyWord[];
   onAdd: (word: { word: string; translation: string; example?: string }) => Promise<void>;
-  onReview: (id: string, remembered: boolean) => Promise<void>;
+  onReview: (id: string, grade: ReviewGrade) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
   const [word, setWord] = useState('');
@@ -2191,6 +2193,17 @@ function PalavrasDaSemanaCard({
   const lastTranslatedWordRef = useRef('');
   const [showAllWords, setShowAllWords] = useState(false);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [wordFilter, setWordFilter] = useState<'todas' | 'hoje' | 'learning' | 'learned' | 'archived'>('todas');
+
+  const filteredWords = useMemo(() => {
+    if (wordFilter === 'todas') return allWords;
+    if (wordFilter === 'hoje') {
+      const today = getCurrentStudyDate();
+      return allWords.filter(w => w.status !== 'learned' && w.status !== 'archived' && w.nextReviewAt <= today);
+    }
+    if (wordFilter === 'learning') return allWords.filter(w => w.status === 'learning' || w.status === 'review');
+    return allWords.filter(w => w.status === wordFilter);
+  }, [allWords, wordFilter]);
 
   const capReached = wordsThisWeek.length >= 10;
 
@@ -2306,27 +2319,55 @@ function PalavrasDaSemanaCard({
           </button>
 
           {showAllWords && (
-            allWords.length === 0 ? (
-              <div className="mt-2"><StateNote>Nenhuma palavra cadastrada ainda. Adicione até 10 por semana.</StateNote></div>
-            ) : (
-              <div className="mt-2 max-h-64 space-y-1.5 overflow-y-auto pr-1">
-                {allWords.map(item => (
-                  <div key={item.id} className="flex items-center justify-between gap-2 rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700">
-                    <div className="min-w-0">
-                      <span className="font-medium text-surface-900 dark:text-white">{item.word}</span>
-                      <span className="text-surface-500 dark:text-surface-400"> — {item.translation}</span>
-                      {item.example && <p className="text-xs text-surface-400 dark:text-surface-500">{item.example}</p>}
-                    </div>
-                    <div className="flex flex-shrink-0 items-center gap-2">
-                      <Badge variant={item.mastered ? 'success' : 'default'}>{item.mastered ? 'dominada' : `revisar ${item.nextReviewAt}`}</Badge>
-                      <button onClick={() => onDelete(item.id)} className="text-surface-400 hover:text-danger-600">
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
+            <>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {([
+                  ['todas', 'Todas'],
+                  ['hoje', 'Para revisar hoje'],
+                  ['learning', 'Aprendendo'],
+                  ['learned', 'Aprendidas'],
+                  ['archived', 'Arquivadas'],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setWordFilter(value)}
+                    className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                      wordFilter === value
+                        ? 'bg-primary-600 text-white'
+                        : 'bg-surface-100 text-surface-600 hover:bg-surface-200 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700'
+                    }`}
+                  >
+                    {label}
+                  </button>
                 ))}
               </div>
-            )
+
+              {filteredWords.length === 0 ? (
+                <div className="mt-2"><StateNote>Nenhuma palavra nesse filtro.</StateNote></div>
+              ) : (
+                <div className="mt-2 max-h-64 space-y-1.5 overflow-y-auto pr-1">
+                  {filteredWords.map(item => (
+                    <div key={item.id} className="flex items-center justify-between gap-2 rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700">
+                      <div className="min-w-0">
+                        <span className="font-medium text-surface-900 dark:text-white">{item.word}</span>
+                        <span className="text-surface-500 dark:text-surface-400"> — {item.translation}</span>
+                        {item.example && <p className="text-xs text-surface-400 dark:text-surface-500">{item.example}</p>}
+                        <p className="text-[11px] text-surface-400 dark:text-surface-500">
+                          revisões: {item.totalReviews} · intervalo: {item.intervalDays}d · próxima: {item.nextReviewAt}
+                        </p>
+                      </div>
+                      <div className="flex flex-shrink-0 items-center gap-2">
+                        <Badge variant={statusBadgeVariant(item.status)}>{statusLabel(item.status)}</Badge>
+                        <button onClick={() => onDelete(item.id)} className="text-surface-400 hover:text-danger-600">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       </CardBody>
@@ -2344,6 +2385,21 @@ function PalavrasDaSemanaCard({
 // ============================================================
 // FLASHCARDS DE REVISÃO (repetição espaçada)
 // ============================================================
+function statusLabel(status: WeeklyWordStatus): string {
+  switch (status) {
+    case 'learning': return 'aprendendo';
+    case 'review': return 'em revisão';
+    case 'learned': return 'aprendida';
+    case 'archived': return 'arquivada';
+  }
+}
+
+function statusBadgeVariant(status: WeeklyWordStatus): 'success' | 'default' | 'warning' {
+  if (status === 'learned') return 'success';
+  if (status === 'learning') return 'warning';
+  return 'default';
+}
+
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -2365,7 +2421,7 @@ function FlashcardReviewModal({
   isOpen: boolean;
   onClose: () => void;
   words: WeeklyWord[];
-  onReview: (id: string, remembered: boolean) => Promise<void>;
+  onReview: (id: string, grade: ReviewGrade) => Promise<void>;
 }) {
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
@@ -2381,11 +2437,11 @@ function FlashcardReviewModal({
   const currentWord = words[index];
   const finished = !currentWord;
 
-  async function handleAnswer(remembered: boolean) {
+  async function handleAnswer(grade: ReviewGrade) {
     if (!currentWord || submitting) return;
     setSubmitting(true);
     try {
-      await onReview(currentWord.id, remembered);
+      await onReview(currentWord.id, grade);
       setFlipped(false);
       setIndex(prev => prev + 1);
     } finally {
@@ -2439,9 +2495,11 @@ function FlashcardReviewModal({
             </button>
 
             {flipped && (
-              <div className="flex justify-center gap-3">
-                <Button variant="secondary" disabled={submitting} onClick={() => handleAnswer(false)}>Esqueci</Button>
-                <Button variant="success" disabled={submitting} onClick={() => handleAnswer(true)}>Lembrei</Button>
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button variant="danger" disabled={submitting} onClick={() => handleAnswer('again')}>Errei</Button>
+                <Button variant="secondary" disabled={submitting} onClick={() => handleAnswer('hard')}>Difícil</Button>
+                <Button variant="primary" disabled={submitting} onClick={() => handleAnswer('good')}>Bom</Button>
+                <Button variant="success" disabled={submitting} onClick={() => handleAnswer('easy')}>Fácil</Button>
               </div>
             )}
           </>
