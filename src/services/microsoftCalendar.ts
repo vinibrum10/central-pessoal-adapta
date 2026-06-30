@@ -2,7 +2,7 @@
  * Integração com Microsoft Outlook Calendar via Microsoft Graph API.
  *
  * Autenticação: MSAL para SPA, sem client secret no cliente.
- * Escopos delegados mínimos: User.Read, Calendars.Read.
+ * Escopos delegados mínimos: User.Read, Calendars.Read, offline_access.
  *
  * Configuração no Microsoft Entra:
  * - Tipo de conta: contas em qualquer diretório organizacional e contas pessoais Microsoft.
@@ -25,7 +25,7 @@ import type { EventoAgenda } from '../types';
 
 const CLIENT_ID = import.meta.env.VITE_MICROSOFT_CLIENT_ID as string | undefined;
 const GRAPH_API = 'https://graph.microsoft.com/v1.0';
-const SCOPES = ['User.Read', 'Calendars.Read'];
+const SCOPES = ['User.Read', 'Calendars.Read', 'offline_access'];
 const CONNECTED_KEY = 'ms_graph_connected';
 const USER_EMAIL_KEY = 'ms_graph_user_email';
 const CONSENT_ERROR_CODE = 'INSTITUTIONAL_CONSENT_REQUIRED';

@@ -13,8 +13,8 @@ export function Card({ children, className = '', onClick, hover = false }: CardP
       onClick={onClick}
       className={`
         rounded-lg border border-surface-200/80 bg-white/90 shadow-sm shadow-surface-200/50
-        backdrop-blur-sm dark:border-white/10 dark:bg-surface-900/70 dark:shadow-black/20
-        ${hover ? 'cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-md hover:shadow-primary-900/10 dark:hover:border-primary-700/60' : ''}
+        backdrop-blur-sm dark:border-primary-300/15 dark:bg-surface-950/55 dark:shadow-black/25
+        ${hover ? 'cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-md hover:shadow-primary-900/10 dark:hover:border-primary-300/35 dark:hover:bg-surface-900/75' : ''}
         ${className}
       `}
     >
@@ -35,7 +35,7 @@ export function CardHeader({ title, subtitle, action, icon }: CardHeaderProps) {
     <div className="flex items-start justify-between gap-4 px-5 py-4">
       <div className="flex items-center gap-3">
         {icon && (
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-primary-100 bg-primary-50 text-primary-600 dark:border-primary-900/50 dark:bg-primary-950/40 dark:text-primary-300">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-primary-100 bg-primary-50 text-primary-600 dark:border-primary-300/20 dark:bg-primary-500/10 dark:text-primary-200">
             {icon}
           </div>
         )}

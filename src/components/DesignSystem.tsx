@@ -11,7 +11,7 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, subtitle, eyebrow, action }: PageHeaderProps) {
   return (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="flex flex-col gap-4 rounded-lg border border-surface-200/70 bg-white/65 p-4 shadow-sm shadow-surface-200/50 backdrop-blur-xl dark:border-primary-300/15 dark:bg-surface-950/35 dark:shadow-black/20 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
         {eyebrow && (
           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary-600 dark:text-primary-300">
@@ -58,7 +58,7 @@ export function MetricCard({
   tone?: 'primary' | 'success' | 'warning' | 'danger' | 'neutral';
 }) {
   const toneClass = {
-    primary: 'bg-primary-50 text-primary-700 dark:bg-primary-500/10 dark:text-primary-300',
+    primary: 'bg-primary-50 text-primary-700 dark:bg-primary-500/10 dark:text-primary-200',
     success: 'bg-success-50 text-success-700 dark:bg-success-500/10 dark:text-success-300',
     warning: 'bg-warning-50 text-warning-600 dark:bg-warning-500/10 dark:text-warning-300',
     danger: 'bg-danger-50 text-danger-700 dark:bg-danger-500/10 dark:text-danger-300',
@@ -83,7 +83,7 @@ export function MetricCard({
 
 export function EmptyState({ title, description, action }: { title: string; description?: string; action?: ReactNode }) {
   return (
-    <div className="rounded-lg border border-dashed border-surface-300 bg-white/50 p-6 text-center dark:border-surface-700 dark:bg-white/5">
+    <div className="rounded-lg border border-dashed border-surface-300 bg-white/50 p-6 text-center dark:border-primary-300/20 dark:bg-white/5">
       <p className="text-sm font-semibold text-surface-900 dark:text-white">{title}</p>
       {description && <p className="mt-1 text-sm text-surface-500 dark:text-surface-400">{description}</p>}
       {action && <div className="mt-4 flex justify-center">{action}</div>}

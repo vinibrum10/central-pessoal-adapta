@@ -25,6 +25,14 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+const GOOGLE_OAUTH_SCOPES = [
+  'openid',
+  'email',
+  'profile',
+  'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/calendar.readonly',
+].join(' ');
+
 async function carregarPerfil(userId: string): Promise<PerfilUsuario | null> {
   const { data } = await supabase
     .from('profiles')
@@ -192,7 +200,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       provider: 'google',
       options: {
         redirectTo,
-        scopes: 'email profile',
+        scopes: GOOGLE_OAUTH_SCOPES,
+        queryParams: {
+          access_type: 'offline',
+          include_granted_scopes: 'true',
+        },
       },
     });
     return { error: error?.message ?? null };

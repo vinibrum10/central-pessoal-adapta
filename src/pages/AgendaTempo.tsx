@@ -82,6 +82,53 @@ function googleCalendarStatusLabel() {
   return 'Desconectado';
 }
 
+function chaveEstavelEvento(ev: EventoAgenda): string {
+  return [
+    ev.fonte,
+    ev.titulo.trim().toLowerCase(),
+    ev.inicio,
+    ev.fim,
+  ].join('|');
+}
+
+function preservarEstadoEvento(existente: EventoAgenda | undefined, novo: EventoAgenda): EventoAgenda {
+  if (!existente) return novo;
+  return {
+    ...novo,
+    bloqueiaTempo: existente.bloqueiaTempo,
+    tarefaGeradaId: existente.tarefaGeradaId ?? novo.tarefaGeradaId ?? null,
+    ignorado: existente.ignorado ?? novo.ignorado ?? false,
+    importadoEm: existente.importadoEm || novo.importadoEm,
+  };
+}
+
+function mesclarEventosExternos(existentes: EventoAgenda[], novos: EventoAgenda[]): EventoAgenda[] {
+  if (novos.length === 0) return existentes;
+
+  const porId = new Map(existentes.map((evento, index) => [evento.id, index]));
+  const porChave = new Map(existentes.map((evento, index) => [chaveEstavelEvento(evento), index]));
+  const resultado = [...existentes];
+
+  for (const novo of novos) {
+    const index = porId.get(novo.id) ?? porChave.get(chaveEstavelEvento(novo));
+    if (index === undefined) {
+      porId.set(novo.id, resultado.length);
+      porChave.set(chaveEstavelEvento(novo), resultado.length);
+      resultado.push(novo);
+      continue;
+    }
+    resultado[index] = preservarEstadoEvento(resultado[index], novo);
+  }
+
+  return resultado;
+}
+
+function mensagemErroAgenda(error: unknown): string {
+  const msg = error instanceof Error ? error.message : String(error);
+  if (msg.includes('Permissão') || msg.includes('Sessão expirada') || msg.includes('reconectar')) return msg;
+  return 'Não foi possível sincronizar agora. Tente novamente.';
+}
+
 // ============================================================
 // EVENTO CARD — reutilizável, expandível
 // ============================================================
@@ -565,6 +612,8 @@ export function AgendaTempoPage() {
   const [erroConexao, setErroConexao] = useState<string | null>(null);
   const [sincGoogleEm, setSincGoogleEm] = useState<string | null>(null);
   const [sincMsEm, setSincMsEm] = useState<string | null>(null);
+  const autoSyncKeyRef = useRef<string | null>(null);
+  const syncInProgressRef = useRef(false);
   const icsInputRef = useRef<HTMLInputElement>(null);
 
   // ── Cálculos de disponibilidade ──
@@ -619,70 +668,92 @@ export function AgendaTempoPage() {
   }, [hoje]);
 
   const adicionarEventos = useCallback((novos: EventoAgenda[]) => {
-    setData(d => ({ ...d, eventosAgenda: [...d.eventosAgenda, ...deduplicarEventos(d.eventosAgenda, novos)] }));
+    setData(d => ({ ...d, eventosAgenda: mesclarEventosExternos(d.eventosAgenda, deduplicarEventos(d.eventosAgenda, novos)) }));
   }, [setData]);
+
+  const salvarEventosSincronizados = useCallback((novos: EventoAgenda[]) => {
+    setData(d => ({ ...d, eventosAgenda: mesclarEventosExternos(d.eventosAgenda, novos) }));
+  }, [setData]);
+
+  const sincronizarFontesConectadas = useCallback(async (options: { google?: boolean; microsoft?: boolean; automatico?: boolean } = {}) => {
+    if (syncInProgressRef.current) return false;
+    const deveSincronizarGoogle = options.google ?? true;
+    const deveSincronizarMicrosoft = options.microsoft ?? true;
+    const automatico = Boolean(options.automatico);
+
+    syncInProgressRef.current = true;
+    setErroConexao('Sincronizando agenda...');
+    try {
+      let sincronizouAlgumaFonte = false;
+
+      if (deveSincronizarGoogle && isGoogleConfigured()) {
+        const googlePronto = await prepararGoogleCalendarComSessao(session).catch(() => false);
+        if (googlePronto && getGoogleConnectionStatus() === 'conectado') {
+          setCarregandoGoogle(true);
+          const eventos = await sincronizarGoogleCalendar(range30.ini, range30.fim);
+          salvarEventosSincronizados(eventos);
+          setSincGoogleEm(new Date().toISOString());
+          sincronizouAlgumaFonte = true;
+        }
+      }
+
+      if (deveSincronizarMicrosoft && isMicrosoftConfigured()) {
+        const microsoftPronto = await prepararMicrosoftCalendar().catch(() => false);
+        if (microsoftPronto && isMicrosoftConectado()) {
+          setCarregandoMs(true);
+          const eventos = await sincronizarMicrosoftCalendar(range30.ini, range30.fim);
+          salvarEventosSincronizados(eventos);
+          setSincMsEm(new Date().toISOString());
+          sincronizouAlgumaFonte = true;
+        }
+      }
+
+      if (sincronizouAlgumaFonte) {
+        setErroConexao('Agenda sincronizada com sucesso.');
+        return true;
+      }
+
+      if (automatico) {
+        setErroConexao('Conecte seu calendário para sincronizar seus compromissos.');
+      }
+      return false;
+    } catch (error) {
+      setErroConexao(mensagemErroAgenda(error));
+      return false;
+    } finally {
+      syncInProgressRef.current = false;
+      setCarregandoGoogle(false);
+      setCarregandoMs(false);
+    }
+  }, [range30.fim, range30.ini, salvarEventosSincronizados, session]);
 
   // ── Auto-sync ao montar: revalida token e sincroniza fontes conectadas ──
   useEffect(() => {
     if (authLoading) return;
-    let cancelado = false;
     const autoSync = async () => {
-      const googlePronto = isGoogleConfigured()
-        ? await prepararGoogleCalendarComSessao(session).catch(() => false)
-        : false;
-      if (googlePronto && getGoogleConnectionStatus() === 'conectado') {
-        try {
-          const eventos = await sincronizarGoogleCalendar(range30.ini, range30.fim);
-          if (!cancelado) {
-            setData(d => ({ ...d, eventosAgenda: [...d.eventosAgenda.filter(e => e.fonte !== 'google'), ...eventos] }));
-            setSincGoogleEm(new Date().toISOString());
-          }
-        } catch (e) {
-          if (!cancelado) {
-            const msg = e instanceof Error ? e.message : String(e);
-            setErroConexao(msg.includes('Sessão expirada') ? msg : 'Não foi possível sincronizar Google Calendar agora.');
-          }
-        }
-      }
-      const microsoftPronto = isMicrosoftConfigured()
-        ? await prepararMicrosoftCalendar().catch(() => false)
-        : false;
-      if (microsoftPronto && isMicrosoftConectado()) {
-        try {
-          const eventos = await sincronizarMicrosoftCalendar(range30.ini, range30.fim);
-          if (!cancelado) {
-            setData(d => ({ ...d, eventosAgenda: [...d.eventosAgenda.filter(e => e.fonte !== 'microsoft'), ...eventos] }));
-            setSincMsEm(new Date().toISOString());
-          }
-        } catch {
-          if (!cancelado) desconectarMicrosoftCalendar();
-        }
-      }
+      const providerTokenState = session?.provider_token ? 'provider-token' : 'no-provider-token';
+      const autoSyncKey = `${session?.user?.id ?? 'anon'}:${providerTokenState}`;
+      if (autoSyncKeyRef.current === autoSyncKey) return;
+      autoSyncKeyRef.current = autoSyncKey;
+      await sincronizarFontesConectadas({ automatico: true });
     };
-    autoSync();
-    return () => { cancelado = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, session?.access_token]); // roda quando a sessão OAuth fica disponível
+    void autoSync();
+  }, [authLoading, session?.access_token, session?.provider_token, session?.user?.id, sincronizarFontesConectadas]);
 
   // ── Google ──
   const handleConectarGoogle = async () => {
     setCarregandoGoogle(true); setErroConexao(null);
     try {
       await conectarGoogleCalendar();
-      const eventos = await sincronizarGoogleCalendar(range30.ini, range30.fim);
-      setData(d => ({ ...d, eventosAgenda: [...d.eventosAgenda.filter(e => e.fonte !== 'google'), ...eventos] }));
-      setSincGoogleEm(new Date().toISOString());
+      await sincronizarFontesConectadas({ google: true, microsoft: false });
     } catch (e) { setErroConexao(e instanceof Error ? e.message : String(e)); }
     finally { setCarregandoGoogle(false); }
   };
 
   const handleSincronizarGoogle = async () => {
     setCarregandoGoogle(true); setErroConexao(null);
-    try {
-      const eventos = await sincronizarGoogleCalendar(range30.ini, range30.fim);
-      setData(d => ({ ...d, eventosAgenda: [...d.eventosAgenda.filter(e => e.fonte !== 'google'), ...eventos] }));
-      setSincGoogleEm(new Date().toISOString());
-    } catch (e) { setErroConexao(e instanceof Error ? e.message : String(e)); }
+    try { await sincronizarFontesConectadas({ google: true, microsoft: false }); }
+    catch (e) { setErroConexao(e instanceof Error ? e.message : String(e)); }
     finally { setCarregandoGoogle(false); }
   };
 
@@ -711,20 +782,15 @@ export function AgendaTempoPage() {
     try {
       const conectado = await conectarMicrosoftCalendar();
       if (!conectado) return;
-      const eventos = await sincronizarMicrosoftCalendar(range30.ini, range30.fim);
-      setData(d => ({ ...d, eventosAgenda: [...d.eventosAgenda.filter(e => e.fonte !== 'microsoft'), ...eventos] }));
-      setSincMsEm(new Date().toISOString());
+      await sincronizarFontesConectadas({ google: false, microsoft: true });
     } catch (e) { setErroConexao(msErroAmigavel(e)); }
     finally { setCarregandoMs(false); }
   };
 
   const handleSincronizarMs = async () => {
     setCarregandoMs(true); setErroConexao(null);
-    try {
-      const eventos = await sincronizarMicrosoftCalendar(range30.ini, range30.fim);
-      setData(d => ({ ...d, eventosAgenda: [...d.eventosAgenda.filter(e => e.fonte !== 'microsoft'), ...eventos] }));
-      setSincMsEm(new Date().toISOString());
-    } catch (e) { setErroConexao(msErroAmigavel(e)); }
+    try { await sincronizarFontesConectadas({ google: false, microsoft: true }); }
+    catch (e) { setErroConexao(msErroAmigavel(e)); }
     finally { setCarregandoMs(false); }
   };
 
@@ -879,20 +945,45 @@ export function AgendaTempoPage() {
           <p className="text-sm text-surface-500 dark:text-surface-400 mt-0.5">Agenda unificada · Google · Microsoft · ICS</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Button icon={<RefreshCw size={16} />} size="sm" onClick={() => setModalSincronizar(true)}>Sincronizar</Button>
+          <Button icon={<RefreshCw size={16} className={(carregandoGoogle || carregandoMs) ? 'animate-spin' : ''} />} size="sm" onClick={() => setModalSincronizar(true)}>Sincronizar</Button>
           <Button icon={<Plus size={16} />} variant="secondary" size="sm" onClick={() => setModalManual(true)}>Bloqueio manual</Button>
         </div>
       </div>
 
-      {/* Erro */}
+      {/* Status */}
       {erroConexao && (
-        <div className="bg-danger-50 dark:bg-danger-900/20 border border-danger-200 dark:border-danger-700/50 rounded-xl p-4 flex items-start gap-3">
-          <AlertTriangle size={16} className="text-danger-500 flex-shrink-0 mt-0.5" />
+        <div className={`rounded-xl p-4 flex items-start gap-3 border ${
+          erroConexao.includes('sucesso')
+            ? 'bg-success-50 dark:bg-success-900/20 border-success-200 dark:border-success-700/50'
+            : erroConexao.includes('Sincronizando')
+              ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-700/50'
+              : 'bg-danger-50 dark:bg-danger-900/20 border-danger-200 dark:border-danger-700/50'
+        }`}>
+          {erroConexao.includes('sucesso')
+            ? <CheckCircle2 size={16} className="text-success-500 flex-shrink-0 mt-0.5" />
+            : erroConexao.includes('Sincronizando')
+              ? <RefreshCw size={16} className="text-primary-500 flex-shrink-0 mt-0.5 animate-spin" />
+              : <AlertTriangle size={16} className="text-danger-500 flex-shrink-0 mt-0.5" />
+          }
           <div className="flex-1">
-            <p className="text-sm font-medium text-danger-700 dark:text-danger-300">Erro na integração</p>
-            <p className="text-xs text-danger-600 dark:text-danger-400 mt-0.5">{erroConexao}</p>
+            <p className={`text-sm font-medium ${
+              erroConexao.includes('sucesso')
+                ? 'text-success-700 dark:text-success-300'
+                : erroConexao.includes('Sincronizando')
+                  ? 'text-primary-700 dark:text-primary-300'
+                  : 'text-danger-700 dark:text-danger-300'
+            }`}>
+              {erroConexao.includes('sucesso') ? 'Agenda sincronizada' : erroConexao.includes('Sincronizando') ? 'Sincronizando' : 'Atenção'}
+            </p>
+            <p className={`text-xs mt-0.5 ${
+              erroConexao.includes('sucesso')
+                ? 'text-success-600 dark:text-success-400'
+                : erroConexao.includes('Sincronizando')
+                  ? 'text-primary-600 dark:text-primary-400'
+                  : 'text-danger-600 dark:text-danger-400'
+            }`}>{erroConexao}</p>
           </div>
-          <button onClick={() => setErroConexao(null)} className="text-danger-400 hover:text-danger-600"><XCircle size={14} /></button>
+          <button onClick={() => setErroConexao(null)} className="text-surface-400 hover:text-surface-600"><XCircle size={14} /></button>
         </div>
       )}
 
@@ -1241,9 +1332,26 @@ export function AgendaTempoPage() {
         <div className="space-y-4">
           <p className="text-sm text-surface-500 dark:text-surface-400">Escolha a fonte para conectar ou atualizar. Os eventos dos próximos 30 dias serão importados.</p>
           {erroConexao && (
-            <div className="bg-danger-50 dark:bg-danger-900/20 border border-danger-200 dark:border-danger-700/50 rounded-xl p-3 flex items-start gap-2">
-              <AlertTriangle size={14} className="text-danger-500 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-danger-700 dark:text-danger-300">{erroConexao}</p>
+            <div className={`rounded-xl p-3 flex items-start gap-2 border ${
+              erroConexao.includes('sucesso')
+                ? 'bg-success-50 dark:bg-success-900/20 border-success-200 dark:border-success-700/50'
+                : erroConexao.includes('Sincronizando')
+                  ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-700/50'
+                  : 'bg-danger-50 dark:bg-danger-900/20 border-danger-200 dark:border-danger-700/50'
+            }`}>
+              {erroConexao.includes('sucesso')
+                ? <CheckCircle2 size={14} className="text-success-500 flex-shrink-0 mt-0.5" />
+                : erroConexao.includes('Sincronizando')
+                  ? <RefreshCw size={14} className="text-primary-500 flex-shrink-0 mt-0.5 animate-spin" />
+                  : <AlertTriangle size={14} className="text-danger-500 flex-shrink-0 mt-0.5" />
+              }
+              <p className={`text-xs ${
+                erroConexao.includes('sucesso')
+                  ? 'text-success-700 dark:text-success-300'
+                  : erroConexao.includes('Sincronizando')
+                    ? 'text-primary-700 dark:text-primary-300'
+                    : 'text-danger-700 dark:text-danger-300'
+              }`}>{erroConexao}</p>
             </div>
           )}
 

@@ -52,6 +52,7 @@ Isso cria profiles para todos os usuários sem profile e promove `vinibrum10@gma
 3. Redirect URLs: `https://[seu-projeto].supabase.co/auth/v1/callback`
 4. No Google Cloud Console, adicione a mesma URL como "Authorized redirect URI"
 5. Adicione `VITE_GOOGLE_CLIENT_ID` nas variáveis de ambiente do app (para habilitar o botão na tela de login)
+6. No OAuth consent screen do Google Cloud, autorize os escopos `https://www.googleapis.com/auth/drive.readonly` e `https://www.googleapis.com/auth/calendar.readonly`; o login principal já solicita esses escopos para permitir sincronização automática da Leitura Diária e Agenda.
 
 ---
 
@@ -60,7 +61,7 @@ Isso cria profiles para todos os usuários sem profile e promove `vinibrum10@gma
 1. No Microsoft Entra → **Registros de aplicativo**, crie um app SPA
 2. Tipos de conta: contas pessoais Microsoft e contas de qualquer diretório organizacional
 3. Redirect URI SPA: `https://central-pessoal-adapta.vercel.app`, `http://localhost:5173` e `http://127.0.0.1:5173`
-4. Permissões delegadas Microsoft Graph: `User.Read` e `Calendars.Read`
+4. Permissões delegadas Microsoft Graph: `User.Read`, `Calendars.Read` e `offline_access`
 5. Copie o **Application (client) ID** para `VITE_MICROSOFT_CLIENT_ID`
 6. Não cadastre nem exponha Client Secret no front-end
 
@@ -161,6 +162,7 @@ Usuários seguintes entram como `pendente` e precisam ser aprovados pelo admin e
 6. No app: **Agenda e Tempo → Conexões → Google Calendar → Conectar**
 
 > Apenas leitura. O app nunca escreve ou apaga eventos.
+> O login Google principal também solicita `https://www.googleapis.com/auth/calendar.readonly`, então a Agenda tenta reaproveitar a sessão antes de abrir um fluxo de conexão separado.
 
 ---
 
@@ -174,7 +176,7 @@ Usuários seguintes entram como `pendente` e precisam ser aprovados pelo admin e
    - `01_LEITURA_DIARIA/Segurança do Trabalho`
    - `01_LEITURA_DIARIA/Arquivados`
 3. Configure `VITE_GOOGLE_DRIVE_FOLDER_ID` e as variáveis `VITE_SGP_DRIVE_*` conforme `.env.example`.
-4. No app: **Leitura Diária → Sincronizar Drive**.
+4. Depois do login Google com permissão Drive, o app sincroniza automaticamente ao abrir **Leitura Diária**. O botão **Sincronizar Drive** fica como fallback para reconectar ou resolver erro de permissão/token.
 
 ### Padrão SGP Drive
 

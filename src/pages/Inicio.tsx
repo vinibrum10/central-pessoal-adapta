@@ -23,7 +23,7 @@ import {
   siglaFaixaDash, corFaixaDash, type SaudeMeta,
 } from '../utils/dashboardMetrics';
 import { Button } from '../components/Button';
-import { PageHeader } from '../components/DesignSystem';
+import { BrandHeader } from '../components/BrandHeader';
 
 // ============================================================
 // TIPOS
@@ -54,8 +54,8 @@ function KpiCard({
     gray:   'bg-surface-100 text-surface-700 ring-surface-200 dark:bg-white/10 dark:text-surface-200 dark:ring-white/10',
   };
   const accentBorder: Record<string, string> = {
-    meta:     'border-l-[3px] border-l-danger-500 dark:border-l-danger-400',
-    exec:     'border-l-[3px] border-l-primary-500 dark:border-l-primary-400',
+    meta:     'border-l-[3px] border-l-primary-500 dark:border-l-primary-300',
+    exec:     'border-l-[3px] border-l-sky-500 dark:border-l-sky-400',
     alerta:   'border-l-[3px] border-l-warning-500 dark:border-l-warning-400',
     financas: 'border-l-[3px] border-l-success-600 dark:border-l-success-400',
     none:     '',
@@ -64,7 +64,7 @@ function KpiCard({
   const accentClass = accentBorder[accent ?? 'none'] ?? '';
 
   return (
-    <div className={`relative overflow-hidden rounded-lg border border-surface-200/80 bg-white/90 px-4 py-3 shadow-sm shadow-surface-200/50 dark:border-white/10 dark:bg-surface-900/70 dark:shadow-black/20 ${accentClass}`}>
+    <div className={`relative overflow-hidden rounded-lg border border-surface-200/80 bg-white/90 px-4 py-3 shadow-sm shadow-surface-200/50 backdrop-blur-sm dark:border-primary-300/15 dark:bg-surface-950/55 dark:shadow-black/25 ${accentClass}`}>
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400 leading-tight truncate">{label}</p>
@@ -95,7 +95,7 @@ function EficienciaCard({ eficiencia, qtd }: { eficiencia: number; qtd: number }
   const offset = circ * (1 - eficiencia / 100);
 
   return (
-    <div className="relative overflow-hidden rounded-lg border border-surface-200/80 border-l-[3px] border-l-danger-500 bg-white/90 px-4 py-3 shadow-sm shadow-surface-200/50 dark:border-white/10 dark:border-l-danger-400 dark:bg-surface-900/70 dark:shadow-black/20">
+    <div className="relative overflow-hidden rounded-lg border border-surface-200/80 border-l-[3px] border-l-primary-500 bg-white/90 px-4 py-3 shadow-sm shadow-surface-200/50 backdrop-blur-sm dark:border-primary-300/15 dark:border-l-primary-300 dark:bg-surface-950/55 dark:shadow-black/25">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400">Foco do dia</p>
       <div className="flex items-center gap-2 mt-1">
         <div className="relative flex-shrink-0 w-10 h-10 sm:w-14 sm:h-14">
@@ -242,11 +242,10 @@ export function InicioPage() {
     <div className="page-stack max-w-screen-2xl mx-auto animate-fade-in pb-10">
 
       {/* ── CABEÇALHO ── */}
-      <PageHeader
-        eyebrow={format(hoje, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
-        title="Hoje"
-        subtitle="Seu painel para foco do dia, metas, ações e sinais financeiros importantes."
-        action={
+      <BrandHeader
+        title="Sistema de Gestão Pessoal"
+        subtitle={`Gestão integrada de rotina, estudos, agenda, orçamento e metas. ${format(hoje, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}.`}
+        actions={
           <>
           <Button size="sm" variant="secondary" onClick={() => navigate('/metas')} icon={<Target size={14} />}>
             Metas

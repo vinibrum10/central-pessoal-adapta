@@ -11,10 +11,10 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantStyles = {
-  primary: 'bg-primary-600 hover:bg-primary-700 text-white shadow-sm shadow-primary-600/20',
-  secondary: 'bg-white hover:bg-surface-50 text-surface-700 border border-surface-200 shadow-sm dark:bg-surface-800 dark:hover:bg-surface-700 dark:border-surface-700 dark:text-surface-200',
+  primary: 'bg-primary-600 hover:bg-primary-500 text-white shadow-sm shadow-primary-700/25 dark:text-surface-950 dark:shadow-primary-500/20',
+  secondary: 'bg-white hover:bg-surface-50 text-surface-700 border border-surface-200 shadow-sm dark:bg-white/[0.07] dark:hover:bg-white/[0.12] dark:border-primary-300/20 dark:text-surface-200',
   danger: 'bg-danger-600 hover:bg-danger-700 text-white shadow-sm shadow-danger-600/20',
-  ghost: 'bg-transparent hover:bg-surface-100 text-surface-600 dark:hover:bg-white/10 dark:text-surface-300',
+  ghost: 'bg-transparent hover:bg-surface-100 text-surface-600 dark:hover:bg-primary-300/10 dark:text-surface-300',
   success: 'bg-success-600 hover:bg-success-700 text-white shadow-sm shadow-success-600/20',
 };
 

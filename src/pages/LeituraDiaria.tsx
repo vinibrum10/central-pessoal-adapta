@@ -177,6 +177,13 @@ function leituraSyncLog(message: string, details: Record<string, unknown>): void
   console.info(`[SGP Drive][leitura-sync] ${message}`, details);
 }
 
+function getMensagemDriveSemPermissao(status = getDriveConnectionStatus()): string {
+  if (status === 'expirado') {
+    return 'Sessão do Google Drive expirada. Clique em "Reconectar" para conceder permissão novamente.';
+  }
+  return 'Permissão do Google Drive necessária. Entre novamente com Google ou use "Sincronizar Drive" para conceder acesso.';
+}
+
 // ---- Card de leitura ----
 function LeituraCard({
   item, onAbrir, onLido, onImportante, onArquivar, onTarefa,
@@ -453,7 +460,7 @@ export function LeituraDiariaPage() {
     }
     sincronizandoRef.current = true;
     setSincronizando(true);
-    setMsgSync('');
+    setMsgSync('Sincronizando leituras do Google Drive...');
     try {
       leituraSyncLog('inicio da sincronizacao', {
         interactive: Boolean(options.interactive),
@@ -521,8 +528,8 @@ export function LeituraDiariaPage() {
         legadosRemovidos,
       });
       setMsgSync(novosItens.length === 0
-        ? 'Sincronização concluída: nenhuma leitura encontrada nas pastas oficiais.'
-        : `Sincronização concluída: ${novos.length} novos, ${atualizados} atualizados, ${preservados} preservados, ${legadosRemovidos} legados removidos.`);
+        ? 'Leituras sincronizadas com sucesso. Nenhuma leitura encontrada nas pastas oficiais.'
+        : `Leituras sincronizadas com sucesso. ${novos.length} novos, ${atualizados} atualizados, ${preservados} preservados, ${legadosRemovidos} legados removidos.`);
       setUltimaSinc(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
     } catch (e) {
       // Itens já carregados permanecem visíveis; apenas exibe o erro
@@ -540,27 +547,26 @@ export function LeituraDiariaPage() {
   // Auto-sync ao abrir a página, se já estiver conectado e com token válido
   useEffect(() => {
     if (authLoading) return;
-    const autoSyncKey = user?.id ?? session?.user?.id ?? 'local';
+    const providerTokenState = session?.provider_token ? 'provider-token' : 'no-provider-token';
+    const autoSyncKey = `${user?.id ?? session?.user?.id ?? 'local'}:${providerTokenState}`;
     if (autoSyncKeyRef.current === autoSyncKey) return;
     autoSyncKeyRef.current = autoSyncKey;
     let cancelado = false;
     async function autoSyncDrive() {
       if (!isDriveConfigurado()) return;
       void limparLeiturasDriveLegadas();
+      setMsgSync('Verificando permissão do Google Drive...');
       const pronto = await prepararGoogleDriveComSessao(session).catch(() => false);
       if (cancelado) return;
       if (!pronto || !isDriveConectado()) {
-        const status = getDriveConnectionStatus();
-        setMsgSync(status === 'expirado'
-          ? 'Sessão do Google Drive expirada. Clique em "Reconectar" para conceder permissão novamente.'
-          : 'Permissão do Google Drive necessária. Clique em "Sincronizar Drive" para conceder acesso.');
+        setMsgSync(getMensagemDriveSemPermissao());
         return;
       }
       await sincronizarDrive();
     }
     void autoSyncDrive();
     return () => { cancelado = true; };
-  }, [authLoading, session?.access_token, session?.user?.id, user?.id, sincronizarDrive, limparLeiturasDriveLegadas]);
+  }, [authLoading, session?.access_token, session?.provider_token, session?.user?.id, user?.id, sincronizarDrive, limparLeiturasDriveLegadas]);
 
   const adicionarManual = () => {
     const url = prompt('URL do link para adicionar:');
@@ -661,9 +667,9 @@ export function LeituraDiariaPage() {
         <p className="text-[11px] text-surface-400 dark:text-surface-500">Sincronizado às {ultimaSinc}</p>
       )}
       {msgSync && (
-        <div className={`text-xs px-3 py-2 rounded-lg flex items-start gap-2 ${msgSync.startsWith('Erro') || msgSync.includes('expirada') ? 'bg-danger-50 dark:bg-danger-900/20 text-danger-700 dark:text-danger-300 border border-danger-200 dark:border-danger-800' : 'bg-success-50 dark:bg-success-900/20 text-success-700 dark:text-success-300 border border-success-200 dark:border-success-800'}`}>
+        <div className={`text-xs px-3 py-2 rounded-lg flex items-start gap-2 ${msgSync.startsWith('Erro') || msgSync.includes('expirada') ? 'bg-danger-50 dark:bg-danger-900/20 text-danger-700 dark:text-danger-300 border border-danger-200 dark:border-danger-800' : msgSync.includes('Permissão') ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800' : 'bg-success-50 dark:bg-success-900/20 text-success-700 dark:text-success-300 border border-success-200 dark:border-success-800'}`}>
           <span className="flex-1">{msgSync}</span>
-          {(msgSync.startsWith('Erro') || msgSync.includes('expirada')) && (
+          {(msgSync.startsWith('Erro') || msgSync.includes('expirada') || msgSync.includes('Permissão')) && (
             <button
               onClick={() => { setMsgSync(''); void sincronizarDrive({ interactive: true, forceReconnect: true }); }}
               disabled={sincronizando}

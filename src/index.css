@@ -21,16 +21,19 @@
     min-width: 320px;
     overflow-x: hidden;
     background:
-      radial-gradient(circle at top left, rgba(225, 29, 46, 0.08), transparent 30rem),
-      radial-gradient(circle at bottom right, rgba(42, 42, 42, 0.05), transparent 26rem),
-      linear-gradient(180deg, #fbfbf8 0%, #f2f2ed 100%);
+      linear-gradient(90deg, rgba(201, 130, 58, 0.05) 1px, transparent 1px),
+      linear-gradient(0deg, rgba(42, 42, 39, 0.04) 1px, transparent 1px),
+      linear-gradient(180deg, #fbfaf6 0%, #efeee8 100%);
+    background-size: 48px 48px, 48px 48px, auto;
   }
 
   .dark body {
     background:
-      radial-gradient(circle at top left, rgba(225, 29, 46, 0.16), transparent 32rem),
-      radial-gradient(circle at bottom right, rgba(255, 255, 255, 0.04), transparent 26rem),
-      linear-gradient(180deg, #10100f 0%, #181816 58%, #0d0d0c 100%);
+      linear-gradient(90deg, rgba(201, 130, 58, 0.08) 1px, transparent 1px),
+      linear-gradient(0deg, rgba(96, 165, 250, 0.045) 1px, transparent 1px),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 18rem),
+      linear-gradient(180deg, #050505 0%, #0f0e0c 52%, #050505 100%);
+    background-size: 44px 44px, 44px 44px, auto, auto;
   }
 
   #root {
@@ -84,6 +87,10 @@
   }
 
   .glass-panel {
-    @apply border border-white/70 bg-white/80 shadow-sm shadow-surface-200/60 backdrop-blur-xl dark:border-white/10 dark:bg-surface-900/70 dark:shadow-black/20;
+    @apply border border-white/70 bg-white/80 shadow-sm shadow-surface-200/60 backdrop-blur-xl dark:border-primary-300/15 dark:bg-surface-950/55 dark:shadow-black/25;
+  }
+
+  .tech-panel {
+    @apply rounded-lg border border-primary-300/15 bg-surface-950/60 shadow-xl shadow-black/25 backdrop-blur-xl;
   }
 }

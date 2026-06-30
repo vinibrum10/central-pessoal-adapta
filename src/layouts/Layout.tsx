@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Target, ListChecks, Clock,
@@ -5,19 +6,10 @@ import {
   ChevronLeft, ChevronRight, Users, Layers, ChevronDown, Languages,
   type LucideIcon,
 } from 'lucide-react';
-
-function AppIcon({ size = 18 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <polygon points="16,4 24,8.5 24,17.5 16,22 8,17.5 8,8.5" fill="none" stroke="white" strokeWidth="1.5" strokeOpacity="0.5"/>
-      <path d="M18 10L14 16H17L14 22" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-}
-import { useState, useEffect } from 'react';
 import { useApp } from '../hooks/useApp';
 import { useAuth } from '../contexts/AuthContext';
 import { MigrationBanner } from '../components/MigrationBanner';
+import { BrandMark } from '../components/BrandHeader';
 
 const SIDEBAR_KEY = 'adapta-sidebar-collapsed';
 
@@ -109,24 +101,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen overflow-hidden overflow-x-hidden text-surface-900 dark:text-white">
       {/* === SIDEBAR DESKTOP === */}
       <aside
-        className={`hidden lg:flex flex-col border-r border-surface-200/70 bg-white/80 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-surface-950/70 flex-shrink-0 transition-all duration-200 ${collapsed ? 'w-16' : 'w-72'}`}
+        className={`hidden lg:flex flex-col border-r border-surface-200/70 bg-white/85 shadow-sm backdrop-blur-xl dark:border-primary-300/15 dark:bg-[#070706]/90 dark:shadow-2xl dark:shadow-black/30 flex-shrink-0 transition-all duration-200 ${collapsed ? 'w-16' : 'w-72'}`}
       >
-        <div className={`border-b border-surface-200/70 dark:border-white/10 flex items-center ${collapsed ? 'justify-center p-3' : 'justify-between p-5'}`}>
+        <div className={`border-b border-surface-200/70 dark:border-primary-300/15 flex items-center ${collapsed ? 'justify-center p-3' : 'justify-between p-5'}`}>
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center shadow-lg shadow-primary-600/20 flex-shrink-0">
-              <AppIcon size={18} />
-            </div>
+            <BrandMark compact />
             {!collapsed && (
               <div className="min-w-0">
                 <p className="font-semibold text-sm text-surface-950 dark:text-white leading-tight tracking-tight">SGP</p>
-                <p className="text-xs text-surface-400 dark:text-surface-500">Sistema de Gestão Pessoal</p>
+                <p className="text-xs text-surface-400 dark:text-primary-100/55">Sistema de Gestão Pessoal</p>
               </div>
             )}
           </div>
           {!collapsed && (
             <button
               onClick={() => setCollapsed(true)}
-              className="p-2 rounded-lg text-surface-500 hover:bg-surface-100 dark:hover:bg-white/10 dark:text-surface-400 flex-shrink-0 transition-colors"
+              className="p-2 rounded-lg text-surface-500 hover:bg-surface-100 dark:hover:bg-primary-300/10 dark:text-surface-400 flex-shrink-0 transition-colors"
               title="Recolher menu"
             >
               <ChevronLeft size={15} />
@@ -135,10 +125,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         {collapsed && (
-          <div className="flex justify-center py-2 border-b border-surface-200/70 dark:border-white/10">
+          <div className="flex justify-center py-2 border-b border-surface-200/70 dark:border-primary-300/15">
             <button
               onClick={() => setCollapsed(false)}
-              className="p-2 rounded-lg text-surface-500 hover:bg-surface-100 dark:hover:bg-white/10 dark:text-surface-400 transition-colors"
+              className="p-2 rounded-lg text-surface-500 hover:bg-surface-100 dark:hover:bg-primary-300/10 dark:text-surface-400 transition-colors"
               title="Expandir menu"
             >
               <ChevronRight size={15} />
@@ -147,7 +137,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         )}
 
         {!collapsed && (
-          <div className="px-5 py-4 border-b border-surface-200/70 dark:border-white/10">
+          <div className="px-5 py-4 border-b border-surface-200/70 dark:border-primary-300/15">
             <p className="text-xs text-surface-400 dark:text-surface-500">Bem-vindo,</p>
             <p className="font-semibold text-sm text-surface-950 dark:text-white">{data.configuracoes.nomeUsuario}</p>
             {supabaseAtivo && user && (
@@ -384,12 +374,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {sidebarOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex">
           <div className="absolute inset-0 bg-surface-950/60 backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
-          <aside className="relative flex h-full w-80 max-w-[86vw] animate-slide-up flex-col border-r border-surface-200 bg-white shadow-2xl dark:border-white/10 dark:bg-surface-950">
-            <div className="p-5 border-b border-surface-200 dark:border-white/10 flex items-center justify-between">
+          <aside className="relative flex h-full w-80 max-w-[86vw] animate-slide-up flex-col border-r border-surface-200 bg-white shadow-2xl dark:border-primary-300/15 dark:bg-[#070706]">
+            <div className="p-5 border-b border-surface-200 dark:border-primary-300/15 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center">
-                  <AppIcon size={18} />
-                </div>
+                <BrandMark compact />
                 <div>
                   <p className="font-semibold text-sm text-surface-950 dark:text-white tracking-tight">SGP</p>
                   <p className="text-xs text-surface-400">Sistema de Gestão Pessoal</p>
@@ -570,14 +558,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {/* === MAIN CONTENT === */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <header className="lg:hidden relative z-40 flex items-center justify-between px-4 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] bg-white/95 backdrop-blur-xl dark:bg-surface-950/95 border-b border-surface-200/70 dark:border-white/10 flex-shrink-0">
+        <header className="lg:hidden relative z-40 flex items-center justify-between px-4 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] bg-white/95 backdrop-blur-xl dark:bg-[#070706]/95 border-b border-surface-200/70 dark:border-primary-300/15 flex-shrink-0">
           <button onClick={() => setSidebarOpen(true)} className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-surface-100 dark:hover:bg-white/10" aria-label="Abrir menu">
             <Menu size={20} className="text-surface-600 dark:text-surface-400" />
           </button>
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center">
-              <AppIcon size={14} />
-            </div>
+            <BrandMark compact className="h-8 w-8" />
             <span className="font-semibold text-sm text-surface-950 dark:text-white tracking-tight">SGP</span>
           </div>
           <button onClick={toggleTema} className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-surface-100 dark:hover:bg-white/10" aria-label={tema === 'escuro' ? 'Ativar modo claro' : 'Ativar modo escuro'}>
@@ -585,12 +571,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </button>
         </header>
 
-        <div className="hidden lg:flex items-center justify-between gap-4 px-8 py-4 border-b border-surface-200/70 dark:border-white/10 bg-white/55 dark:bg-surface-950/35 backdrop-blur-xl flex-shrink-0">
+        <div className="hidden lg:flex items-center justify-between gap-4 px-8 py-4 border-b border-surface-200/70 dark:border-primary-300/15 bg-white/60 dark:bg-[#080807]/55 backdrop-blur-xl flex-shrink-0">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-surface-400">Área atual</p>
             <h1 className="text-sm font-semibold text-surface-950 dark:text-white">{currentPage?.label ?? 'SGP'}</h1>
           </div>
-          <div className="hidden xl:flex items-center rounded-lg border border-surface-200 bg-white/70 px-3 py-2 text-xs text-surface-500 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-surface-400">
+          <div className="hidden xl:flex items-center gap-2 rounded-lg border border-surface-200 bg-white/70 px-3 py-2 text-xs text-surface-500 shadow-sm dark:border-primary-300/20 dark:bg-white/5 dark:text-surface-400">
+            <BrandMark compact className="h-6 w-6 rounded-md" />
             SGP · Sistema de Gestão Pessoal
           </div>
         </div>
@@ -603,7 +590,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </main>
 
-        <nav className="lg:hidden relative z-30 flex bg-white/95 dark:bg-surface-950/95 backdrop-blur-xl border-t border-surface-200/70 dark:border-white/10 flex-shrink-0 pb-[env(safe-area-inset-bottom)]">
+        <nav className="lg:hidden relative z-30 flex bg-white/95 dark:bg-[#070706]/95 backdrop-blur-xl border-t border-surface-200/70 dark:border-primary-300/15 flex-shrink-0 pb-[env(safe-area-inset-bottom)]">
           <button
             type="button"
             onClick={() => {
