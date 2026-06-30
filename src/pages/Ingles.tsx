@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { BookOpen, CheckCircle2, ExternalLink, Mic, Plus, RotateCcw, Trash2, Video } from 'lucide-react';
+import { BookOpen, ExternalLink, Mic, Plus, RotateCcw, Trash2, Video } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Card, CardBody, CardHeader } from '../components/Card';
 import { Badge } from '../components/Badge';
@@ -16,6 +16,8 @@ import {
 import {
   isYouTubeConfigured,
   searchListeningVideo,
+  extractYouTubeVideoId,
+  buildManualListeningVideo,
   type ListeningLevel,
 } from '../services/english/youtubeListeningService';
 import { generateFallbackQuiz } from '../services/english/videoQuizService';
@@ -48,19 +50,33 @@ const STATUS_LABEL: Record<VocabularyCard['reviewStatus'], string> = {
   known: 'Dominado',
 };
 
-const STATUS_NEXT: Record<VocabularyCard['reviewStatus'], VocabularyCard['reviewStatus']> = {
-  new: 'learning',
-  learning: 'review',
-  review: 'known',
-  known: 'new',
-};
-
 const STATUS_VARIANT: Record<VocabularyCard['reviewStatus'], 'default' | 'primary' | 'warning' | 'success'> = {
   new: 'default',
   learning: 'primary',
   review: 'warning',
   known: 'success',
 };
+
+const REVIEW_ACTIONS = [
+  { label: 'Errei', status: 'learning', days: 1 },
+  { label: 'Difícil', status: 'learning', days: 3 },
+  { label: 'Bom', status: 'review', days: 7 },
+  { label: 'Fácil', status: 'known', days: 30 },
+] as const;
+
+function toDateOnly(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function addDays(days: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return toDateOnly(date);
+}
+
+function formatReviewDate(value: string): string {
+  return new Date(`${value}T00:00:00`).toLocaleDateString('pt-BR');
+}
 
 // ============================================================
 // MAIN PAGE
@@ -74,6 +90,8 @@ export function InglesPage() {
   const [loadingVideo, setLoadingVideo] = useState(false);
   const [videoError, setVideoError] = useState('');
   const [queryIndex, setQueryIndex] = useState(0);
+  const [manualListeningLink, setManualListeningLink] = useState('');
+  const [manualLinkError, setManualLinkError] = useState('');
 
   // ETAPA 2 — Questionário
   const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
@@ -102,12 +120,24 @@ export function InglesPage() {
   // Sync dataRef on external state load
   useEffect(() => { dataRef.current = data; }, [data]);
 
-  // Reset quiz UI when listeningVideo changes
+  // Restore quiz UI from storage, and clear it when the selected video changes.
   useEffect(() => {
+    const quiz = dataRef.current.videoQuiz;
+    if (quiz && quiz.youtubeVideoId === data.listeningVideo?.youtubeVideoId) {
+      setQuizAnswers(quiz.answers ?? {});
+      setQuizSubmitted(Boolean(quiz.completedAt));
+      setQuizScore(
+        quiz.completedAt && quiz.score !== undefined
+          ? { correct: quiz.score, total: quiz.questions.length }
+          : null,
+      );
+      return;
+    }
+
     setQuizAnswers({});
     setQuizSubmitted(false);
     setQuizScore(null);
-  }, [data.listeningVideo?.youtubeVideoId]);
+  }, [data.listeningVideo?.youtubeVideoId, data.videoQuiz?.completedAt, data.videoQuiz?.youtubeVideoId]);
 
   // ── ETAPA 1: Listening ─────────────────────────────────────
   function handleLevelChange(level: ListeningLevel) {
@@ -144,6 +174,8 @@ export function InglesPage() {
         setVideoError('Nenhum vídeo válido encontrado para este nível. Tente outro nível ou clique novamente.');
       } else {
         setData(prev => ({ ...prev, listeningVideo: video!, videoQuiz: null }));
+        setManualListeningLink('');
+        setManualLinkError('');
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao buscar vídeo no YouTube.';
@@ -151,6 +183,33 @@ export function InglesPage() {
     } finally {
       setLoadingVideo(false);
     }
+  }
+
+  function handleLoadManualListeningLink() {
+    const videoId = extractYouTubeVideoId(manualListeningLink);
+    if (!videoId) {
+      setManualLinkError('Link inválido. Cole um link do YouTube válido.');
+      return;
+    }
+
+    const video = buildManualListeningVideo(videoId, dataRef.current.selectedListeningLevel);
+    setData(prev => ({ ...prev, listeningVideo: video, videoQuiz: null }));
+    setManualListeningLink('');
+    setManualLinkError('');
+    setVideoError('');
+  }
+
+  function handleListeningMetaChange(field: 'title' | 'channelTitle' | 'durationSeconds', value: string) {
+    setData(prev => {
+      if (!prev.listeningVideo) return prev;
+      return {
+        ...prev,
+        listeningVideo: {
+          ...prev.listeningVideo,
+          [field]: field === 'durationSeconds' ? Math.max(0, Number(value) || 0) : value,
+        },
+      };
+    });
   }
 
   // ── ETAPA 2: Questionário ───────────────────────────────────
@@ -216,8 +275,31 @@ export function InglesPage() {
     setShadowingLinkInput('');
   }
 
-  function handleResetShadowing() {
-    setData(prev => ({ ...prev, shadowingPractice: { ...DEFAULT_SHADOWING, sentences: DEFAULT_SHADOWING.sentences.map(s => ({ ...s, repetitionsDone: 0 })) } }));
+  function handleUseDefaultShadowingPlaylist() {
+    setData(prev => ({
+      ...prev,
+      shadowingPractice: {
+        ...DEFAULT_SHADOWING,
+        sentences: prev.shadowingPractice.sentences,
+      },
+    }));
+    setShadowingLinkInput('');
+    setShadowingLinkError('');
+  }
+
+  function handleRestoreDefaultShadowingSentences() {
+    const hasProgress = dataRef.current.shadowingPractice.sentences.some(s => s.repetitionsDone > 0);
+    if (hasProgress && !window.confirm('Deseja também restaurar as frases padrão e zerar repetições?')) {
+      return;
+    }
+
+    setData(prev => ({
+      ...prev,
+      shadowingPractice: {
+        ...prev.shadowingPractice,
+        sentences: DEFAULT_SHADOWING.sentences.map(s => ({ ...s, repetitionsDone: 0 })),
+      },
+    }));
     setShadowingLinkInput('');
     setShadowingLinkError('');
   }
@@ -257,6 +339,7 @@ export function InglesPage() {
       source: 'manual',
       reviewStatus: 'new',
       createdAt: new Date().toISOString(),
+      nextReviewAt: toDateOnly(new Date()),
     };
     setData(prev => ({ ...prev, vocabularyCards: [card, ...prev.vocabularyCards] }));
     setCardWord('');
@@ -264,11 +347,11 @@ export function InglesPage() {
     setCardExample('');
   }
 
-  function handleCardStatusAdvance(id: string) {
+  function handleCardReview(id: string, status: VocabularyCard['reviewStatus'], days: number) {
     setData(prev => ({
       ...prev,
       vocabularyCards: prev.vocabularyCards.map(c =>
-        c.id === id ? { ...c, reviewStatus: STATUS_NEXT[c.reviewStatus] } : c,
+        c.id === id ? { ...c, reviewStatus: status, nextReviewAt: addDays(days) } : c,
       ),
     }));
   }
@@ -282,6 +365,65 @@ export function InglesPage() {
   const answeredCount = Object.keys(quizAnswers).length;
   const totalQuestions = videoQuiz?.questions.length ?? 0;
   const allAnswered = answeredCount === totalQuestions && totalQuestions > 0;
+  const today = toDateOnly(new Date());
+  const cardsDueToday = vocabularyCards.filter(card => card.reviewStatus !== 'known' && card.nextReviewAt <= today);
+  const futureCards = vocabularyCards.filter(card => card.reviewStatus !== 'known' && card.nextReviewAt > today);
+  const knownCards = vocabularyCards.filter(card => card.reviewStatus === 'known');
+
+  function renderVocabularyCards(cards: VocabularyCard[]) {
+    if (cards.length === 0) {
+      return (
+        <p className="text-sm text-surface-400 dark:text-surface-500">
+          Nenhum card nesta seção.
+        </p>
+      );
+    }
+
+    return (
+      <div className="space-y-2">
+        {cards.map(card => (
+          <div
+            key={card.id}
+            className="flex flex-col gap-3 rounded-lg border border-surface-200 px-3 py-2.5 dark:border-surface-700 sm:flex-row sm:items-start sm:justify-between"
+          >
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-semibold text-surface-900 dark:text-white">{card.word}</span>
+                <Badge variant={STATUS_VARIANT[card.reviewStatus]}>{STATUS_LABEL[card.reviewStatus]}</Badge>
+                <span className="text-xs text-surface-400 dark:text-surface-500">
+                  Próxima: {formatReviewDate(card.nextReviewAt)}
+                </span>
+              </div>
+              <p className="text-sm text-surface-600 dark:text-surface-300">{card.meaning}</p>
+              {card.example && (
+                <p className="mt-0.5 text-xs italic text-surface-400 dark:text-surface-500">{card.example}</p>
+              )}
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              {REVIEW_ACTIONS.map(action => (
+                <button
+                  key={action.label}
+                  type="button"
+                  onClick={() => handleCardReview(card.id, action.status, action.days)}
+                  className="rounded-lg border border-surface-200 px-2.5 py-1 text-xs font-medium text-surface-600 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-700 transition-colors"
+                >
+                  {action.label}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => handleCardDelete(card.id)}
+                className="text-surface-400 hover:text-danger-600 transition-colors"
+                title="Excluir card"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   // ── JSX ────────────────────────────────────────────────────
   return (
@@ -307,7 +449,7 @@ export function InglesPage() {
                 variant="secondary"
                 icon={<RotateCcw size={14} className={loadingVideo ? 'animate-spin' : ''} />}
                 onClick={handleSearchVideo}
-                disabled={loadingVideo}
+                disabled={loadingVideo || !isYouTubeConfigured()}
               >
                 {loadingVideo ? 'Buscando...' : 'Trocar vídeo'}
               </Button>
@@ -348,14 +490,35 @@ export function InglesPage() {
             </div>
           )}
 
+          <div className="space-y-2 rounded-lg border border-surface-200 p-3 dark:border-surface-700">
+            <label className="block text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
+              Cole um link do YouTube para Listening
+            </label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                value={manualListeningLink}
+                onChange={e => setManualListeningLink(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleLoadManualListeningLink()}
+                placeholder="https://youtu.be/..."
+                className="flex-1 rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+              />
+              <Button size="sm" onClick={handleLoadManualListeningLink} disabled={!manualListeningLink.trim()}>
+                Carregar link
+              </Button>
+              <Button size="sm" variant="secondary" loading={loadingVideo} onClick={handleSearchVideo} disabled={loadingVideo || !isYouTubeConfigured()}>
+                Buscar vídeo
+              </Button>
+            </div>
+            {manualLinkError && (
+              <p className="text-sm text-danger-600 dark:text-danger-400">{manualLinkError}</p>
+            )}
+          </div>
+
           {!listeningVideo ? (
             <div className="space-y-3">
               <p className="text-sm text-surface-500 dark:text-surface-400">
-                Nenhum vídeo carregado. Clique em "Buscar vídeo" para começar.
+                Nenhum vídeo carregado. Busque pela API ou cole um link do YouTube para começar.
               </p>
-              <Button loading={loadingVideo} onClick={handleSearchVideo} disabled={!isYouTubeConfigured()}>
-                Buscar vídeo
-              </Button>
             </div>
           ) : (
             <>
@@ -373,14 +536,49 @@ export function InglesPage() {
 
               {/* Info */}
               <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-base font-semibold text-surface-900 dark:text-white leading-tight">{listeningVideo.title}</h2>
-                </div>
+                {listeningVideo.source === 'manual_link' ? (
+                  <div className="space-y-3">
+                    <div className="rounded-lg border border-warning-200 bg-warning-50/60 px-4 py-3 text-sm text-warning-700 dark:border-warning-900/40 dark:bg-warning-900/10 dark:text-warning-300">
+                      Vídeo carregado manualmente. Confirme se ele tem até 10 minutos.
+                    </div>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      <input
+                        value={listeningVideo.title}
+                        onChange={e => handleListeningMetaChange('title', e.target.value)}
+                        placeholder="Título"
+                        className="rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+                      />
+                      <input
+                        value={listeningVideo.channelTitle}
+                        onChange={e => handleListeningMetaChange('channelTitle', e.target.value)}
+                        placeholder="Canal"
+                        className="rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+                      />
+                      <input
+                        type="number"
+                        min="0"
+                        value={listeningVideo.durationSeconds}
+                        onChange={e => handleListeningMetaChange('durationSeconds', e.target.value)}
+                        placeholder="Duração em segundos"
+                        className="rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-base font-semibold text-surface-900 dark:text-white leading-tight">{listeningVideo.title}</h2>
+                  </div>
+                )}
                 <div className="mt-1 flex flex-wrap gap-2">
                   <Badge variant="default">{LEVEL_LABEL[listeningVideo.level]}</Badge>
-                  <Badge variant="default">{formatSeconds(listeningVideo.durationSeconds)}</Badge>
+                  {listeningVideo.durationSeconds > 0 && (
+                    <Badge variant="default">{formatSeconds(listeningVideo.durationSeconds)}</Badge>
+                  )}
                   {listeningVideo.qualityScore !== undefined && (
                     <Badge variant="default">{`Qualidade: ${listeningVideo.qualityScore}/100`}</Badge>
+                  )}
+                  {listeningVideo.source === 'manual_link' && (
+                    <Badge variant="warning">Link manual</Badge>
                   )}
                 </div>
                 <p className="mt-1 text-sm text-surface-500 dark:text-surface-400">{listeningVideo.channelTitle}</p>
@@ -419,7 +617,7 @@ export function InglesPage() {
           ) : !videoQuiz ? (
             <div className="space-y-3">
               <p className="text-sm text-surface-600 dark:text-surface-300">
-                10 perguntas sobre compreensão auditiva em inglês americano.
+                Questionário de prática geral baseado no vídeo selecionado. Para perguntas específicas, será necessário adicionar transcrição ou IA em uma etapa futura.
               </p>
               <Button onClick={handleGenerateQuiz}>
                 Gerar questionário
@@ -427,6 +625,10 @@ export function InglesPage() {
             </div>
           ) : (
             <>
+              <div className="rounded-lg border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-600 dark:border-surface-700 dark:bg-surface-800/60 dark:text-surface-300">
+                Questionário de prática geral baseado no vídeo selecionado. Para perguntas específicas, será necessário adicionar transcrição ou IA em uma etapa futura.
+              </div>
+
               {quizScore && (
                 <div className={`rounded-lg px-4 py-3 text-sm font-medium ${
                   quizScore.correct / quizScore.total >= 0.6
@@ -532,7 +734,8 @@ export function InglesPage() {
               className="flex-1 rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
             />
             <Button size="sm" onClick={handleLoadShadowingLink}>Carregar link</Button>
-            <Button size="sm" variant="secondary" onClick={handleResetShadowing}>Playlist padrão</Button>
+            <Button size="sm" variant="secondary" onClick={handleUseDefaultShadowingPlaylist}>Usar playlist padrão</Button>
+            <Button size="sm" variant="secondary" onClick={handleRestoreDefaultShadowingSentences}>Restaurar frases padrão</Button>
           </div>
 
           {shadowingLinkError && (
@@ -647,42 +850,25 @@ export function InglesPage() {
               Nenhum card adicionado ainda. Adicione palavras novas enquanto assiste ou pratica.
             </p>
           ) : (
-            <div className="space-y-2">
-              {vocabularyCards.map(card => (
-                <div
-                  key={card.id}
-                  className="flex items-start justify-between gap-3 rounded-lg border border-surface-200 px-3 py-2.5 dark:border-surface-700"
-                >
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-semibold text-surface-900 dark:text-white">{card.word}</span>
-                      <Badge variant={STATUS_VARIANT[card.reviewStatus]}>{STATUS_LABEL[card.reviewStatus]}</Badge>
-                    </div>
-                    <p className="text-sm text-surface-600 dark:text-surface-300">{card.meaning}</p>
-                    {card.example && (
-                      <p className="mt-0.5 text-xs italic text-surface-400 dark:text-surface-500">{card.example}</p>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleCardStatusAdvance(card.id)}
-                      className="rounded-lg border border-surface-200 px-2.5 py-1 text-xs font-medium text-surface-600 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-700 transition-colors"
-                      title="Avançar status"
-                    >
-                      <CheckCircle2 size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleCardDelete(card.id)}
-                      className="text-surface-400 hover:text-danger-600 transition-colors"
-                      title="Excluir card"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div className="space-y-5">
+              <section className="space-y-2">
+                <h3 className="text-sm font-semibold text-surface-900 dark:text-white">
+                  Cards para revisar hoje ({cardsDueToday.length})
+                </h3>
+                {renderVocabularyCards(cardsDueToday)}
+              </section>
+              <section className="space-y-2">
+                <h3 className="text-sm font-semibold text-surface-900 dark:text-white">
+                  Cards futuros ({futureCards.length})
+                </h3>
+                {renderVocabularyCards(futureCards)}
+              </section>
+              <section className="space-y-2">
+                <h3 className="text-sm font-semibold text-surface-900 dark:text-white">
+                  Cards dominados ({knownCards.length})
+                </h3>
+                {renderVocabularyCards(knownCards)}
+              </section>
             </div>
           )}
         </CardBody>

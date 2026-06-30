@@ -11,7 +11,7 @@ export interface ListeningVideo {
   level: 'basic' | 'intermediate' | 'advanced' | 'fluent';
   watchUrl: string;
   embedUrl: string;
-  source: 'youtube_api' | 'none';
+  source: 'youtube_api' | 'manual_link' | 'none';
   qualityScore?: number;
 }
 
@@ -59,7 +59,7 @@ export interface VocabularyCard {
   sourceYoutubeVideoId?: string;
   reviewStatus: 'new' | 'learning' | 'review' | 'known';
   createdAt: string;
-  nextReviewAt?: string;
+  nextReviewAt: string;
 }
 
 export interface EnglishDataV2 {
@@ -100,12 +100,16 @@ export function loadEnglishData(): EnglishDataV2 {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULT_DATA, shadowingPractice: { ...DEFAULT_SHADOWING, sentences: DEFAULT_SHADOWING_SENTENCES.map(s => ({ ...s })) } };
     const parsed = JSON.parse(raw) as Partial<EnglishDataV2>;
+    const today = new Date().toISOString().slice(0, 10);
     return {
       selectedListeningLevel: parsed.selectedListeningLevel ?? 'advanced',
       listeningVideo: parsed.listeningVideo ?? null,
       videoQuiz: parsed.videoQuiz ?? null,
       shadowingPractice: parsed.shadowingPractice ?? { ...DEFAULT_SHADOWING, sentences: DEFAULT_SHADOWING_SENTENCES.map(s => ({ ...s })) },
-      vocabularyCards: parsed.vocabularyCards ?? [],
+      vocabularyCards: (parsed.vocabularyCards ?? []).map(card => ({
+        ...card,
+        nextReviewAt: card.nextReviewAt ?? today,
+      })),
     };
   } catch {
     return { ...DEFAULT_DATA, shadowingPractice: { ...DEFAULT_SHADOWING, sentences: DEFAULT_SHADOWING_SENTENCES.map(s => ({ ...s })) } };

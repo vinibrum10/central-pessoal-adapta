@@ -7,6 +7,7 @@ const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY as string | undefin
 const SEARCH_API = 'https://www.googleapis.com/youtube/v3/search';
 const VIDEOS_API = 'https://www.googleapis.com/youtube/v3/videos';
 const MAX_DURATION_SECONDS = 600;
+const QUOTA_ERROR_MESSAGE = 'Limite diário da YouTube API atingido. Use um link manual de vídeo ou tente novamente amanhã.';
 
 export type ListeningLevel = 'basic' | 'intermediate' | 'advanced' | 'fluent';
 
@@ -35,6 +36,43 @@ const LEVEL_QUERIES: Record<ListeningLevel, string[]> = {
 
 export function isYouTubeConfigured(): boolean {
   return Boolean(YOUTUBE_API_KEY?.trim());
+}
+
+export function extractYouTubeVideoId(input: string): string | null {
+  const trimmed = input.trim();
+  if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) return trimmed;
+
+  const patterns = [
+    /youtu\.be\/([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/watch\?(?:.*&)?v=([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = trimmed.match(pattern);
+    if (match) return match[1];
+  }
+
+  return null;
+}
+
+export function buildManualListeningVideo(videoId: string, level: ListeningLevel): ListeningVideo {
+  return {
+    youtubeVideoId: videoId,
+    title: 'Vídeo manual de Listening',
+    channelTitle: 'Canal não informado',
+    durationSeconds: 0,
+    level,
+    watchUrl: `https://www.youtube.com/watch?v=${videoId}`,
+    embedUrl: `https://www.youtube.com/embed/${videoId}`,
+    source: 'manual_link',
+  };
+}
+
+function isQuotaExceededError(body: { error?: { message?: string; errors?: Array<{ reason?: string }> } }): boolean {
+  const message = body.error?.message ?? '';
+  const reasons = body.error?.errors?.map(error => error.reason ?? '') ?? [];
+  return /quota/i.test(message) || reasons.some(reason => /quota/i.test(reason));
 }
 
 function parseDuration(iso: string): number {
@@ -71,7 +109,11 @@ export async function searchListeningVideo(
 
   const searchRes = await fetch(`${SEARCH_API}?${searchParams}`);
   if (!searchRes.ok) {
-    const body = await searchRes.json() as { error?: { message?: string } };
+    const body = await searchRes.json() as { error?: { message?: string; errors?: Array<{ reason?: string }> } };
+    if (isQuotaExceededError(body)) {
+      console.error('[English Listening] YouTube API quota exceeded:', body);
+      throw new Error(QUOTA_ERROR_MESSAGE);
+    }
     throw new Error(body.error?.message ?? `YouTube search failed (${searchRes.status})`);
   }
 
@@ -95,7 +137,14 @@ export async function searchListeningVideo(
   });
 
   const detailsRes = await fetch(`${VIDEOS_API}?${detailsParams}`);
-  if (!detailsRes.ok) return null;
+  if (!detailsRes.ok) {
+    const body = await detailsRes.json().catch(() => ({})) as { error?: { message?: string; errors?: Array<{ reason?: string }> } };
+    if (isQuotaExceededError(body)) {
+      console.error('[English Listening] YouTube API quota exceeded:', body);
+      throw new Error(QUOTA_ERROR_MESSAGE);
+    }
+    return null;
+  }
 
   const detailsBody = await detailsRes.json() as {
     items?: Array<{
