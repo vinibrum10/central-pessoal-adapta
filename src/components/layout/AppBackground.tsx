@@ -20,9 +20,10 @@
 export function AppBackground() {
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 hidden overflow-hidden dark:block">
-      {/* 1) base: preto / grafite / azul-marinho muito escuro */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_130%_90%_at_18%_-8%,#181a1f_0%,#0c0c0e_38%,#050505_70%,#020202_100%)]" />
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_90%_70%_at_92%_55%,rgba(40,30,18,0.35)_0%,transparent_60%)]" />
+      {/* 1) base: preto / grafite / azul-marinho muito escuro, com leve aquecimento cobre */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_130%_90%_at_18%_-8%,#1f1b16_0%,#100d0a_38%,#070605_70%,#020202_100%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_95%_75%_at_94%_42%,rgba(201,130,58,0.18)_0%,transparent_62%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_60%_at_4%_55%,rgba(201,130,58,0.10)_0%,transparent_55%)]" />
 
       {/* 2) grade sutil em toda a área */}
       <div
@@ -47,7 +48,15 @@ export function AppBackground() {
             <stop offset="0%" stopColor="#e9b074" stopOpacity="0.55" />
             <stop offset="100%" stopColor="#a8662f" stopOpacity="0.15" />
           </linearGradient>
+          {/* halo de brilho — duplica os tracos com blur por baixo, para parecerem "acesos" e não apenas linhas finas */}
+          <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="6" />
+          </filter>
         </defs>
+
+        {/* halos (atrás, borrados) — pintados antes das versões nítidas abaixo */}
+        <use href="#hud-direito" filter="url(#glow)" opacity="0.65" />
+        <use href="#circuitos-esquerda" filter="url(#glow)" opacity="0.6" />
 
         {/* ---- HUD circular grande, lado direito, cortado pela borda ---- */}
         <g id="hud-direito" stroke="#e2ad6e" strokeWidth="1.4">
