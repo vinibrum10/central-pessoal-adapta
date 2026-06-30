@@ -28,12 +28,23 @@
   }
 
   .dark body {
-    background:
-      linear-gradient(90deg, rgba(201, 130, 58, 0.08) 1px, transparent 1px),
-      linear-gradient(0deg, rgba(96, 165, 250, 0.045) 1px, transparent 1px),
-      linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 18rem),
-      linear-gradient(180deg, #050505 0%, #0f0e0c 52%, #050505 100%);
-    background-size: 44px 44px, 44px 44px, auto, auto;
+    /* A grade de circuito e os glows ficam em AppBackground.tsx (componente dedicado);
+       aqui mantemos apenas uma cor base sólida para não haver "flash" antes de montar. */
+    background: #050505;
+  }
+
+  :root {
+    --bg-primary: #050505;
+    --bg-panel: rgba(5, 5, 5, 0.55);
+    --bg-elevated: rgba(20, 18, 16, 0.7);
+    --border-tech: rgba(217, 158, 94, 0.15);
+    --accent-copper: #c9823a;
+    --accent-bronze: #a8662f;
+    --accent-blue: #60a5fa;
+    --accent-purple: #a78bfa;
+    --text-primary: #ffffff;
+    --text-secondary: #a6a69d;
+    --glow-copper: rgba(201, 130, 58, 0.35);
   }
 
   #root {
@@ -92,5 +103,13 @@
 
   .tech-panel {
     @apply rounded-lg border border-primary-300/15 bg-surface-950/60 shadow-xl shadow-black/25 backdrop-blur-xl;
+  }
+
+  .glow-copper-hover {
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  }
+
+  .glow-copper-hover:hover {
+    box-shadow: 0 0 0 1px var(--glow-copper), 0 8px 24px -8px var(--glow-copper);
   }
 }

@@ -10,6 +10,7 @@ import { useApp } from '../hooks/useApp';
 import { useAuth } from '../contexts/AuthContext';
 import { MigrationBanner } from '../components/MigrationBanner';
 import { BrandMark } from '../components/BrandHeader';
+import { AppBackground } from '../components/layout/AppBackground';
 
 const SIDEBAR_KEY = 'adapta-sidebar-collapsed';
 
@@ -99,6 +100,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden overflow-x-hidden text-surface-900 dark:text-white">
+      <AppBackground />
       {/* === SIDEBAR DESKTOP === */}
       <aside
         className={`hidden lg:flex flex-col border-r border-surface-200/70 bg-white/85 shadow-sm backdrop-blur-xl dark:border-primary-300/15 dark:bg-[#070706]/90 dark:shadow-2xl dark:shadow-black/30 flex-shrink-0 transition-all duration-200 ${collapsed ? 'w-16' : 'w-72'}`}

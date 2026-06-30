@@ -14,7 +14,7 @@ export function Card({ children, className = '', onClick, hover = false }: CardP
       className={`
         rounded-lg border border-surface-200/80 bg-white/90 shadow-sm shadow-surface-200/50
         backdrop-blur-sm dark:border-primary-300/15 dark:bg-surface-950/55 dark:shadow-black/25
-        ${hover ? 'cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-md hover:shadow-primary-900/10 dark:hover:border-primary-300/35 dark:hover:bg-surface-900/75' : ''}
+        ${hover ? 'glow-copper-hover cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-md hover:shadow-primary-900/10 dark:hover:border-primary-300/35 dark:hover:bg-surface-900/75' : ''}
         ${className}
       `}
     >
