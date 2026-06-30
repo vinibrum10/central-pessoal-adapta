@@ -314,6 +314,53 @@ function coletarAReceberLegado(raw: Record<string, unknown>): Record<string, unk
   return [...encontrados, ...receitasAReceber];
 }
 
+function pareceChaveDeAReceber(key: string): boolean {
+  return /a.?receber|receb[ií]ve|recebimento|contas.?a.?receber|valores.?a.?receber|income.?receivable/i.test(key);
+}
+
+function coletarAReceberEmObjeto(value: unknown, sourceKey = '', depth = 0): Record<string, unknown>[] {
+  if (depth > 4 || !value || typeof value !== 'object') return [];
+  if (Array.isArray(value)) {
+    return pareceChaveDeAReceber(sourceKey)
+      ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
+      : [];
+  }
+
+  const raw = value as Record<string, unknown>;
+  const encontrados = [...coletarAReceberLegado(raw)];
+  for (const [key, child] of Object.entries(raw)) {
+    if (Array.isArray(child) && pareceChaveDeAReceber(key)) {
+      encontrados.push(...child.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item)));
+      continue;
+    }
+    if (child && typeof child === 'object') {
+      encontrados.push(...coletarAReceberEmObjeto(child, key, depth + 1));
+    }
+  }
+  return encontrados;
+}
+
+function scanAReceberFromAllLocalStorage(): AReceber[] {
+  const encontrados: Record<string, unknown>[] = [];
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key) continue;
+      const stored = localStorage.getItem(key);
+      if (!stored) continue;
+      try {
+        const parsed = JSON.parse(stored) as unknown;
+        encontrados.push(...coletarAReceberEmObjeto(parsed, key));
+      } catch {
+        continue;
+      }
+    }
+  } catch {
+    return [];
+  }
+  return migrarAReceber(encontrados);
+}
+
 // ---- Migração de eventos de agenda ----
 function migrarEventosAgenda(raw: Record<string, unknown>[]): EventoAgenda[] {
   return raw.map(e => ({
@@ -443,6 +490,7 @@ interface AppContextType {
   syncStatus: SyncStatus;
   migrateLocalToSupabase: () => Promise<boolean>;
   dismissMigrationPrompt: () => void;
+  recoverAReceberFromLocalStorage: () => number;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -633,11 +681,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSyncStatus('synced');
   }, []);
 
+  const recoverAReceberFromLocalStorage = useCallback((): number => {
+    const encontrados = scanAReceberFromAllLocalStorage();
+    if (encontrados.length === 0) return 0;
+    const existentesAtuais = new Set((data.aReceber ?? []).map(item => item.id || chaveAReceber(item)));
+    const novosAtuais = encontrados.filter(item => !existentesAtuais.has(item.id || chaveAReceber(item)));
+    if (novosAtuais.length === 0) return 0;
+    setDataState(prev => {
+      const existentes = new Set((prev.aReceber ?? []).map(item => item.id || chaveAReceber(item)));
+      const novos = encontrados.filter(item => !existentes.has(item.id || chaveAReceber(item)));
+      if (novos.length === 0) return prev;
+      const next = { ...prev, aReceber: [...(prev.aReceber ?? []), ...novos] };
+      try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* ignore */ }
+      if (supabaseAtivo && user?.id) {
+        saveAppData(user.id, next).catch(() => { /* local cache remains recovered */ });
+      }
+      return next;
+    });
+    return novosAtuais.length;
+  }, [data.aReceber, storageKey, supabaseAtivo, user?.id]);
+
   return (
     <AppContext.Provider value={{
       data, setData, resetToDemo, clearAll, exportData, importData,
       tema, toggleTema,
-      syncStatus, migrateLocalToSupabase, dismissMigrationPrompt,
+      syncStatus, migrateLocalToSupabase, dismissMigrationPrompt, recoverAReceberFromLocalStorage,
     }}>
       {children}
     </AppContext.Provider>

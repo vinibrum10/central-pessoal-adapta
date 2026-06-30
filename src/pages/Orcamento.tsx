@@ -184,7 +184,7 @@ function prepararProximoAnoReceitas(receitas: Receita[], hoje = new Date()): Rec
 }
 
 export function OrcamentoPage() {
-  const { data, setData } = useApp();
+  const { data, setData, recoverAReceberFromLocalStorage } = useApp();
   const { perfil } = useAuth();
   const [aba, setAba] = useState<Aba>('resumo');
   const [modal, setModal] = useState<string | null>(null);
@@ -222,6 +222,7 @@ export function OrcamentoPage() {
   const [mostrarContasPagas, setMostrarContasPagas] = useState(false);
   const [pendenciasAnterior, setPendenciasAnterior] = useState<null | { mes: number; ano: number; itens: ItemPagar[] }>(null);
   const [msgOrcamento, setMsgOrcamento] = useState('');
+  const [msgAReceberRecuperacao, setMsgAReceberRecuperacao] = useState('');
 
   useEffect(() => {
     setData(d => {
@@ -1574,6 +1575,25 @@ export function OrcamentoPage() {
                       Existem {totalAReceberGeral} valores salvos em outros meses. Use as setas do mês para consultar.
                     </p>
                   )}
+                  {msgAReceberRecuperacao && (
+                    <p className="mt-3 text-xs text-surface-500 dark:text-surface-400">{msgAReceberRecuperacao}</p>
+                  )}
+                  <div className="mt-4 flex justify-center">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        const recuperados = recoverAReceberFromLocalStorage();
+                        setMsgAReceberRecuperacao(
+                          recuperados > 0
+                            ? `${recuperados} valor(es) recuperado(s). Se não aparecerem neste mês, navegue pelos meses.`
+                            : 'Não encontrei valores antigos de A Receber salvos neste navegador.'
+                        );
+                      }}
+                    >
+                      Procurar dados salvos
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-4">
