@@ -80,21 +80,18 @@ export function BrandHeader({
 
       <div className="relative grid gap-5 p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-stretch lg:p-6">
         <div className="flex min-w-0 flex-col justify-between gap-5">
-          <div className="flex items-start gap-4">
-            <BrandMark className="hidden sm:flex" />
-            <div className="min-w-0">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-primary-200/90">
-                SGP
+          <div className="min-w-0">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-primary-200/90">
+              SGP
+            </p>
+            <h1 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+              {title}
+            </h1>
+            {subtitle && (
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-surface-300">
+                {subtitle}
               </p>
-              <h1 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-                {title}
-              </h1>
-              {subtitle && (
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-surface-300">
-                  {subtitle}
-                </p>
-              )}
-            </div>
+            )}
           </div>
           {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
         </div>
