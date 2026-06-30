@@ -311,6 +311,34 @@ function matchesLevelFilter(video: CuratedEnglishVideo, levelFilter: EnglishLeve
   return LEVEL_FILTER_CEFR[levelFilter].includes(video.cefrLevel);
 }
 
+// Ordem de "níveis próximos" usada quando o nível exato pedido não tem nenhum
+// vídeo elegível no banco curado (ex.: usuário escolheu "Avançado" mas o
+// banco ainda só tem vídeos A1/A2/B1) — evita a tela travar em "nenhum vídeo
+// elegível" enquanto o catálogo C1/C2 ainda está sendo construído.
+const LEVEL_FILTER_FALLBACK_ORDER: Record<EnglishLevelFilter, EnglishLevelFilter[]> = {
+  basic: ['intermediate', 'advanced', 'fluent'],
+  intermediate: ['basic', 'advanced', 'fluent'],
+  advanced: ['fluent', 'intermediate', 'basic'],
+  fluent: ['advanced', 'intermediate', 'basic'],
+};
+
+function buildEligiblePool(
+  curatedVideos: CuratedEnglishVideo[],
+  levelFilter: EnglishLevelFilter,
+  unavailableVideoIds: Set<string>,
+  minQualityScore: number,
+): CuratedEnglishVideo[] {
+  return curatedVideos.filter(v =>
+    v.status === 'active'
+    && v.embeddable === true
+    && v.durationSeconds > 0
+    && v.durationSeconds <= MAX_VIDEO_DURATION_SECONDS
+    && !unavailableVideoIds.has(v.youtubeVideoId)
+    && matchesLevelFilter(v, levelFilter)
+    && calculateVideoQualityScore(v) >= minQualityScore,
+  );
+}
+
 export interface SelectWeeklyVideoParams {
   curatedVideos: CuratedEnglishVideo[];
   levelFilter: EnglishLevelFilter;
@@ -326,6 +354,10 @@ export interface WeeklyVideoSelectionResult {
   video: CuratedEnglishVideo;
   /** true quando NENHUM vídeo elegível do nível restava na semana e a rotação precisaria ser reiniciada — sinaliza a UI para mostrar a mensagem + botão de reset. */
   exhausted: boolean;
+  /** true quando o nível pedido não tinha nenhum vídeo elegível e um nível próximo foi usado como alternativa — sinaliza a UI para avisar o usuário. */
+  levelFallbackApplied: boolean;
+  /** Nível efetivamente usado para escolher o vídeo (igual a `levelFilter` pedido, exceto quando `levelFallbackApplied` é true). */
+  resolvedLevelFilter: EnglishLevelFilter;
 }
 
 /**
@@ -333,36 +365,46 @@ export interface WeeklyVideoSelectionResult {
  * dentro do filtro de nível (4 opções) e da regra de não-repetição semanal.
  * Critérios obrigatórios: status ativo, embeddable, durationSeconds <= 600s,
  * nível compatível com o filtro escolhido, qualidade mínima, não usado na
- * semana atual. Nunca repete o vídeo atual quando há alternativa.
+ * semana atual. Nunca repete o vídeo atual quando há alternativa. Se o nível
+ * pedido não tiver nenhum vídeo elegível, tenta níveis próximos em vez de
+ * travar (ver LEVEL_FILTER_FALLBACK_ORDER) — só devolve null se o banco
+ * curado inteiro estiver sem nenhum vídeo elegível.
  */
 export function selectWeeklyVideo(params: SelectWeeklyVideoParams): WeeklyVideoSelectionResult | null {
   const { curatedVideos, levelFilter, usedThisWeekIds, unavailableVideoIds, currentVideoId, minQualityScore = 60 } = params;
 
-  const eligible = curatedVideos.filter(v =>
-    v.status === 'active'
-    && v.embeddable === true
-    && v.durationSeconds > 0
-    && v.durationSeconds <= MAX_VIDEO_DURATION_SECONDS
-    && !unavailableVideoIds.has(v.youtubeVideoId)
-    && matchesLevelFilter(v, levelFilter)
-    && calculateVideoQualityScore(v) >= minQualityScore,
-  );
+  let eligible = buildEligiblePool(curatedVideos, levelFilter, unavailableVideoIds, minQualityScore);
+  let resolvedLevelFilter = levelFilter;
+  let levelFallbackApplied = false;
 
   if (eligible.length === 0) {
-    console.warn('[WeeklyVideoSelector] Nenhum vídeo elegível para o nível', levelFilter, '(banco curado pode precisar de mais vídeos nesse nível).');
+    for (const fallbackLevel of LEVEL_FILTER_FALLBACK_ORDER[levelFilter]) {
+      const fallbackPool = buildEligiblePool(curatedVideos, fallbackLevel, unavailableVideoIds, minQualityScore);
+      if (fallbackPool.length > 0) {
+        eligible = fallbackPool;
+        resolvedLevelFilter = fallbackLevel;
+        levelFallbackApplied = true;
+        console.warn('[WeeklyVideoSelector] Nenhum vídeo elegível para o nível', levelFilter, '— usando nível próximo', fallbackLevel, 'como alternativa.');
+        break;
+      }
+    }
+  }
+
+  if (eligible.length === 0) {
+    console.warn('[WeeklyVideoSelector] Nenhum vídeo elegível em nenhum nível (banco curado precisa de mais vídeos).');
     return null;
   }
 
   // 1) Não usado nesta semana e diferente do vídeo atual.
   let pool = eligible.filter(v => !usedThisWeekIds.has(v.youtubeVideoId) && v.youtubeVideoId !== currentVideoId);
   if (pool.length > 0) {
-    return { video: pickLeastUsed(pool), exhausted: false };
+    return { video: pickLeastUsed(pool), exhausted: false, levelFallbackApplied, resolvedLevelFilter };
   }
 
   // 2) Não usado nesta semana, mesmo que seja o vídeo atual (caso extremo: só 1 vídeo elegível no nível).
   pool = eligible.filter(v => !usedThisWeekIds.has(v.youtubeVideoId));
   if (pool.length > 0) {
-    return { video: pickLeastUsed(pool), exhausted: false };
+    return { video: pickLeastUsed(pool), exhausted: false, levelFallbackApplied, resolvedLevelFilter };
   }
 
   // 3) Todos os vídeos elegíveis do nível já foram exibidos esta semana — rotação esgotada.
@@ -370,7 +412,7 @@ export function selectWeeklyVideo(params: SelectWeeklyVideoParams): WeeklyVideoS
   // mas sinaliza `exhausted: true` para a UI oferecer "Reiniciar rotação da semana".
   pool = eligible.filter(v => v.youtubeVideoId !== currentVideoId);
   const fallbackPool = pool.length > 0 ? pool : eligible;
-  return { video: pickLeastUsed(fallbackPool), exhausted: true };
+  return { video: pickLeastUsed(fallbackPool), exhausted: true, levelFallbackApplied, resolvedLevelFilter };
 }
 
 /**

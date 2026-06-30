@@ -597,6 +597,7 @@ export function InglesPage() {
   const [levelFilter, setLevelFilterState] = useState<EnglishLevelFilter>(() => readLastLevelFilterLocal() ?? 'advanced');
   const [weeklyHistoryModalOpen, setWeeklyHistoryModalOpen] = useState(false);
   const [rotationExhausted, setRotationExhausted] = useState(false);
+  const [levelFallbackInfo, setLevelFallbackInfo] = useState<{ requested: EnglishLevelFilter; resolved: EnglishLevelFilter } | null>(null);
   const todayDate = getCurrentStudyDate();
   const currentWeekKey = useMemo(() => getCurrentWeekKey(), [todayDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1203,6 +1204,7 @@ export function InglesPage() {
       setQuizMessage('');
       setError('');
       setVideoOriginInfo({ source: result.source, isReview: result.isReview });
+      setLevelFallbackInfo(null);
       if (result.isReview) {
         console.info('[Inglês Diário] Nenhum vídeo novo disponível — reaproveitando vídeo já assistido para revisão.', { videoId: result.video.videoId });
       }
@@ -1278,13 +1280,15 @@ export function InglesPage() {
       });
       if (!result) {
         setRotationExhausted(false);
+        setLevelFallbackInfo(null);
         setError(`Nenhum vídeo elegível para o nível ${LEVEL_FILTER_LABEL[level]} no momento. Tente outro nível.`);
         setPlayerStatus('unavailable');
         return;
       }
       setRotationExhausted(result.exhausted);
+      setLevelFallbackInfo(result.levelFallbackApplied ? { requested: level, resolved: result.resolvedLevelFilter } : null);
       const qualityScore = calculateVideoQualityScore(result.video);
-      const historyEntry = buildWeeklyHistoryEntry({ video: result.video, levelFilter: level, qualityScore, status: 'available', weekKey: currentWeekKey });
+      const historyEntry = buildWeeklyHistoryEntry({ video: result.video, levelFilter: result.resolvedLevelFilter, qualityScore, status: 'available', weekKey: currentWeekKey });
       const nextDailyVideo = curatedToDailyVideo(result.video);
       const nextStudy = createDailyStudy(todayDate, nextDailyVideo);
       let nextData = appendWeeklyHistoryEntry(latestDataRef.current, historyEntry);
@@ -1627,6 +1631,9 @@ export function InglesPage() {
           {videoOriginInfo?.isReview && (
             <StateNote>Você já viu todos os vídeos novos disponíveis. Hoje este vídeo entrou como revisão.</StateNote>
           )}
+          {levelFallbackInfo && (
+            <StateNote>{`Ainda não há vídeos suficientes no nível ${LEVEL_FILTER_LABEL[levelFallbackInfo.requested]} — mostrando um vídeo do nível ${LEVEL_FILTER_LABEL[levelFallbackInfo.resolved]} por enquanto.`}</StateNote>
+          )}
           {rotationExhausted && (
             <div className="space-y-2 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-700 dark:border-warning-900/40 dark:bg-warning-900/20 dark:text-warning-300">
               <p>Todos os vídeos desse nível já foram exibidos nesta semana. Você pode reiniciar a rotação ou escolher outro nível.</p>
@@ -1638,7 +1645,7 @@ export function InglesPage() {
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-lg font-semibold tracking-tight text-surface-950 dark:text-white">{currentVideo.title}</h2>
               <Badge variant={todayStudy.completed ? 'success' : quizAvailable ? 'primary' : 'default'}>{getGoalStatus(todayStudy)}</Badge>
-              <Badge variant="default">{LEVEL_FILTER_LABEL[levelFilter]}</Badge>
+              <Badge variant="default">{LEVEL_FILTER_LABEL[levelFallbackInfo?.resolved ?? levelFilter]}</Badge>
               <Badge variant="default">{formatTime(todayStudy.durationSeconds)}</Badge>
               <Badge variant="default">{videoOriginLabel(videoOriginInfo?.source)}</Badge>
             </div>
