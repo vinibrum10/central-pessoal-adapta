@@ -23,7 +23,9 @@ import {
   deleteWeeklyWord,
   getCurrentStudyDate,
   getEnglishStudyData,
+  getWatchedVideoIds,
   getWeekStartISO,
+  markVideoWatched,
   reviewWeeklyWord,
   saveDuolingoStreak,
   saveEnglishStudyData,
@@ -83,12 +85,22 @@ const emptyStudyData: EnglishStudyData = {
   quizAttempts: [],
   shadowingSessions: [],
   preplyAulas: [],
+  watchedVideos: [],
   duolingoStreak: { currentStreak: 0, longestStreak: 0, lastUpdatedDate: '', history: [] },
   weeklyWords: [],
 };
 
 const passingScorePercent = 60;
 const unlockPercent = 80;
+// Shadowing guiado: "nível avançado, 2-5 minutos" — janela estrita de duração,
+// rejeita Shorts (<2min) e vídeos longos (>5min) tanto na API quanto no fallback local.
+const MIN_SHADOWING_SECONDS = 120;
+const MAX_SHADOWING_SECONDS = 300;
+const NO_FRESH_VIDEO_MESSAGE = 'Não encontrei um vídeo novo agora. Tente trocar o tema ou buscar novamente.';
+
+function isWithinShadowingDuration(durationSeconds: number): boolean {
+  return durationSeconds >= MIN_SHADOWING_SECONDS && durationSeconds <= MAX_SHADOWING_SECONDS;
+}
 
 function getLibraryFilterKey(nivel: NivelFiltro, duracao: DuracaoFiltro) {
   return `${nivel}:${duracao}`;
@@ -124,15 +136,33 @@ function hashString(value: string): number {
   return Array.from(value).reduce((hash, char) => ((hash << 5) - hash + char.charCodeAt(0)) | 0, 0);
 }
 
+/**
+ * Escolha SÍNCRONA e local (sem chamar a API do YouTube) usada apenas para o
+ * primeiro paint, antes do efeito assíncrono em InglesPage poder buscar um
+ * vídeo real via buscarVideosIngles. Nunca escolhe um vídeo já assistido
+ * (histórico completo, não só os últimos N dias) nem um vídeo já concluído
+ * hoje, nem um vídeo fora da janela de 2-5 minutos.
+ */
 function selectDailyVideo(date: string, userId: string | null, data: EnglishStudyData): DailyEnglishVideo {
   const savedStudy = data.dailyStudies.find(study => study.date === date);
-  if (savedStudy) return resolveDailyVideoFromStudy(savedStudy);
+  if (savedStudy && !savedStudy.completed && isWithinShadowingDuration(savedStudy.durationSeconds)) {
+    return resolveDailyVideoFromStudy(savedStudy);
+  }
 
-  const recentVideoIds = new Set(data.dailyStudies.slice(0, 10).map(study => study.videoId));
-  const candidates = dailyEnglishVideos.filter(video => !recentVideoIds.has(video.videoId));
-  const pool = candidates.length > 0 ? candidates : dailyEnglishVideos;
+  const watchedIds = getWatchedVideoIds(data);
+  const recentVideoIds = new Set([
+    ...data.dailyStudies.map(study => study.videoId),
+    ...watchedIds,
+  ]);
+  const candidates = dailyEnglishVideos.filter(video =>
+    !recentVideoIds.has(video.videoId) && isWithinShadowingDuration(video.durationSeconds),
+  );
+  const pool = candidates.length > 0
+    ? candidates
+    : dailyEnglishVideos.filter(video => !watchedIds.has(video.videoId) && isWithinShadowingDuration(video.durationSeconds));
+  if (pool.length === 0) return dailyEnglishVideos[0];
   const index = Math.abs(hashString(`${userId ?? 'anon'}:${date}`)) % pool.length;
-  return pool[index] ?? dailyEnglishVideos[0];
+  return pool[index];
 }
 
 function resolveDailyVideoFromStudy(study: EnglishDailyStudy): DailyEnglishVideo {
@@ -336,6 +366,56 @@ export function InglesPage() {
     }));
   }, []);
 
+  /**
+   * Único ponto de escolha de vídeo "fresco" (não usado por "vídeo do dia"
+   * inicial nem por "Trocar vídeo"): tenta cache local de busca, depois a API
+   * do YouTube (variando a query algumas vezes), depois o dataset local —
+   * em todos os casos excluindo `excludeIds` (histórico completo de vídeos
+   * assistidos + o vídeo atual) e exigindo duração entre 2 e 5 minutos.
+   * Retorna null se nenhum vídeo novo for encontrado em lugar nenhum.
+   */
+  const pickFreshVideo = useCallback(async (excludeIds: Set<string>): Promise<DailyEnglishVideo | null> => {
+    const cachedCandidates = cachedVideosForSelectedFilter.filter(video =>
+      !excludeIds.has(video.videoId) && isWithinShadowingDuration(video.durationSeconds),
+    );
+    if (cachedCandidates.length > 0) {
+      return videoResultToDailyVideo(cachedCandidates[0], selectedNivel, dailyEnglishVideos);
+    }
+
+    if (isYouTubeEnglishConfigured()) {
+      try {
+        for (let queryIndex = 0; queryIndex < 4; queryIndex += 1) {
+          const result = await buscarVideosIngles({
+            nivel: selectedNivel,
+            duracao: selectedDuracao,
+            queryIndex,
+            seenVideoIds: excludeIds,
+          });
+          const videos = result.videos.map(youtubeResultToVideoResult);
+          if (videos.length > 0) cacheLibraryResults(selectedNivel, selectedDuracao, videos);
+          const candidate = result.videos.find(video =>
+            !excludeIds.has(video.id) && isWithinShadowingDuration(video.durationSeconds),
+          );
+          if (candidate) {
+            return videoResultToDailyVideo(youtubeResultToVideoResult(candidate), selectedNivel, dailyEnglishVideos);
+          }
+        }
+      } catch {
+        // API falhou ou ficou sem resultados — cai para o fallback local abaixo
+        // em vez de repetir o último vídeo conhecido.
+      }
+    }
+
+    const localFallback = getLocalFallbackVideos(dailyEnglishVideos, selectedNivel, selectedDuracao)
+      .filter(video => !excludeIds.has(video.videoId) && isWithinShadowingDuration(video.durationSeconds));
+    if (localFallback.length > 0) {
+      cacheLibraryResults(selectedNivel, selectedDuracao, localFallback);
+      return videoResultToDailyVideo(localFallback[0], selectedNivel, dailyEnglishVideos);
+    }
+
+    return null;
+  }, [cachedVideosForSelectedFilter, cacheLibraryResults, selectedDuracao, selectedNivel]);
+
   const saveStudy = useCallback(async (study: EnglishDailyStudy, session?: StudySession) => {
     const nextData = mergeDailyStudy(latestDataRef.current, study);
     const withSession = session ? { ...nextData, sessions: [session, ...nextData.sessions] } : nextData;
@@ -359,7 +439,23 @@ export function InglesPage() {
   }, []);
 
   const persistStudyProgress = useCallback((study: EnglishDailyStudy) => {
-    const nextData = mergeDailyStudy(latestDataRef.current, study);
+    const previousProgress = latestStudyRef.current?.progressPercent ?? 0;
+    let nextData = mergeDailyStudy(latestDataRef.current, study);
+
+    // Cruzou o limiar de "assistido o suficiente" agora — marca no histórico
+    // permanente para que esse vídeo nunca mais seja sugerido novamente,
+    // mesmo que o usuário não termine o questionário.
+    if (previousProgress < unlockPercent && study.progressPercent >= unlockPercent) {
+      const watchedVideo = resolveDailyVideoFromStudy(study);
+      nextData = markVideoWatched(nextData, {
+        videoId: study.videoId,
+        title: watchedVideo.title,
+        channel: watchedVideo.channel,
+        durationSeconds: study.durationSeconds,
+        status: 'watched',
+      });
+    }
+
     latestDataRef.current = nextData;
     latestStudyRef.current = study;
     setData(nextData);
@@ -422,6 +518,7 @@ export function InglesPage() {
           preplyAulas: studyData.preplyAulas ?? [],
           duolingoStreak: studyData.duolingoStreak ?? emptyStudyData.duolingoStreak,
           weeklyWords: studyData.weeklyWords ?? [],
+          watchedVideos: studyData.watchedVideos ?? [],
         };
         const studyDate = getCurrentStudyDate();
         const video = selectDailyVideo(studyDate, userId, normalizedData);
@@ -447,6 +544,44 @@ export function InglesPage() {
   useEffect(() => {
     latestDataRef.current = data;
   }, [data]);
+
+  // Garante que o "vídeo do dia" nunca fique parado em um vídeo já concluído
+  // ou fora da janela de 2-5 minutos: se acontecer, busca um substituto real
+  // (excluindo todo o histórico assistido) assim que os dados carregam ou o
+  // estudo de hoje muda de status. Idempotente por "requestKey" — só dispara
+  // de novo se a condição realmente mudar (evita loop de chamadas à API).
+  const dailyVideoRequestRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (loading) return;
+    const savedToday = data.dailyStudies.find(study => study.date === todayDate);
+    const needsFreshVideo = !savedToday
+      || savedToday.completed
+      || !isWithinShadowingDuration(savedToday.durationSeconds);
+    if (!needsFreshVideo) return;
+
+    const requestKey = `${todayDate}:${savedToday ? `${savedToday.videoId}:${savedToday.completed}` : 'none'}`;
+    if (dailyVideoRequestRef.current === requestKey) return;
+    dailyVideoRequestRef.current = requestKey;
+
+    let cancelled = false;
+    (async () => {
+      const excludeIds = new Set([
+        ...getWatchedVideoIds(latestDataRef.current),
+        ...(savedToday ? [savedToday.videoId] : []),
+      ]);
+      const video = await pickFreshVideo(excludeIds).catch(() => null);
+      if (cancelled) return;
+      if (!video) {
+        // Não encontrou um vídeo novo em lugar nenhum — nunca repete o vídeo
+        // antigo/concluído só para preencher a tela; mostra mensagem amigável.
+        setError(NO_FRESH_VIDEO_MESSAGE);
+        return;
+      }
+      await saveStudy(createDailyStudy(todayDate, video));
+    })();
+
+    return () => { cancelled = true; };
+  }, [loading, todayDate, data.dailyStudies, pickFreshVideo, saveStudy]);
 
   useEffect(() => {
     if (loading) return;
@@ -555,52 +690,19 @@ export function InglesPage() {
     setError('');
     setPlayerStatus('loading');
     setChangingVideo(true);
-    const recentVideoIds = new Set([
-      todayStudy.videoId,
-      ...latestDataRef.current.dailyStudies.slice(0, 12).map(study => study.videoId),
-      ...latestDataRef.current.sessions.slice(0, 12)
-        .map(session => new URL(session.url ?? '', window.location.origin).searchParams.get('v') ?? '')
-        .filter(Boolean),
-    ]);
+
+    // Exclui TODO o histórico de assistidos (não só os últimos N dias) + o vídeo atual.
+    const excludeIds = new Set([todayStudy.videoId, ...getWatchedVideoIds(latestDataRef.current)]);
+
     let nextVideo: DailyEnglishVideo | null = null;
-    const cachedCandidates = cachedVideosForSelectedFilter.filter(video => !recentVideoIds.has(video.videoId));
-
-    if (cachedCandidates.length > 0) {
-      nextVideo = videoResultToDailyVideo(cachedCandidates[0], selectedNivel, dailyEnglishVideos);
-    }
-
-    if (!nextVideo && isYouTubeEnglishConfigured()) {
-      try {
-        for (let queryIndex = 0; queryIndex < 4 && !nextVideo; queryIndex += 1) {
-          const result = await buscarVideosIngles({
-            nivel: selectedNivel,
-            duracao: selectedDuracao,
-            queryIndex,
-            seenVideoIds: recentVideoIds,
-          });
-          const candidate = result.videos.find(video => !recentVideoIds.has(video.id));
-          const videos = result.videos.map(youtubeResultToVideoResult);
-          if (videos.length > 0) cacheLibraryResults(selectedNivel, selectedDuracao, videos);
-          if (candidate) {
-            nextVideo = videoResultToDailyVideo(youtubeResultToVideoResult(candidate), selectedNivel, dailyEnglishVideos);
-          }
-        }
-      } catch (err) {
-        setError(err instanceof Error ? `${err.message} Usando fallback local temporariamente.` : 'Falha ao buscar vídeos. Usando fallback local temporariamente.');
-      }
+    try {
+      nextVideo = await pickFreshVideo(excludeIds);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao buscar vídeos.');
     }
 
     if (!nextVideo) {
-      const fallback = getLocalFallbackVideos(dailyEnglishVideos, selectedNivel, selectedDuracao)
-        .filter(video => !recentVideoIds.has(video.videoId));
-      if (fallback.length > 0) {
-        cacheLibraryResults(selectedNivel, selectedDuracao, fallback);
-        nextVideo = videoResultToDailyVideo(fallback[0], selectedNivel, dailyEnglishVideos);
-      }
-    }
-
-    if (!nextVideo) {
-      setError('Nenhum vídeo encontrado para esse filtro. Tente outro nível ou duração.');
+      setError(NO_FRESH_VIDEO_MESSAGE);
       setChangingVideo(false);
       return;
     }
@@ -741,7 +843,18 @@ export function InglesPage() {
       : undefined;
 
     setQuizMessage(passed ? 'Questionário aprovado. Meta diária concluída.' : 'Resultado abaixo de 60%. Revise e refaça o questionário.');
-    await saveData(addQuizAttempt(mergeDailyStudy(latestDataRef.current, nextStudy), attempt));
+    let nextData = addQuizAttempt(mergeDailyStudy(latestDataRef.current, nextStudy), attempt);
+    if (completed) {
+      // Concluiu de fato (assistiu + passou no questionário) — nunca mais sugerir este vídeo.
+      nextData = markVideoWatched(nextData, {
+        videoId: currentVideo.videoId,
+        title: currentVideo.title,
+        channel: currentVideo.channel,
+        durationSeconds: todayStudy.durationSeconds,
+        status: 'completed',
+      });
+    }
+    await saveData(nextData);
     if (session) {
       const withSession = { ...latestDataRef.current, sessions: [session, ...latestDataRef.current.sessions] };
       await saveData(withSession);

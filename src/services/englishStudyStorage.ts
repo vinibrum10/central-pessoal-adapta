@@ -11,6 +11,7 @@ import type {
   SpeakingPractice,
   StudySession,
   VocabularyItem,
+  WatchedVideoEntry,
   WeeklyWord,
 } from '../types/englishStudy';
 
@@ -72,6 +73,7 @@ export function createEmptyEnglishStudyData(date = getCurrentStudyDate()): Engli
     preplyAulas: [],
     duolingoStreak: createEmptyDuolingoStreak(),
     weeklyWords: [],
+    watchedVideos: [],
   };
 }
 
@@ -91,6 +93,7 @@ function normalizeData(raw: Partial<EnglishStudyData> | null | undefined): Engli
     preplyAulas: raw?.preplyAulas ?? [],
     duolingoStreak: raw?.duolingoStreak ?? base.duolingoStreak,
     weeklyWords: raw?.weeklyWords ?? [],
+    watchedVideos: raw?.watchedVideos ?? [],
   };
 }
 
@@ -322,3 +325,34 @@ export const reviewWeeklyWord = (userId: string | null | undefined, id: string, 
       };
     }),
   }));
+
+// ============================================================
+// HISTÓRICO DE VÍDEOS ASSISTIDOS (Inglês Diário)
+// ============================================================
+// Histórico permanente (nunca rotaciona) — usado para garantir que o vídeo
+// do dia e o "Trocar vídeo" nunca repitam um vídeo já assistido/concluído.
+
+/** Todos os videoId já assistidos (status 'watched' ou 'completed'), histórico completo. */
+export function getWatchedVideoIds(data: EnglishStudyData): Set<string> {
+  return new Set(data.watchedVideos.map(entry => entry.videoId));
+}
+
+/**
+ * Marca um vídeo como assistido (upsert por videoId). Nunca rebaixa
+ * 'completed' de volta para 'watched' — só evolui o status.
+ */
+export function markVideoWatched(data: EnglishStudyData, entry: Omit<WatchedVideoEntry, 'watchedAt'> & { watchedAt?: string }): EnglishStudyData {
+  const watchedAt = entry.watchedAt ?? getCurrentStudyDate();
+  const existing = data.watchedVideos.find(item => item.videoId === entry.videoId);
+  if (existing) {
+    if (existing.status === 'completed' || existing.status === entry.status) return data;
+    return {
+      ...data,
+      watchedVideos: data.watchedVideos.map(item =>
+        item.videoId === entry.videoId ? { ...item, status: entry.status } : item,
+      ),
+    };
+  }
+  const newEntry: WatchedVideoEntry = { ...entry, watchedAt };
+  return { ...data, watchedVideos: [newEntry, ...data.watchedVideos] };
+}

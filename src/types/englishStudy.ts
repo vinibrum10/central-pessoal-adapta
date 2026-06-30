@@ -180,6 +180,18 @@ export interface WeeklyWord {
   mastered: boolean;
 }
 
+/** Histórico permanente de vídeos do "Inglês Diário" já assistidos pelo usuário — usado para nunca repetir um vídeo na seleção do vídeo do dia / "Trocar vídeo". */
+export interface WatchedVideoEntry {
+  videoId: string;
+  title: string;
+  channel: string;
+  durationSeconds: number;
+  /** Data (America/Sao_Paulo, yyyy-mm-dd) em que o vídeo foi assistido pela primeira vez. */
+  watchedAt: string;
+  /** 'watched' = assistiu o suficiente para liberar o questionário; 'completed' = também passou no questionário. */
+  status: 'watched' | 'completed';
+}
+
 export interface EnglishStudyData {
   dailyPlan: DailyPlanItem[];
   sessions: StudySession[];
@@ -194,6 +206,7 @@ export interface EnglishStudyData {
   preplyAulas: PreplyAula[];
   duolingoStreak: DuolingoStreak;
   weeklyWords: WeeklyWord[];
+  watchedVideos: WatchedVideoEntry[];
 }
 
 export interface YouTubeEnglishVideo {
