@@ -164,6 +164,32 @@ function uniqueSortedSeconds(seconds: number[]) {
   return Array.from(new Set(seconds.filter(second => Number.isFinite(second) && second >= 0))).sort((a, b) => a - b);
 }
 
+function extractYouTubeVideoId(url: string): string | null {
+  const s = url.trim();
+  const m1 = s.match(/youtu\.be\/([A-Za-z0-9_-]{11})/);
+  if (m1) return m1[1];
+  const m2 = s.match(/[?&]v=([A-Za-z0-9_-]{11})/);
+  if (m2) return m2[1];
+  const m3 = s.match(/\/embed\/([A-Za-z0-9_-]{11})/);
+  if (m3) return m3[1];
+  if (/^[A-Za-z0-9_-]{11}$/.test(s)) return s;
+  return null;
+}
+
+function YouTubeSimpleEmbed({ videoId }: { videoId: string }) {
+  return (
+    <div className="aspect-video w-full overflow-hidden rounded-lg bg-surface-950 shadow-sm">
+      <iframe
+        src={`https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1`}
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowFullScreen
+        className="h-full w-full"
+        title="Vídeo de shadowing"
+      />
+    </div>
+  );
+}
+
 function createDailyStudy(date: string, video: DailyEnglishVideo): EnglishDailyStudy {
   return {
     date,
@@ -598,6 +624,8 @@ export function InglesPage() {
   const [weeklyHistoryModalOpen, setWeeklyHistoryModalOpen] = useState(false);
   const [rotationExhausted, setRotationExhausted] = useState(false);
   const [levelFallbackInfo, setLevelFallbackInfo] = useState<{ requested: EnglishLevelFilter; resolved: EnglishLevelFilter } | null>(null);
+  const [shadowingVideoUrl, setShadowingVideoUrl] = useState('');
+  const shadowingVideoId = useMemo(() => extractYouTubeVideoId(shadowingVideoUrl), [shadowingVideoUrl]);
   const todayDate = getCurrentStudyDate();
   const currentWeekKey = useMemo(() => getCurrentWeekKey(), [todayDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1389,7 +1417,7 @@ export function InglesPage() {
         durationSeconds: todayStudy.durationSeconds,
         transcript: currentVideo.transcript,
         summary: currentVideo.summary,
-        questionCount: 5,
+        questionCount: 10,
       });
     } catch {
       const nextStudy: EnglishDailyStudy = {
@@ -1737,14 +1765,37 @@ export function InglesPage() {
       <div ref={shadowingCardRef}>
       <Card>
         <CardHeader
-          title="2. Fazer shadowing (5 frases)"
+          title="2. Shadowing"
           subtitle={`Ouça, leia e repita. Streak atual: ${shadowingStreak} dia(s).`}
           icon={<Mic size={18} />}
-          action={<Button size="sm" icon={<Mic size={14} />} onClick={() => setShadowingWizardOpen(true)}>{shadowingDoneToday ? 'Praticar de novo' : 'Iniciar shadowing'}</Button>}
         />
-        <CardBody>
+        <CardBody className="space-y-4">
+          <StateNote>Cole o link de qualquer vídeo do YouTube para praticar shadowing — independente do vídeo de listening.</StateNote>
+          <div className="flex gap-2">
+            <input
+              value={shadowingVideoUrl}
+              onChange={e => setShadowingVideoUrl(e.target.value)}
+              placeholder="https://youtube.com/watch?v=... ou youtu.be/..."
+              className="flex-1 rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+            />
+          </div>
+          {shadowingVideoUrl.trim() !== '' && !shadowingVideoId && (
+            <StateNote>Link inválido — cole o link completo do YouTube ou o ID de 11 caracteres.</StateNote>
+          )}
+          {shadowingVideoId && (
+            <YouTubeSimpleEmbed videoId={shadowingVideoId} />
+          )}
+          {shadowingVideoId && (
+            <Button
+              icon={<Mic size={14} />}
+              onClick={() => setShadowingWizardOpen(true)}
+              className="w-full sm:w-auto"
+            >
+              {shadowingDoneToday ? 'Praticar de novo' : 'Iniciar shadowing'}
+            </Button>
+          )}
           {data.shadowingSessions.length === 0 ? (
-            <StateNote>Nenhuma sessão de shadowing registrada ainda. Use o vídeo de hoje para praticar.</StateNote>
+            <StateNote>Nenhuma sessão de shadowing registrada ainda.</StateNote>
           ) : (
             <div className="space-y-2">
               {data.shadowingSessions.slice(0, 3).map(session => (
@@ -1870,7 +1921,8 @@ export function InglesPage() {
       <ShadowingWizardModal
         isOpen={shadowingWizardOpen}
         onClose={() => setShadowingWizardOpen(false)}
-        video={currentVideo}
+        videoId={shadowingVideoId ?? ''}
+        videoTitle={shadowingVideoId ? `Shadowing — ${shadowingVideoId}` : 'Shadowing'}
         onSave={handleSaveShadowingSession}
         onAddWords={handleAddWeeklyWord}
       />
@@ -2385,14 +2437,6 @@ const SHADOWING_STEPS = [
   'Avalie seu progresso e conclua',
 ];
 
-/** Quebra o resumo do vídeo em até 5 frases curtas para a prática de shadowing. */
-function extractShadowingPhrases(summary: string): string[] {
-  return summary
-    .split(/(?<=[.!?])\s+/)
-    .map(s => s.trim())
-    .filter(s => s.length > 0)
-    .slice(0, 5);
-}
 
 type PhraseGrade = 'nao-consegui' | 'dificuldade' | 'bem';
 
@@ -2412,13 +2456,15 @@ const ENTENDIMENTO_BUCKETS = [
 function ShadowingWizardModal({
   isOpen,
   onClose,
-  video,
+  videoId,
+  videoTitle,
   onSave,
   onAddWords,
 }: {
   isOpen: boolean;
   onClose: () => void;
-  video: DailyEnglishVideo;
+  videoId: string;
+  videoTitle: string;
   onSave: (session: ShadowingSession) => Promise<void>;
   onAddWords: (word: { word: string; translation: string; sentence?: string; source?: WeeklyWordSource }) => Promise<void>;
 }) {
@@ -2435,7 +2481,7 @@ function ShadowingWizardModal({
   const [phraseGrades, setPhraseGrades] = useState<Record<number, PhraseGrade>>({});
   const [savedAsCard, setSavedAsCard] = useState<Record<number, boolean>>({});
 
-  const extractedPhrases = useMemo(() => extractShadowingPhrases(video.summary ?? ''), [video.summary]);
+  const extractedPhrases = useMemo(() => [], []);
   const phrases = extractedPhrases.length > 0 ? extractedPhrases : manualPhrases;
 
   useEffect(() => {
@@ -2490,9 +2536,9 @@ function ShadowingWizardModal({
     const session: ShadowingSession = {
       id: gerarId(),
       date: getCurrentStudyDate(),
-      videoId: video.videoId,
-      title: video.title,
-      durationSeconds: video.durationSeconds,
+      videoId,
+      title: videoTitle,
+      durationSeconds: 0,
       repeatCount,
       notes: notes || undefined,
       createdAt: now,
@@ -2521,13 +2567,16 @@ function ShadowingWizardModal({
       <div className="space-y-4">
         <div className="flex items-center justify-between text-xs text-surface-500 dark:text-surface-400">
           <span>Passo {step + 1} de {SHADOWING_STEPS.length}</span>
-          <span>{video.title}</span>
+          <span>{videoTitle}</span>
         </div>
         <ProgressBar value={Math.round(((step + 1) / SHADOWING_STEPS.length) * 100)} height="sm" />
         <h3 className="text-sm font-semibold text-surface-900 dark:text-white">{SHADOWING_STEPS[step]}</h3>
 
         {step === 0 && (
-          <StateNote>Assista o vídeo de hoje inteiro, sem ativar legendas. Foque em entender o máximo possível só pelo áudio.</StateNote>
+          <div className="space-y-3">
+            <StateNote>Assista o vídeo inteiro, sem ativar legendas. Foque em entender o máximo possível só pelo áudio.</StateNote>
+            {videoId && <YouTubeSimpleEmbed videoId={videoId} />}
+          </div>
         )}
 
         {step === 1 && (
@@ -2555,6 +2604,7 @@ function ShadowingWizardModal({
         {step === 2 && (
           <div className="space-y-3">
             <StateNote>Agora assista novamente com legendas em inglês ativadas. Anote palavras ou expressões novas abaixo (vão para "Palavras da Semana").</StateNote>
+            {videoId && <YouTubeSimpleEmbed videoId={videoId} />}
             <div className="flex flex-col gap-2 sm:flex-row">
               <input
                 value={novaExpressaoTexto}
