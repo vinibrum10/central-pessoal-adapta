@@ -594,7 +594,7 @@ function VistaLista({ eventos, filtroFonte }: { eventos: EventoAgenda[]; filtroF
 // ============================================================
 
 export function AgendaTempoPage() {
-  const { data, setData } = useApp();
+  const { data, setData, syncStatus } = useApp();
   const { session, loading: authLoading } = useAuth();
 
   const hoje = hojeISO();
@@ -676,13 +676,23 @@ export function AgendaTempoPage() {
   }, [setData]);
 
   const sincronizarFontesConectadas = useCallback(async (options: { google?: boolean; microsoft?: boolean; automatico?: boolean } = {}) => {
-    if (syncInProgressRef.current) return false;
+    if (syncInProgressRef.current) {
+      console.info('[SGP Agenda] Sincronização ignorada: já existe uma execução em andamento.', options);
+      return false;
+    }
     const deveSincronizarGoogle = options.google ?? true;
     const deveSincronizarMicrosoft = options.microsoft ?? true;
     const automatico = Boolean(options.automatico);
 
     syncInProgressRef.current = true;
-    setErroConexao('Sincronizando agenda...');
+    if (!automatico) setErroConexao('Sincronizando agenda...');
+    console.info('[SGP Agenda] Iniciando sincronização.', {
+      automatico,
+      google: deveSincronizarGoogle,
+      microsoft: deveSincronizarMicrosoft,
+      range: range30,
+      syncStatus,
+    });
     try {
       let sincronizouAlgumaFonte = false;
 
@@ -694,6 +704,12 @@ export function AgendaTempoPage() {
           salvarEventosSincronizados(eventos);
           setSincGoogleEm(new Date().toISOString());
           sincronizouAlgumaFonte = true;
+          console.info('[SGP Agenda] Google Calendar sincronizado.', { eventos: eventos.length });
+        } else {
+          console.info('[SGP Agenda] Google Calendar não sincronizado automaticamente: sem permissão/token válido.', {
+            googlePronto,
+            status: getGoogleConnectionStatus(),
+          });
         }
       }
 
@@ -705,6 +721,12 @@ export function AgendaTempoPage() {
           salvarEventosSincronizados(eventos);
           setSincMsEm(new Date().toISOString());
           sincronizouAlgumaFonte = true;
+          console.info('[SGP Agenda] Microsoft Calendar sincronizado.', { eventos: eventos.length });
+        } else {
+          console.info('[SGP Agenda] Microsoft Calendar não sincronizado automaticamente: sem conta ativa.', {
+            microsoftPronto,
+            conectado: isMicrosoftConectado(),
+          });
         }
       }
 
@@ -718,27 +740,47 @@ export function AgendaTempoPage() {
       }
       return false;
     } catch (error) {
+      console.warn('[SGP Agenda] Falha ao sincronizar agenda.', error);
       setErroConexao(mensagemErroAgenda(error));
       return false;
     } finally {
+      console.info('[SGP Agenda] Sincronização finalizada.', { automatico });
       syncInProgressRef.current = false;
       setCarregandoGoogle(false);
       setCarregandoMs(false);
     }
-  }, [range30.fim, range30.ini, salvarEventosSincronizados, session]);
+  }, [range30, salvarEventosSincronizados, session, syncStatus]);
 
-  // ── Auto-sync ao montar: revalida token e sincroniza fontes conectadas ──
+  // ── Auto-sync ao montar: espera os dados globais carregarem, revalida token e sincroniza fontes conectadas ──
   useEffect(() => {
     if (authLoading) return;
+    const appDataReady = session?.user?.id
+      ? syncStatus === 'synced' || syncStatus === 'needs-migration' || syncStatus === 'error'
+      : syncStatus !== 'loading';
+    if (!appDataReady) {
+      console.info('[SGP Agenda] Auto-sync aguardando dados do app ficarem prontos.', {
+        syncStatus,
+        userId: session?.user?.id ?? null,
+      });
+      return;
+    }
+
     const autoSync = async () => {
       const providerTokenState = session?.provider_token ? 'provider-token' : 'no-provider-token';
-      const autoSyncKey = `${session?.user?.id ?? 'anon'}:${providerTokenState}`;
+      const googleStatus = getGoogleConnectionStatus();
+      const microsoftStatus = isMicrosoftConectado() ? 'conectado' : 'desconectado';
+      const autoSyncKey = `${session?.user?.id ?? 'anon'}:${syncStatus}:${providerTokenState}:${googleStatus}:${microsoftStatus}:${range30.ini}:${range30.fim}`;
       if (autoSyncKeyRef.current === autoSyncKey) return;
       autoSyncKeyRef.current = autoSyncKey;
+      console.info('[SGP Agenda] Auto-sync disparado ao abrir Agenda.', {
+        autoSyncKey,
+        googleStatus,
+        microsoftStatus,
+      });
       await sincronizarFontesConectadas({ automatico: true });
     };
     void autoSync();
-  }, [authLoading, session?.access_token, session?.provider_token, session?.user?.id, sincronizarFontesConectadas]);
+  }, [authLoading, range30.fim, range30.ini, session?.access_token, session?.provider_token, session?.user?.id, sincronizarFontesConectadas, syncStatus]);
 
   // ── Google ──
   const handleConectarGoogle = async () => {
