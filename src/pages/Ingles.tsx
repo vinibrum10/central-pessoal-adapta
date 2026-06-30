@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  BarChart3, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, History, Mic, Plus,
-  RotateCcw, Settings, Sparkles, Trash2, TrendingUp, Video,
+  BarChart3, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, Eye, EyeOff, History, Mic, Plus,
+  RotateCcw, RotateCw, Settings, Sparkles, Trash2, TrendingUp, Video,
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { Button } from '../components/Button';
@@ -1736,6 +1736,8 @@ function PalavrasDaSemanaCard({
   const [translating, setTranslating] = useState(false);
   const [translateError, setTranslateError] = useState('');
   const lastTranslatedWordRef = useRef('');
+  const [showAllWords, setShowAllWords] = useState(false);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
 
   const capReached = wordsThisWeek.length >= 10;
 
@@ -1830,55 +1832,169 @@ function PalavrasDaSemanaCard({
         {capReached && <StateNote>Limite de 10 palavras desta semana atingido. Volte na próxima semana para adicionar mais.</StateNote>}
 
         {wordsDueForReview.length > 0 && (
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
-              Para revisar hoje ({wordsDueForReview.length})
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning-200 bg-warning-50/60 px-4 py-3 dark:border-warning-900/40 dark:bg-warning-900/10">
+            <p className="text-sm text-surface-700 dark:text-surface-200">
+              <strong>{wordsDueForReview.length}</strong> palavra(s) para revisar hoje.
             </p>
-            <div className="space-y-2">
-              {wordsDueForReview.map(item => (
-                <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning-200 bg-warning-50/60 px-3 py-2 text-sm dark:border-warning-900/40 dark:bg-warning-900/10">
-                  <div>
-                    <span className="font-medium text-surface-900 dark:text-white">{item.word}</span>
-                    <span className="text-surface-500 dark:text-surface-400"> — {item.translation}</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="success" onClick={() => onReview(item.id, true)}>Lembrei</Button>
-                    <Button size="sm" variant="secondary" onClick={() => onReview(item.id, false)}>Esqueci</Button>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <Button size="sm" variant="success" icon={<RotateCw size={14} />} onClick={() => setReviewModalOpen(true)}>
+              Revisar agora
+            </Button>
           </div>
         )}
 
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
-            Todas as palavras ({allWords.length})
-          </p>
-          {allWords.length === 0 ? (
-            <StateNote>Nenhuma palavra cadastrada ainda. Adicione até 10 por semana.</StateNote>
-          ) : (
-            <div className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
-              {allWords.map(item => (
-                <div key={item.id} className="flex items-center justify-between gap-2 rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700">
-                  <div className="min-w-0">
-                    <span className="font-medium text-surface-900 dark:text-white">{item.word}</span>
-                    <span className="text-surface-500 dark:text-surface-400"> — {item.translation}</span>
-                    {item.example && <p className="text-xs text-surface-400 dark:text-surface-500">{item.example}</p>}
+          <button
+            type="button"
+            onClick={() => setShowAllWords(prev => !prev)}
+            className="flex w-full items-center justify-between gap-2 rounded-lg border border-surface-200 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-surface-500 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:text-surface-400 dark:hover:bg-surface-800"
+          >
+            <span>Todas as palavras ({allWords.length})</span>
+            {showAllWords ? <EyeOff size={14} /> : <Eye size={14} />}
+          </button>
+
+          {showAllWords && (
+            allWords.length === 0 ? (
+              <div className="mt-2"><StateNote>Nenhuma palavra cadastrada ainda. Adicione até 10 por semana.</StateNote></div>
+            ) : (
+              <div className="mt-2 max-h-64 space-y-1.5 overflow-y-auto pr-1">
+                {allWords.map(item => (
+                  <div key={item.id} className="flex items-center justify-between gap-2 rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700">
+                    <div className="min-w-0">
+                      <span className="font-medium text-surface-900 dark:text-white">{item.word}</span>
+                      <span className="text-surface-500 dark:text-surface-400"> — {item.translation}</span>
+                      {item.example && <p className="text-xs text-surface-400 dark:text-surface-500">{item.example}</p>}
+                    </div>
+                    <div className="flex flex-shrink-0 items-center gap-2">
+                      <Badge variant={item.mastered ? 'success' : 'default'}>{item.mastered ? 'dominada' : `revisar ${item.nextReviewAt}`}</Badge>
+                      <button onClick={() => onDelete(item.id)} className="text-surface-400 hover:text-danger-600">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex flex-shrink-0 items-center gap-2">
-                    <Badge variant={item.mastered ? 'success' : 'default'}>{item.mastered ? 'dominada' : `revisar ${item.nextReviewAt}`}</Badge>
-                    <button onClick={() => onDelete(item.id)} className="text-surface-400 hover:text-danger-600">
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )
           )}
         </div>
       </CardBody>
+
+      <FlashcardReviewModal
+        isOpen={reviewModalOpen}
+        onClose={() => setReviewModalOpen(false)}
+        words={wordsDueForReview}
+        onReview={onReview}
+      />
     </Card>
+  );
+}
+
+// ============================================================
+// FLASHCARDS DE REVISÃO (repetição espaçada)
+// ============================================================
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function maskWordInExample(example: string, word: string): string {
+  const trimmedWord = word.trim();
+  if (!trimmedWord) return example;
+  const pattern = new RegExp(escapeRegExp(trimmedWord), 'gi');
+  if (!pattern.test(example)) return example;
+  return example.replace(new RegExp(escapeRegExp(trimmedWord), 'gi'), '_____');
+}
+
+function FlashcardReviewModal({
+  isOpen,
+  onClose,
+  words,
+  onReview,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  words: WeeklyWord[];
+  onReview: (id: string, remembered: boolean) => Promise<void>;
+}) {
+  const [index, setIndex] = useState(0);
+  const [flipped, setFlipped] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setIndex(0);
+      setFlipped(false);
+    }
+  }, [isOpen]);
+
+  const currentWord = words[index];
+  const finished = !currentWord;
+
+  async function handleAnswer(remembered: boolean) {
+    if (!currentWord || submitting) return;
+    setSubmitting(true);
+    try {
+      await onReview(currentWord.id, remembered);
+      setFlipped(false);
+      setIndex(prev => prev + 1);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Revisar Palavras da Semana" size="lg">
+      <div className="space-y-4">
+        {finished ? (
+          <div className="space-y-3 text-center">
+            <CheckCircle2 size={32} className="mx-auto text-success-600" />
+            <p className="text-sm font-medium text-surface-900 dark:text-white">
+              {words.length === 0 ? 'Nenhuma palavra para revisar agora.' : 'Revisão concluída por hoje!'}
+            </p>
+            <Button onClick={onClose}>Fechar</Button>
+          </div>
+        ) : (
+          <>
+            <p className="text-center text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
+              Cartão {index + 1} de {words.length}
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setFlipped(prev => !prev)}
+              className="flex min-h-48 w-full flex-col items-center justify-center gap-3 rounded-xl border border-surface-200 bg-surface-50/80 p-6 text-center transition-colors hover:bg-surface-100 dark:border-surface-700 dark:bg-surface-800/60 dark:hover:bg-surface-800"
+            >
+              {!flipped ? (
+                <>
+                  <p className="text-xs font-medium uppercase tracking-wide text-surface-500 dark:text-surface-400">
+                    Qual a tradução desta frase?
+                  </p>
+                  <p className="text-lg font-semibold text-surface-900 dark:text-white">
+                    {currentWord.example ? maskWordInExample(currentWord.example, currentWord.word) : currentWord.word}
+                  </p>
+                  <p className="flex items-center gap-1 text-xs text-surface-400 dark:text-surface-500">
+                    <RotateCw size={12} /> Toque para virar o cartão
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-lg font-semibold text-surface-900 dark:text-white">{currentWord.word}</p>
+                  <p className="text-base text-primary-600 dark:text-primary-300">{currentWord.translation}</p>
+                  {currentWord.example && (
+                    <p className="text-sm text-surface-500 dark:text-surface-400">{currentWord.example}</p>
+                  )}
+                </>
+              )}
+            </button>
+
+            {flipped && (
+              <div className="flex justify-center gap-3">
+                <Button variant="secondary" disabled={submitting} onClick={() => handleAnswer(false)}>Esqueci</Button>
+                <Button variant="success" disabled={submitting} onClick={() => handleAnswer(true)}>Lembrei</Button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </Modal>
   );
 }
 
