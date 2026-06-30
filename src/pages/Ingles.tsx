@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BookOpen, CheckCircle2, History, RotateCcw, Settings, Video } from 'lucide-react';
+import {
+  BarChart3, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, History, Mic, Plus,
+  RotateCcw, Settings, Sparkles, Trash2, TrendingUp, Video,
+} from 'lucide-react';
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { Button } from '../components/Button';
 import { Card, CardBody, CardHeader } from '../components/Card';
 import { Modal } from '../components/Modal';
@@ -9,15 +13,31 @@ import { useAuth } from '../contexts/AuthContext';
 import { dailyEnglishVideos, getDailyEnglishVideoById, type DailyEnglishVideo } from '../data/englishDailyVideos';
 import { buscarVideosIngles, isYouTubeEnglishConfigured, DURACAO_MAX_SECONDS } from '../services/youtubeEnglish';
 import { generateEnglishQuiz } from '../services/englishQuizApi';
-import { getEnglishStudyData, saveEnglishStudyData } from '../services/englishStudyStorage';
+import {
+  addDaysISO,
+  addPreplyAula,
+  addShadowingSession,
+  addWeeklyWord,
+  deletePreplyAula,
+  deleteWeeklyWord,
+  getEnglishStudyData,
+  getWeekStartISO,
+  reviewWeeklyWord,
+  saveDuolingoStreak,
+  saveEnglishStudyData,
+} from '../services/englishStudyStorage';
 import { gerarId, hojeISO } from '../utils';
 import type {
+  DuolingoStreak,
   EnglishQuizAttempt,
   EnglishCefrLevel,
   EnglishDailyStudy,
   EnglishStudyData,
   GeneratedEnglishQuiz,
+  PreplyAula,
+  ShadowingSession,
   StudySession,
+  WeeklyWord,
 } from '../types/englishStudy';
 
 type YouTubePlayerState = -1 | 0 | 1 | 2 | 3 | 5;
@@ -59,6 +79,10 @@ const emptyStudyData: EnglishStudyData = {
   dailyStudies: [],
   generatedQuizzes: [],
   quizAttempts: [],
+  shadowingSessions: [],
+  preplyAulas: [],
+  duolingoStreak: { currentStreak: 0, longestStreak: 0, lastUpdatedDate: '', history: [] },
+  weeklyWords: [],
 };
 
 const passingScorePercent = 60;
@@ -202,6 +226,58 @@ function getWeekSummary(data: EnglishStudyData) {
   return { studiedDays, minutes, completedVideos };
 }
 
+const WEEKDAY_LABELS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
+
+interface DayActivity {
+  date: string;
+  label: string;
+  isToday: boolean;
+  hasDailyStudy: boolean;
+  hasShadowing: boolean;
+  hasPreply: boolean;
+  hasDuolingo: boolean;
+  hasWordReview: boolean;
+  active: boolean;
+}
+
+function getWeekActivity(data: EnglishStudyData): DayActivity[] {
+  const today = hojeISO();
+  const weekStart = getWeekStartISO(today);
+  const days: DayActivity[] = [];
+  for (let i = 0; i < 7; i += 1) {
+    const date = addDaysISO(weekStart, i);
+    const hasDailyStudy = data.dailyStudies.some(s => s.date === date && (s.watchedSeconds.length > 0 || s.completed));
+    const hasShadowing = data.shadowingSessions.some(s => s.date === date);
+    const hasPreply = data.preplyAulas.some(a => a.date === date);
+    const hasDuolingo = data.duolingoStreak.history.some(h => h.date === date && h.xp > 0);
+    const hasWordReview = data.weeklyWords.some(w => w.lastReviewedAt?.slice(0, 10) === date || w.addedAt.slice(0, 10) === date);
+    days.push({
+      date,
+      label: WEEKDAY_LABELS[i],
+      isToday: date === today,
+      hasDailyStudy,
+      hasShadowing,
+      hasPreply,
+      hasDuolingo,
+      hasWordReview,
+      active: hasDailyStudy || hasShadowing || hasPreply || hasDuolingo || hasWordReview,
+    });
+  }
+  return days;
+}
+
+function getShadowingStreak(sessions: ShadowingSession[]): number {
+  if (sessions.length === 0) return 0;
+  const dates = new Set(sessions.map(s => s.date));
+  let streak = 0;
+  let cursor = hojeISO();
+  while (dates.has(cursor)) {
+    streak += 1;
+    cursor = addDaysISO(cursor, -1);
+  }
+  return streak;
+}
+
 export function InglesPage() {
   const { user } = useAuth();
   const userId = user?.id ?? null;
@@ -224,6 +300,9 @@ export function InglesPage() {
   const [videoPreferences, setVideoPreferences] = useState(getSavedVideoPreferences);
   const [libraryResultsByFilter, setLibraryResultsByFilter] = useState<Record<string, VideoResult[]>>({});
   const [changingVideo, setChangingVideo] = useState(false);
+  const [shadowingWizardOpen, setShadowingWizardOpen] = useState(false);
+  const [progressModalOpen, setProgressModalOpen] = useState(false);
+  const [preplyModalOpen, setPreplyModalOpen] = useState(false);
 
   const todayStudy = useMemo(() => getTodayStudy(data, dailyEnglishVideos[0]), [data]);
   const currentVideo = useMemo(() => resolveDailyVideoFromStudy(todayStudy), [todayStudy]);
@@ -237,6 +316,17 @@ export function InglesPage() {
   const quizCompleted = todayStudy.quizCompleted || todayStudy.quizStatus === 'completed';
   const quizPercent = todayStudy.quizScorePercent ?? (todayStudy.quizTotal ? Math.round(((todayStudy.quizScore ?? 0) / todayStudy.quizTotal) * 100) : 0);
   const weekSummary = useMemo(() => getWeekSummary(data), [data]);
+  const weekActivity = useMemo(() => getWeekActivity(data), [data]);
+  const shadowingStreak = useMemo(() => getShadowingStreak(data.shadowingSessions), [data.shadowingSessions]);
+  const currentWeekStart = useMemo(() => getWeekStartISO(hojeISO()), []);
+  const wordsThisWeek = useMemo(
+    () => data.weeklyWords.filter(w => w.weekStart === currentWeekStart),
+    [data.weeklyWords, currentWeekStart],
+  );
+  const wordsDueForReview = useMemo(
+    () => data.weeklyWords.filter(w => !w.mastered && w.nextReviewAt <= hojeISO()),
+    [data.weeklyWords],
+  );
   const selectedNivel = videoPreferences.nivel;
   const selectedDuracao = videoPreferences.duracao;
   const selectedFilterKey = getLibraryFilterKey(selectedNivel, selectedDuracao);
@@ -339,6 +429,10 @@ export function InglesPage() {
           dailyStudies: studyData.dailyStudies ?? [],
           generatedQuizzes: studyData.generatedQuizzes ?? [],
           quizAttempts: studyData.quizAttempts ?? [],
+          shadowingSessions: studyData.shadowingSessions ?? [],
+          preplyAulas: studyData.preplyAulas ?? [],
+          duolingoStreak: studyData.duolingoStreak ?? emptyStudyData.duolingoStreak,
+          weeklyWords: studyData.weeklyWords ?? [],
         };
         const study = getTodayStudy(normalizedData, dailyEnglishVideos[0]);
         setData(mergeDailyStudy(normalizedData, study));
@@ -653,6 +747,46 @@ export function InglesPage() {
     await saveStudy(nextStudy);
   }
 
+  async function handleSaveShadowingSession(session: ShadowingSession) {
+    const next = await addShadowingSession(userId, session);
+    await saveData(next);
+  }
+
+  async function handleAddPreplyAula(aula: PreplyAula) {
+    const next = await addPreplyAula(userId, aula);
+    await saveData(next);
+  }
+
+  async function handleDeletePreplyAula(id: string) {
+    const next = await deletePreplyAula(userId, id);
+    await saveData(next);
+  }
+
+  async function handleUpdateDuolingoStreak(streak: DuolingoStreak) {
+    const next = await saveDuolingoStreak(userId, streak);
+    await saveData(next);
+  }
+
+  async function handleAddWeeklyWord(word: { word: string; translation: string; example?: string }) {
+    const next = await addWeeklyWord(userId, {
+      word: word.word,
+      translation: word.translation,
+      example: word.example,
+      weekStart: currentWeekStart,
+    });
+    await saveData(next);
+  }
+
+  async function handleReviewWeeklyWord(id: string, remembered: boolean) {
+    const next = await reviewWeeklyWord(userId, id, remembered);
+    await saveData(next);
+  }
+
+  async function handleDeleteWeeklyWord(id: string) {
+    const next = await deleteWeeklyWord(userId, id);
+    await saveData(next);
+  }
+
   if (loading) {
     return <p className="text-sm text-surface-500 dark:text-surface-400">Carregando Inglês Diário...</p>;
   }
@@ -844,33 +978,79 @@ export function InglesPage() {
         <MetricCard label="Vídeos concluídos" value={weekSummary.completedVideos} icon={<CheckCircle2 size={18} />} tone="neutral" />
       </div>
 
-      <div className="flex flex-col gap-2 pb-4 sm:flex-row sm:justify-center">
-        <Button variant="ghost" icon={<BookOpen size={16} />} onClick={() => setShortcutModal('Biblioteca')}>Biblioteca</Button>
+      <Card>
+        <CardHeader title="Atividade da semana" subtitle="Um círculo por dia: estudo diário, shadowing, Preply, Duolingo ou revisão de palavras." icon={<TrendingUp size={18} />} />
+        <CardBody>
+          <WeekActivityRow days={weekActivity} />
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Shadowing guiado"
+          subtitle={`Sequência de 5 passos para praticar pronúncia. Streak atual: ${shadowingStreak} dia(s).`}
+          icon={<Mic size={18} />}
+          action={<Button size="sm" icon={<Mic size={14} />} onClick={() => setShadowingWizardOpen(true)}>Iniciar shadowing</Button>}
+        />
+        <CardBody>
+          {data.shadowingSessions.length === 0 ? (
+            <StateNote>Nenhuma sessão de shadowing registrada ainda. Use o vídeo de hoje para praticar.</StateNote>
+          ) : (
+            <div className="space-y-2">
+              {data.shadowingSessions.slice(0, 3).map(session => (
+                <div key={session.id} className="flex items-center justify-between rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700">
+                  <span className="text-surface-700 dark:text-surface-200">{session.date} · {session.title}</span>
+                  <Badge variant={session.status === 'completa' ? 'success' : 'default'}>{session.status}</Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardBody>
+      </Card>
+
+      <PalavrasDaSemanaCard
+        wordsThisWeek={wordsThisWeek}
+        wordsDueForReview={wordsDueForReview}
+        allWords={data.weeklyWords}
+        onAdd={handleAddWeeklyWord}
+        onReview={handleReviewWeeklyWord}
+        onDelete={handleDeleteWeeklyWord}
+      />
+
+      <div className="flex flex-col gap-2 pb-4 sm:flex-row sm:justify-center sm:flex-wrap">
         <Button variant="ghost" icon={<History size={16} />} onClick={() => setShortcutModal('Histórico')}>Histórico</Button>
+        <Button variant="ghost" icon={<BarChart3 size={16} />} onClick={() => setProgressModalOpen(true)}>Meu Progresso</Button>
         <Button variant="ghost" icon={<Settings size={16} />} onClick={() => setShortcutModal('Configurações')}>Configurações</Button>
       </div>
 
+      <ShadowingWizardModal
+        isOpen={shadowingWizardOpen}
+        onClose={() => setShadowingWizardOpen(false)}
+        video={currentVideo}
+        onSave={handleSaveShadowingSession}
+        onAddWords={handleAddWeeklyWord}
+      />
+
+      <MeuProgressoModal
+        isOpen={progressModalOpen}
+        onClose={() => setProgressModalOpen(false)}
+        data={data}
+        shadowingStreak={shadowingStreak}
+        onOpenPreplyModal={() => setPreplyModalOpen(true)}
+        onUpdateDuolingo={handleUpdateDuolingoStreak}
+      />
+
+      <PreplyModal
+        isOpen={preplyModalOpen}
+        onClose={() => setPreplyModalOpen(false)}
+        aulas={data.preplyAulas}
+        onAdd={handleAddPreplyAula}
+        onDelete={handleDeletePreplyAula}
+        onAddWords={handleAddWeeklyWord}
+      />
+
       <Modal isOpen={shortcutModal !== null} onClose={() => setShortcutModal(null)} title={shortcutModal ?? ''} size="lg">
         <div className="space-y-3">
-          {shortcutModal === 'Biblioteca' && (
-            <BibliotecaVideos
-              allVideos={dailyEnglishVideos}
-              nivel={selectedNivel}
-              duracao={selectedDuracao}
-              onNivelChange={(nivel) => updateVideoPreferences({ nivel })}
-              onDuracaoChange={(duracao) => updateVideoPreferences({ duracao })}
-              cachedResults={cachedVideosForSelectedFilter}
-              onCacheResults={cacheLibraryResults}
-              onSelectVideo={(video) => {
-                setAnswers({});
-                setQuizMessage('');
-                setPlayerStatus('loading');
-                void saveStudy(createDailyStudy(hojeISO(), video));
-                setShortcutModal(null);
-              }}
-            />
-          )}
-
           {shortcutModal === 'Histórico' && (
             <div className="space-y-2">
               {data.dailyStudies.length === 0 && <p className="text-sm text-surface-500 dark:text-surface-400">Nenhum estudo registrado ainda.</p>}
@@ -1302,5 +1482,679 @@ function StateNote({ children }: { children: string }) {
     <div className="rounded-lg border border-surface-200 bg-surface-50/80 px-4 py-3 text-sm text-surface-600 dark:border-white/10 dark:bg-white/5 dark:text-surface-300">
       {children}
     </div>
+  );
+}
+
+// ============================================================
+// ATIVIDADE DA SEMANA — 7 CÍRCULOS
+// ============================================================
+function WeekActivityRow({ days }: { days: DayActivity[] }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      {days.map(day => (
+        <div key={day.date} className="flex flex-1 flex-col items-center gap-1.5">
+          <div
+            title={day.date}
+            className={`flex h-9 w-9 items-center justify-center rounded-full border-2 text-xs font-semibold transition-all sm:h-10 sm:w-10 ${
+              day.active
+                ? 'border-primary-500 bg-primary-500 text-white shadow-sm shadow-primary-600/30'
+                : 'border-surface-200 bg-surface-50 text-surface-400 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-500'
+            } ${day.isToday ? 'ring-2 ring-offset-2 ring-primary-400 dark:ring-offset-surface-900' : ''}`}
+          >
+            {day.active ? <CheckCircle2 size={16} /> : day.label}
+          </div>
+          <span className={`text-[10px] font-medium ${day.isToday ? 'text-primary-600 dark:text-primary-300' : 'text-surface-400 dark:text-surface-500'}`}>
+            {day.label}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ============================================================
+// SHADOWING WIZARD — 5 PASSOS
+// ============================================================
+const SHADOWING_STEPS = [
+  'Assista sem legenda',
+  'Avalie seu entendimento',
+  'Assista com legenda e anote expressões novas',
+  'Pratique o shadowing (repita em voz alta)',
+  'Avalie seu progresso e conclua',
+];
+
+const ENTENDIMENTO_BUCKETS = [
+  { label: '0-25%', value: 12 },
+  { label: '25-50%', value: 37 },
+  { label: '50-75%', value: 62 },
+  { label: '75-100%', value: 87 },
+];
+
+function ShadowingWizardModal({
+  isOpen,
+  onClose,
+  video,
+  onSave,
+  onAddWords,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  video: DailyEnglishVideo;
+  onSave: (session: ShadowingSession) => Promise<void>;
+  onAddWords: (word: { word: string; translation: string; example?: string }) => Promise<void>;
+}) {
+  const [step, setStep] = useState(0);
+  const [entendimentoPrimeira, setEntendimentoPrimeira] = useState<number | null>(null);
+  const [entendimentoTerceira, setEntendimentoTerceira] = useState<number | null>(null);
+  const [repeatCount, setRepeatCount] = useState(3);
+  const [novaExpressaoTexto, setNovaExpressaoTexto] = useState('');
+  const [novaExpressaoTraducao, setNovaExpressaoTraducao] = useState('');
+  const [expressoesAdicionadas, setExpressoesAdicionadas] = useState<string[]>([]);
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setStep(0);
+      setEntendimentoPrimeira(null);
+      setEntendimentoTerceira(null);
+      setRepeatCount(3);
+      setNovaExpressaoTexto('');
+      setNovaExpressaoTraducao('');
+      setExpressoesAdicionadas([]);
+      setNotes('');
+    }
+  }, [isOpen]);
+
+  function handleAddExpressao() {
+    if (!novaExpressaoTexto.trim()) return;
+    setExpressoesAdicionadas(prev => [...prev, novaExpressaoTexto.trim()]);
+    void onAddWords({
+      word: novaExpressaoTexto.trim(),
+      translation: novaExpressaoTraducao.trim() || '—',
+    });
+    setNovaExpressaoTexto('');
+    setNovaExpressaoTraducao('');
+  }
+
+  async function handleFinish() {
+    setSaving(true);
+    const now = new Date().toISOString();
+    const session: ShadowingSession = {
+      id: gerarId(),
+      date: hojeISO(),
+      videoId: video.videoId,
+      title: video.title,
+      durationSeconds: video.durationSeconds,
+      repeatCount,
+      notes: notes || undefined,
+      createdAt: now,
+      entendimentoPrimeiraPassada: entendimentoPrimeira ?? undefined,
+      entendimentoTerceiraPassada: entendimentoTerceira ?? undefined,
+      expressoesAdicionadas: expressoesAdicionadas.length > 0 ? expressoesAdicionadas : undefined,
+      status: 'completa',
+      atualizadoEm: now,
+    };
+    try {
+      await onSave(session);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const canAdvance = (() => {
+    if (step === 1) return entendimentoPrimeira !== null;
+    if (step === 4) return entendimentoTerceira !== null;
+    return true;
+  })();
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Shadowing guiado" size="lg">
+      <div className="space-y-4">
+        <div className="flex items-center justify-between text-xs text-surface-500 dark:text-surface-400">
+          <span>Passo {step + 1} de {SHADOWING_STEPS.length}</span>
+          <span>{video.title}</span>
+        </div>
+        <ProgressBar value={Math.round(((step + 1) / SHADOWING_STEPS.length) * 100)} height="sm" />
+        <h3 className="text-sm font-semibold text-surface-900 dark:text-white">{SHADOWING_STEPS[step]}</h3>
+
+        {step === 0 && (
+          <StateNote>Assista o vídeo de hoje inteiro, sem ativar legendas. Foque em entender o máximo possível só pelo áudio.</StateNote>
+        )}
+
+        {step === 1 && (
+          <div className="space-y-2">
+            <p className="text-sm text-surface-600 dark:text-surface-300">Quanto você entendeu sem legenda?</p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {ENTENDIMENTO_BUCKETS.map(bucket => (
+                <button
+                  key={bucket.label}
+                  type="button"
+                  onClick={() => setEntendimentoPrimeira(bucket.value)}
+                  className={`rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+                    entendimentoPrimeira === bucket.value
+                      ? 'bg-primary-600 text-white'
+                      : 'bg-surface-100 text-surface-600 hover:bg-surface-200 dark:bg-surface-700 dark:text-surface-300 dark:hover:bg-surface-600'
+                  }`}
+                >
+                  {bucket.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="space-y-3">
+            <StateNote>Agora assista novamente com legendas em inglês ativadas. Anote palavras ou expressões novas abaixo (vão para "Palavras da Semana").</StateNote>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                value={novaExpressaoTexto}
+                onChange={e => setNovaExpressaoTexto(e.target.value)}
+                placeholder="Palavra ou expressão"
+                className="flex-1 rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+              />
+              <input
+                value={novaExpressaoTraducao}
+                onChange={e => setNovaExpressaoTraducao(e.target.value)}
+                placeholder="Tradução (opcional)"
+                className="flex-1 rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+              />
+              <Button size="sm" variant="secondary" icon={<Plus size={14} />} onClick={handleAddExpressao}>Adicionar</Button>
+            </div>
+            {expressoesAdicionadas.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {expressoesAdicionadas.map(expr => (
+                  <Badge key={expr} variant="default">{expr}</Badge>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="space-y-3">
+            <StateNote>Pratique o shadowing: repita as falas em voz alta, junto com o áudio, tentando imitar pronúncia e ritmo.</StateNote>
+            <div>
+              <p className="mb-2 text-sm text-surface-600 dark:text-surface-300">Quantas vezes você repetiu o trecho?</p>
+              <div className="flex flex-wrap gap-2">
+                {[1, 2, 3, 4, 5].map(n => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setRepeatCount(n)}
+                    className={`h-9 w-9 rounded-lg text-sm font-semibold transition-all ${
+                      repeatCount === n
+                        ? 'bg-primary-600 text-white'
+                        : 'bg-surface-100 text-surface-600 hover:bg-surface-200 dark:bg-surface-700 dark:text-surface-300 dark:hover:bg-surface-600'
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className="space-y-3">
+            <p className="text-sm text-surface-600 dark:text-surface-300">Depois do shadowing, como está seu entendimento e fluência nesse trecho?</p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {ENTENDIMENTO_BUCKETS.map(bucket => (
+                <button
+                  key={bucket.label}
+                  type="button"
+                  onClick={() => setEntendimentoTerceira(bucket.value)}
+                  className={`rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+                    entendimentoTerceira === bucket.value
+                      ? 'bg-primary-600 text-white'
+                      : 'bg-surface-100 text-surface-600 hover:bg-surface-200 dark:bg-surface-700 dark:text-surface-300 dark:hover:bg-surface-600'
+                  }`}
+                >
+                  {bucket.label}
+                </button>
+              ))}
+            </div>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="Notas finais (opcional)"
+              rows={3}
+              className="w-full rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+            />
+            {entendimentoPrimeira !== null && entendimentoTerceira !== null && (
+              <StateNote>
+                {entendimentoTerceira > entendimentoPrimeira
+                  ? 'Ótimo progresso! Seu entendimento melhorou após o shadowing.'
+                  : 'Continue praticando — repetir o mesmo trecho em dias diferentes ajuda a fixar.'}
+              </StateNote>
+            )}
+          </div>
+        )}
+
+        <div className="flex justify-between gap-2 pt-2">
+          <Button
+            variant="secondary"
+            icon={<ChevronLeft size={16} />}
+            disabled={step === 0}
+            onClick={() => setStep(s => Math.max(0, s - 1))}
+          >
+            Voltar
+          </Button>
+          {step < SHADOWING_STEPS.length - 1 ? (
+            <Button icon={<ChevronRight size={16} />} disabled={!canAdvance} onClick={() => setStep(s => Math.min(SHADOWING_STEPS.length - 1, s + 1))}>
+              Próximo
+            </Button>
+          ) : (
+            <Button icon={<CheckCircle2 size={16} />} disabled={!canAdvance} loading={saving} onClick={handleFinish}>
+              Concluir shadowing
+            </Button>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ============================================================
+// PALAVRAS DA SEMANA
+// ============================================================
+function PalavrasDaSemanaCard({
+  wordsThisWeek,
+  wordsDueForReview,
+  allWords,
+  onAdd,
+  onReview,
+  onDelete,
+}: {
+  wordsThisWeek: WeeklyWord[];
+  wordsDueForReview: WeeklyWord[];
+  allWords: WeeklyWord[];
+  onAdd: (word: { word: string; translation: string; example?: string }) => Promise<void>;
+  onReview: (id: string, remembered: boolean) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+}) {
+  const [word, setWord] = useState('');
+  const [translation, setTranslation] = useState('');
+  const [example, setExample] = useState('');
+  const [adding, setAdding] = useState(false);
+
+  const capReached = wordsThisWeek.length >= 10;
+
+  async function handleAdd() {
+    if (!word.trim() || !translation.trim() || capReached) return;
+    setAdding(true);
+    try {
+      await onAdd({ word: word.trim(), translation: translation.trim(), example: example.trim() || undefined });
+      setWord('');
+      setTranslation('');
+      setExample('');
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        title="Palavras da Semana"
+        subtitle={`${wordsThisWeek.length}/10 palavras adicionadas esta semana · revisão espaçada por 3 meses`}
+        icon={<Sparkles size={18} />}
+      />
+      <CardBody className="space-y-4">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            value={word}
+            onChange={e => setWord(e.target.value)}
+            placeholder="Palavra/expressão"
+            disabled={capReached}
+            className="flex-1 rounded-lg border border-surface-200 px-3 py-2 text-sm disabled:opacity-50 dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+          />
+          <input
+            value={translation}
+            onChange={e => setTranslation(e.target.value)}
+            placeholder="Tradução"
+            disabled={capReached}
+            className="flex-1 rounded-lg border border-surface-200 px-3 py-2 text-sm disabled:opacity-50 dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+          />
+          <input
+            value={example}
+            onChange={e => setExample(e.target.value)}
+            placeholder="Exemplo (opcional)"
+            disabled={capReached}
+            className="flex-1 rounded-lg border border-surface-200 px-3 py-2 text-sm disabled:opacity-50 dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+          />
+          <Button size="sm" icon={<Plus size={14} />} disabled={capReached || adding} loading={adding} onClick={handleAdd}>
+            Adicionar
+          </Button>
+        </div>
+
+        {capReached && <StateNote>Limite de 10 palavras desta semana atingido. Volte na próxima semana para adicionar mais.</StateNote>}
+
+        {wordsDueForReview.length > 0 && (
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
+              Para revisar hoje ({wordsDueForReview.length})
+            </p>
+            <div className="space-y-2">
+              {wordsDueForReview.map(item => (
+                <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning-200 bg-warning-50/60 px-3 py-2 text-sm dark:border-warning-900/40 dark:bg-warning-900/10">
+                  <div>
+                    <span className="font-medium text-surface-900 dark:text-white">{item.word}</span>
+                    <span className="text-surface-500 dark:text-surface-400"> — {item.translation}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="success" onClick={() => onReview(item.id, true)}>Lembrei</Button>
+                    <Button size="sm" variant="secondary" onClick={() => onReview(item.id, false)}>Esqueci</Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
+            Todas as palavras ({allWords.length})
+          </p>
+          {allWords.length === 0 ? (
+            <StateNote>Nenhuma palavra cadastrada ainda. Adicione até 10 por semana.</StateNote>
+          ) : (
+            <div className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
+              {allWords.map(item => (
+                <div key={item.id} className="flex items-center justify-between gap-2 rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700">
+                  <div className="min-w-0">
+                    <span className="font-medium text-surface-900 dark:text-white">{item.word}</span>
+                    <span className="text-surface-500 dark:text-surface-400"> — {item.translation}</span>
+                    {item.example && <p className="text-xs text-surface-400 dark:text-surface-500">{item.example}</p>}
+                  </div>
+                  <div className="flex flex-shrink-0 items-center gap-2">
+                    <Badge variant={item.mastered ? 'success' : 'default'}>{item.mastered ? 'dominada' : `revisar ${item.nextReviewAt}`}</Badge>
+                    <button onClick={() => onDelete(item.id)} className="text-surface-400 hover:text-danger-600">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </CardBody>
+    </Card>
+  );
+}
+
+// ============================================================
+// MEU PROGRESSO
+// ============================================================
+function MeuProgressoModal({
+  isOpen,
+  onClose,
+  data,
+  shadowingStreak,
+  onOpenPreplyModal,
+  onUpdateDuolingo,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  data: EnglishStudyData;
+  shadowingStreak: number;
+  onOpenPreplyModal: () => void;
+  onUpdateDuolingo: (streak: DuolingoStreak) => Promise<void>;
+}) {
+  const [xpInput, setXpInput] = useState('10');
+  const [savingXp, setSavingXp] = useState(false);
+
+  const shadowingChartData = useMemo(() => {
+    const byDate = new Map<string, number>();
+    data.shadowingSessions.forEach(session => {
+      byDate.set(session.date, (byDate.get(session.date) ?? 0) + session.repeatCount);
+    });
+    return Array.from(byDate.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-14)
+      .map(([date, repeats]) => ({ date: date.slice(5), repeats }));
+  }, [data.shadowingSessions]);
+
+  async function handleRegisterDuolingoToday() {
+    const xp = Number(xpInput) || 0;
+    setSavingXp(true);
+    const today = hojeISO();
+    const alreadyToday = data.duolingoStreak.history.some(h => h.date === today);
+    const history = alreadyToday
+      ? data.duolingoStreak.history.map(h => h.date === today ? { date: today, xp } : h)
+      : [...data.duolingoStreak.history, { date: today, xp }];
+    const wasYesterdayActive = data.duolingoStreak.lastUpdatedDate === addDaysISO(today, -1);
+    const currentStreak = alreadyToday
+      ? data.duolingoStreak.currentStreak
+      : (wasYesterdayActive || data.duolingoStreak.currentStreak === 0 ? data.duolingoStreak.currentStreak + 1 : 1);
+    const longestStreak = Math.max(data.duolingoStreak.longestStreak, currentStreak);
+    try {
+      await onUpdateDuolingo({ currentStreak, longestStreak, lastUpdatedDate: today, history });
+    } finally {
+      setSavingXp(false);
+    }
+  }
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Meu Progresso" size="xl">
+      <div className="space-y-5">
+        <div>
+          <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-surface-900 dark:text-white">
+            <Mic size={16} /> Shadowing
+          </h3>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <SummaryItem label="Streak atual" value={`${shadowingStreak} dia(s)`} />
+            <SummaryItem label="Sessões totais" value={String(data.shadowingSessions.length)} />
+            <SummaryItem
+              label="Repetições (últ. sessão)"
+              value={data.shadowingSessions[0] ? String(data.shadowingSessions[0].repeatCount) : '—'}
+            />
+          </div>
+          {shadowingChartData.length > 0 ? (
+            <div className="mt-3 h-48 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={shadowingChartData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                  <XAxis dataKey="date" fontSize={11} />
+                  <YAxis fontSize={11} allowDecimals={false} />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="repeats" stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="mt-3"><StateNote>Sem sessões de shadowing registradas ainda.</StateNote></div>
+          )}
+        </div>
+
+        <div className="border-t border-surface-200 pt-4 dark:border-surface-700">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-surface-900 dark:text-white">
+              <BookOpen size={16} /> Preply
+            </h3>
+            <Button size="sm" variant="secondary" icon={<Plus size={14} />} onClick={onOpenPreplyModal}>Registrar aula</Button>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <SummaryItem label="Aulas registradas" value={String(data.preplyAulas.length)} />
+            <SummaryItem
+              label="Minutos totais"
+              value={String(data.preplyAulas.reduce((sum, a) => sum + a.minutes, 0))}
+            />
+            <SummaryItem
+              label="Última aula"
+              value={data.preplyAulas[0]?.date ?? '—'}
+            />
+          </div>
+        </div>
+
+        <div className="border-t border-surface-200 pt-4 dark:border-surface-700">
+          <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-surface-900 dark:text-white">
+            <Sparkles size={16} /> Duolingo
+          </h3>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <SummaryItem label="Streak atual" value={`${data.duolingoStreak.currentStreak} dia(s)`} />
+            <SummaryItem label="Maior streak" value={`${data.duolingoStreak.longestStreak} dia(s)`} />
+            <SummaryItem label="Última atualização" value={data.duolingoStreak.lastUpdatedDate || '—'} />
+          </div>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <input
+              type="number"
+              min={0}
+              value={xpInput}
+              onChange={e => setXpInput(e.target.value)}
+              placeholder="XP de hoje"
+              className="w-32 rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+            />
+            <Button size="sm" loading={savingXp} onClick={handleRegisterDuolingoToday}>Registrar XP de hoje</Button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ============================================================
+// PREPLY — MODAL DE REGISTRO
+// ============================================================
+function PreplyModal({
+  isOpen,
+  onClose,
+  aulas,
+  onAdd,
+  onDelete,
+  onAddWords,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  aulas: PreplyAula[];
+  onAdd: (aula: PreplyAula) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+  onAddWords: (word: { word: string; translation: string; example?: string }) => Promise<void>;
+}) {
+  const [teacher, setTeacher] = useState('');
+  const [professor, setProfessor] = useState<'brasileira' | 'nativo'>('nativo');
+  const [minutes, setMinutes] = useState(50);
+  const [topic, setTopic] = useState('');
+  const [expressoesNovas, setExpressoesNovas] = useState('');
+  const [pontosDeDificuldade, setPontosDeDificuldade] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    if (!teacher.trim() || !topic.trim()) return;
+    setSaving(true);
+    const now = new Date().toISOString();
+    const aula: PreplyAula = {
+      id: gerarId(),
+      date: hojeISO(),
+      teacher: teacher.trim(),
+      minutes,
+      topic: topic.trim(),
+      createdAt: now,
+      professor,
+      expressoesNovas: expressoesNovas.trim() || undefined,
+      pontosDeDificuldade: pontosDeDificuldade.trim() || undefined,
+    };
+    try {
+      await onAdd(aula);
+      if (expressoesNovas.trim()) {
+        const items = expressoesNovas.split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+        for (const item of items) {
+          await onAddWords({ word: item, translation: '—' });
+        }
+      }
+      setTeacher('');
+      setTopic('');
+      setExpressoesNovas('');
+      setPontosDeDificuldade('');
+      setMinutes(50);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Registrar aula de Preply" size="lg">
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <input
+            value={teacher}
+            onChange={e => setTeacher(e.target.value)}
+            placeholder="Nome do professor"
+            className="rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+          />
+          <div className="flex gap-2">
+            {(['nativo', 'brasileira'] as const).map(opt => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => setProfessor(opt)}
+                className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+                  professor === opt
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-surface-100 text-surface-600 hover:bg-surface-200 dark:bg-surface-700 dark:text-surface-300'
+                }`}
+              >
+                {opt === 'nativo' ? 'Nativo' : 'Brasileira'}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <input
+            value={topic}
+            onChange={e => setTopic(e.target.value)}
+            placeholder="Tópico da aula"
+            className="rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+          />
+          <input
+            type="number"
+            min={5}
+            value={minutes}
+            onChange={e => setMinutes(Number(e.target.value) || 0)}
+            placeholder="Minutos"
+            className="rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+          />
+        </div>
+        <textarea
+          value={expressoesNovas}
+          onChange={e => setExpressoesNovas(e.target.value)}
+          placeholder="Expressões novas (separe por vírgula ou linha) — vão para Palavras da Semana"
+          rows={2}
+          className="w-full rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+        />
+        <textarea
+          value={pontosDeDificuldade}
+          onChange={e => setPontosDeDificuldade(e.target.value)}
+          placeholder="Pontos de dificuldade observados"
+          rows={2}
+          className="w-full rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+        />
+        <Button className="w-full sm:w-auto" loading={saving} disabled={!teacher.trim() || !topic.trim()} onClick={handleSave}>
+          Salvar aula
+        </Button>
+
+        {aulas.length > 0 && (
+          <div className="border-t border-surface-200 pt-3 dark:border-surface-700">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Histórico</p>
+            <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+              {aulas.map(aula => (
+                <div key={aula.id} className="flex items-center justify-between gap-2 rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700">
+                  <div className="min-w-0">
+                    <p className="font-medium text-surface-900 dark:text-white">{aula.date} · {aula.teacher} ({aula.minutes}min)</p>
+                    <p className="text-xs text-surface-500 dark:text-surface-400">{aula.topic}</p>
+                  </div>
+                  <button onClick={() => onDelete(aula.id)} className="flex-shrink-0 text-surface-400 hover:text-danger-600">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }

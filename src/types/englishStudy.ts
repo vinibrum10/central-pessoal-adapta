@@ -125,6 +125,61 @@ export interface EnglishDailyStudy {
   completedAt?: string;
 }
 
+export interface ShadowingSession {
+  id: string;
+  date: string;
+  videoId: string;
+  title: string;
+  durationSeconds: number;
+  repeatCount: number;
+  notes?: string;
+  createdAt: string;
+  /** 0-100 bucket midpoint captured before captions (step 2). */
+  entendimentoPrimeiraPassada?: number;
+  /** 0-100 bucket midpoint captured after the shadowing pass (step 4). */
+  entendimentoTerceiraPassada?: number;
+  /** Words/phrases the user logged as new during step 3, also pushed to weeklyWords. */
+  expressoesAdicionadas?: string[];
+  status: 'completa' | 'parcial';
+  atualizadoEm: string;
+}
+
+export interface PreplyAula {
+  id: string;
+  date: string;
+  teacher: string;
+  minutes: number;
+  topic: string;
+  notes?: string;
+  createdAt: string;
+  /** 'brasileira' | 'nativo' — kept optional for backward compatibility with earlier records. */
+  professor?: 'brasileira' | 'nativo';
+  /** Free text with new expressions from the lesson, also feeds Palavras da Semana. */
+  expressoesNovas?: string;
+  /** Difficulty points observed during the lesson. */
+  pontosDeDificuldade?: string;
+}
+
+export interface DuolingoStreak {
+  currentStreak: number;
+  longestStreak: number;
+  lastUpdatedDate: string;
+  history: { date: string; xp: number }[];
+}
+
+export interface WeeklyWord {
+  id: string;
+  word: string;
+  translation: string;
+  example?: string;
+  weekStart: string;
+  addedAt: string;
+  nextReviewAt: string;
+  reviewStage: number;
+  lastReviewedAt?: string;
+  mastered: boolean;
+}
+
 export interface EnglishStudyData {
   dailyPlan: DailyPlanItem[];
   sessions: StudySession[];
@@ -135,6 +190,10 @@ export interface EnglishStudyData {
   dailyStudies: EnglishDailyStudy[];
   generatedQuizzes: GeneratedEnglishQuiz[];
   quizAttempts: EnglishQuizAttempt[];
+  shadowingSessions: ShadowingSession[];
+  preplyAulas: PreplyAula[];
+  duolingoStreak: DuolingoStreak;
+  weeklyWords: WeeklyWord[];
 }
 
 export interface YouTubeEnglishVideo {
