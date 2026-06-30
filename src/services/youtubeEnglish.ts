@@ -1,4 +1,4 @@
-import type { YouTubeEnglishVideo } from '../types/englishStudy';
+import type { EnglishLevelFilter, YouTubeEnglishVideo } from '../types/englishStudy';
 
 const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY as string | undefined;
 const YOUTUBE_SEARCH_API = 'https://www.googleapis.com/youtube/v3/search';
@@ -323,6 +323,99 @@ async function searchYouTubeEnglish(params: {
   });
 
   return { videos, nextPageToken: searchBody.nextPageToken ?? null, queryIndex: params.queryIndex, usedFallback: params.usedFallback };
+}
+
+// ============================================================
+// QUERIES POR FILTRO DE NÍVEL (4 OPÇÕES) — Básico/Intermediário/Avançado/Fluente
+// ============================================================
+// Usadas só pela DESCOBERTA de candidatos (discoverWeeklyVideoCandidates em
+// englishVideoLibrary.ts) — a rotina diária do usuário nunca depende delas.
+export const LEVEL_FILTER_QUERIES: Record<EnglishLevelFilter, string> = {
+  basic: 'English listening practice A1 A2 short conversation',
+  intermediate: 'English listening practice B1 B2 conversation',
+  advanced: 'advanced English listening C1 business conversation',
+  fluent: 'C2 English native speaker conversation business culture',
+};
+
+/**
+ * Busca candidatos via API do YouTube para um filtro de nível de 4 opções,
+ * já filtrando por `videoEmbeddable=true` e tentando `videoCaption=closedCaption`
+ * quando disponível, e validando cada candidato via `videos.list`
+ * (duration/status/embeddable) — rejeita qualquer vídeo > 600s. Nunca lança:
+ * devolve lista vazia se a API não estiver configurada ou falhar, para nunca
+ * quebrar a experiência (banco curado continua sendo a fonte principal).
+ */
+export async function searchWeeklyVideoCandidates(levelFilter: EnglishLevelFilter, maxResults = 10): Promise<BibliotecaVideoResult[]> {
+  if (!isYouTubeEnglishConfigured()) return [];
+
+  try {
+    const searchParams = new URLSearchParams({
+      part: 'snippet',
+      type: 'video',
+      maxResults: String(maxResults),
+      q: LEVEL_FILTER_QUERIES[levelFilter],
+      relevanceLanguage: 'en',
+      regionCode: 'US',
+      safeSearch: 'strict',
+      videoEmbeddable: 'true',
+      videoSyndicated: 'true',
+      videoCaption: 'closedCaption',
+      key: YOUTUBE_API_KEY!,
+    });
+
+    const searchRes = await fetch(`${YOUTUBE_SEARCH_API}?${searchParams}`);
+    const searchBody = await searchRes.json() as {
+      items?: Array<{ id?: { videoId?: string } }>;
+      error?: { message?: string };
+    };
+    if (!searchRes.ok) {
+      logYouTubeEnglish('Busca por filtro de nível falhou.', { levelFilter, error: searchBody.error?.message });
+      return [];
+    }
+
+    const ids = (searchBody.items ?? []).map(item => item.id?.videoId).filter((id): id is string => Boolean(id));
+    if (ids.length === 0) return [];
+
+    const detailsParams = new URLSearchParams({
+      part: 'contentDetails,snippet,status',
+      id: ids.join(','),
+      key: YOUTUBE_API_KEY!,
+    });
+    const detailsRes = await fetch(`${YOUTUBE_VIDEOS_API}?${detailsParams}`);
+    const detailsBody = await detailsRes.json() as {
+      items?: Array<{
+        id?: string;
+        contentDetails?: { duration?: string };
+        status?: { embeddable?: boolean; privacyStatus?: string; uploadStatus?: string };
+        snippet?: { title?: string; channelTitle?: string; thumbnails?: { medium?: { url?: string }; default?: { url?: string } }; publishedAt?: string };
+      }>;
+    };
+    if (!detailsRes.ok) return [];
+
+    const results: BibliotecaVideoResult[] = [];
+    for (const item of detailsBody.items ?? []) {
+      if (!item.id) continue;
+      const durationSeconds = parseDurationISO8601(item.contentDetails?.duration ?? '');
+      // SEMPRE validar duração real <= 600s, mesmo já tendo pedido videoEmbeddable na busca.
+      if (!durationSeconds || durationSeconds > 600) continue;
+      if (item.status?.embeddable !== true) continue;
+      if (item.status.privacyStatus !== 'public') continue;
+      if (item.status.uploadStatus !== 'processed') continue;
+      results.push({
+        id: item.id,
+        title: item.snippet?.title ?? 'Vídeo sem título',
+        channelTitle: item.snippet?.channelTitle ?? 'Canal não informado',
+        thumbnailUrl: item.snippet?.thumbnails?.medium?.url ?? item.snippet?.thumbnails?.default?.url,
+        publishedAt: item.snippet?.publishedAt,
+        url: getYouTubeEmbedUrl(item.id),
+        durationSeconds,
+      });
+    }
+    return results;
+  } catch (err) {
+    logYouTubeEnglish('Falha ao buscar candidatos por filtro de nível.', err instanceof Error ? err.message : err);
+    return [];
+  }
 }
 
 export async function validateYouTubeEnglishVideo(videoId: string): Promise<YouTubeVideoValidationResult> {

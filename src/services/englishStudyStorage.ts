@@ -5,6 +5,7 @@ import type {
   CuratedVideoStats,
   DailyPlanItem,
   DuolingoStreak,
+  EnglishLevelFilter,
   EnglishStudyData,
   PhraseItem,
   PreplyAula,
@@ -14,6 +15,7 @@ import type {
   StudySession,
   VocabularyItem,
   WatchedVideoEntry,
+  WeeklyVideoHistoryEntry,
   WeeklyWord,
   WeeklyWordSource,
 } from '../types/englishStudy';
@@ -79,6 +81,8 @@ export function createEmptyEnglishStudyData(date = getCurrentStudyDate()): Engli
     duolingoStreak: createEmptyDuolingoStreak(),
     weeklyWords: [],
     watchedVideos: [],
+    weeklyVideoHistory: [],
+    lastLevelFilter: undefined,
   };
 }
 
@@ -99,6 +103,8 @@ function normalizeData(raw: Partial<EnglishStudyData> | null | undefined): Engli
     duolingoStreak: raw?.duolingoStreak ?? base.duolingoStreak,
     weeklyWords: (raw?.weeklyWords ?? []).map(migrateWeeklyWord),
     watchedVideos: raw?.watchedVideos ?? [],
+    weeklyVideoHistory: Array.isArray(raw?.weeklyVideoHistory) ? raw.weeklyVideoHistory as WeeklyVideoHistoryEntry[] : [],
+    lastLevelFilter: raw?.lastLevelFilter,
     // Migração de segurança: versões antigas dos dados não tinham esse campo.
     // Também filtra qualquer lixo não-string que tenha vazado para a lista.
     unavailableVideoIds: Array.isArray(raw?.unavailableVideoIds)
@@ -538,4 +544,29 @@ export function markVideoUnavailableInData(data: EnglishStudyData, videoId: stri
 export function resetVideoStateInData(data: EnglishStudyData): EnglishStudyData {
   console.warn('[Inglês Diário] Resetando estado de vídeo (unavailableVideoIds + curatedVideoStats). Palavras/cards e progresso preservados.');
   return { ...data, unavailableVideoIds: [], curatedVideoStats: {} };
+}
+
+// ============================================================
+// FILTRO DE NÍVEL (preferência do usuário) — Inglês Diário
+// ============================================================
+const LEVEL_FILTER_LOCAL_KEY = 'english_daily_video_level_filter';
+
+/** Lê a última escolha do filtro de nível salva localmente (fallback de leitura rápida antes de `data` carregar). */
+export function readLastLevelFilterLocal(): EnglishLevelFilter | null {
+  try {
+    const raw = localStorage.getItem(LEVEL_FILTER_LOCAL_KEY);
+    if (raw === 'basic' || raw === 'intermediate' || raw === 'advanced' || raw === 'fluent') return raw;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function setLevelFilterInData(data: EnglishStudyData, levelFilter: EnglishLevelFilter): EnglishStudyData {
+  try {
+    localStorage.setItem(LEVEL_FILTER_LOCAL_KEY, levelFilter);
+  } catch {
+    // localStorage indisponível (modo privado etc.) — segue só com o campo em `data`.
+  }
+  return { ...data, lastLevelFilter: levelFilter };
 }

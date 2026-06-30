@@ -1,5 +1,5 @@
 import type { DailyEnglishVideo } from '../data/englishDailyVideos';
-import type { CuratedEnglishVideo, CuratedVideoLevelGroup } from '../types/englishStudy';
+import type { CuratedEnglishVideo, CuratedVideoLevelGroup, EnglishCefrLevel, EnglishLevelFilter } from '../types/englishStudy';
 import { getYouTubeEnglishConfigMessage, isYouTubeEnglishConfigured } from './youtubeEnglish';
 
 export type NivelFiltro = 'Iniciante' | 'Intermediário' | 'Avançado';
@@ -275,4 +275,122 @@ export function selectDailyEnglishVideo(params: SelectDailyEnglishVideoParams): 
 
 function pickLeastUsed(pool: CuratedEnglishVideo[]): CuratedEnglishVideo {
   return [...pool].sort((a, b) => a.useCount - b.useCount || (a.lastUsedAt ?? '').localeCompare(b.lastUsedAt ?? ''))[0];
+}
+
+// ============================================================
+// FILTRO DE NÍVEL DA UI (4 OPÇÕES) — Básico / Intermediário / Avançado / Fluente
+// ============================================================
+// Ver a nota de arquitetura em src/types/englishStudy.ts (EnglishLevelFilter)
+// para por que "Fluente" não virou um 4º CuratedVideoLevelGroup.
+
+export const LEVEL_FILTER_LABEL: Record<EnglishLevelFilter, string> = {
+  basic: 'Básico',
+  intermediate: 'Intermediário',
+  advanced: 'Avançado',
+  fluent: 'Fluente',
+};
+
+export const LEVEL_FILTER_CEFR: Record<EnglishLevelFilter, EnglishCefrLevel[]> = {
+  basic: ['A1', 'A2'],
+  intermediate: ['B1', 'B2'],
+  advanced: ['C1'],
+  fluent: ['C2'],
+};
+
+export const LEVEL_FILTER_TO_LEVEL_GROUP: Record<EnglishLevelFilter, CuratedVideoLevelGroup> = {
+  basic: 'beginner',
+  intermediate: 'intermediate',
+  advanced: 'advanced',
+  fluent: 'advanced',
+};
+
+/** Máximo absoluto de duração aceito em qualquer circunstância (10 minutos). Nunca confiar só no filtro da busca do YouTube. */
+export const MAX_VIDEO_DURATION_SECONDS = 600;
+
+function matchesLevelFilter(video: CuratedEnglishVideo, levelFilter: EnglishLevelFilter): boolean {
+  return LEVEL_FILTER_CEFR[levelFilter].includes(video.cefrLevel);
+}
+
+export interface SelectWeeklyVideoParams {
+  curatedVideos: CuratedEnglishVideo[];
+  levelFilter: EnglishLevelFilter;
+  /** youtubeVideoId já disponibilizados na semana atual (weeklyVideoHistory filtrado por weekKey) — nunca repetidos enquanto houver alternativa. */
+  usedThisWeekIds: Set<string>;
+  unavailableVideoIds: Set<string>;
+  currentVideoId?: string | null;
+  /** Score mínimo de qualidade calculada pelo app (0-100). Default 60. */
+  minQualityScore?: number;
+}
+
+export interface WeeklyVideoSelectionResult {
+  video: CuratedEnglishVideo;
+  /** true quando NENHUM vídeo elegível do nível restava na semana e a rotação precisaria ser reiniciada — sinaliza a UI para mostrar a mensagem + botão de reset. */
+  exhausted: boolean;
+}
+
+/**
+ * Seleciona o próximo vídeo elegível para a seção "Assistir vídeo do dia"
+ * dentro do filtro de nível (4 opções) e da regra de não-repetição semanal.
+ * Critérios obrigatórios: status ativo, embeddable, durationSeconds <= 600s,
+ * nível compatível com o filtro escolhido, qualidade mínima, não usado na
+ * semana atual. Nunca repete o vídeo atual quando há alternativa.
+ */
+export function selectWeeklyVideo(params: SelectWeeklyVideoParams): WeeklyVideoSelectionResult | null {
+  const { curatedVideos, levelFilter, usedThisWeekIds, unavailableVideoIds, currentVideoId, minQualityScore = 60 } = params;
+
+  const eligible = curatedVideos.filter(v =>
+    v.status === 'active'
+    && v.embeddable === true
+    && v.durationSeconds > 0
+    && v.durationSeconds <= MAX_VIDEO_DURATION_SECONDS
+    && !unavailableVideoIds.has(v.youtubeVideoId)
+    && matchesLevelFilter(v, levelFilter)
+    && calculateVideoQualityScore(v) >= minQualityScore,
+  );
+
+  if (eligible.length === 0) {
+    console.warn('[WeeklyVideoSelector] Nenhum vídeo elegível para o nível', levelFilter, '(banco curado pode precisar de mais vídeos nesse nível).');
+    return null;
+  }
+
+  // 1) Não usado nesta semana e diferente do vídeo atual.
+  let pool = eligible.filter(v => !usedThisWeekIds.has(v.youtubeVideoId) && v.youtubeVideoId !== currentVideoId);
+  if (pool.length > 0) {
+    return { video: pickLeastUsed(pool), exhausted: false };
+  }
+
+  // 2) Não usado nesta semana, mesmo que seja o vídeo atual (caso extremo: só 1 vídeo elegível no nível).
+  pool = eligible.filter(v => !usedThisWeekIds.has(v.youtubeVideoId));
+  if (pool.length > 0) {
+    return { video: pickLeastUsed(pool), exhausted: false };
+  }
+
+  // 3) Todos os vídeos elegíveis do nível já foram exibidos esta semana — rotação esgotada.
+  // Ainda assim devolve um vídeo (o menos usado recentemente, diferente do atual se possível) para não travar a tela,
+  // mas sinaliza `exhausted: true` para a UI oferecer "Reiniciar rotação da semana".
+  pool = eligible.filter(v => v.youtubeVideoId !== currentVideoId);
+  const fallbackPool = pool.length > 0 ? pool : eligible;
+  return { video: pickLeastUsed(fallbackPool), exhausted: true };
+}
+
+/**
+ * Qualidade mínima CALCULADA PELO APP (0-100) — não é avaliação do YouTube.
+ * Pondera sinais disponíveis no momento da seleção: embeddable, duração
+ * dentro da janela alvo, status ativo/validado, canal com nome preenchido
+ * (proxy simples para "canal educacional conhecido" no banco curado) e
+ * presença de legendas/transcript. Para candidatos vindos da API
+ * (CuratedEnglishVideo com source 'youtube_api'), o chamador pode
+ * pré-calcular um score mais rico usando estatísticas reais
+ * (view/like/comment count) antes de promover o candidato — ver
+ * calculateApiVideoQualityScore em englishVideoLibrary.ts.
+ */
+export function calculateVideoQualityScore(video: CuratedEnglishVideo): number {
+  let score = 0;
+  if (video.embeddable) score += 30;
+  if (video.status === 'active') score += 25;
+  if (video.durationSeconds > 0 && video.durationSeconds <= MAX_VIDEO_DURATION_SECONDS) score += 20;
+  if (video.channelTitle && video.channelTitle !== 'Canal não informado') score += 10;
+  if (video.transcript || video.summary) score += 10;
+  if (video.failureCount === 0) score += 5;
+  return Math.min(100, score);
 }

@@ -1,12 +1,15 @@
 import { CURATED_ENGLISH_VIDEOS } from '../data/curatedEnglishVideos';
 import type { DailyEnglishVideo } from '../data/englishDailyVideos';
-import type { CuratedEnglishVideo, CuratedVideoStats, EnglishCefrLevel } from '../types/englishStudy';
+import type { CuratedEnglishVideo, CuratedVideoStats, EnglishCefrLevel, EnglishLevelFilter } from '../types/englishStudy';
 import {
   buscarVideosIngles,
   getYouTubeEmbedUrl,
   isYouTubeEnglishConfigured,
+  searchWeeklyVideoCandidates,
   validateYouTubeEnglishVideo,
+  type BibliotecaVideoResult,
 } from './youtubeEnglish';
+import { LEVEL_FILTER_TO_LEVEL_GROUP, MAX_VIDEO_DURATION_SECONDS } from './dailyVideoSelector';
 
 /**
  * Camada de acesso ao banco curado de vídeos. Mantém a separação:
@@ -160,4 +163,65 @@ export async function discoverYouTubeCandidates(
   }
   console.log('[EnglishVideoLibrary] Candidatos descobertos e validados:', candidates.length, '| embed de exemplo:', candidates[0] ? getYouTubeEmbedUrl(candidates[0].youtubeVideoId) : '—');
   return candidates;
+}
+
+const CEFR_BY_LEVEL_FILTER: Record<EnglishLevelFilter, EnglishCefrLevel> = {
+  basic: 'A2',
+  intermediate: 'B1',
+  advanced: 'C1',
+  fluent: 'C2',
+};
+
+/**
+ * Qualidade mínima CALCULADA PELO APP (0-100) para um candidato vindo da
+ * API do YouTube — NÃO é avaliação do YouTube. Usa os mesmos sinais
+ * estruturais de calculateVideoQualityScore (em dailyVideoSelector.ts) mais
+ * um bônus fixo por já ter passado pela validação de duração/embeddable da
+ * própria busca (searchWeeklyVideoCandidates só retorna candidatos válidos).
+ * Estatísticas reais de engajamento (view/like/comment count) não estão
+ * disponíveis nesta chamada (search + contentDetails/status, sem `statistics`)
+ * — quando adicionadas, este cálculo pode ser enriquecido sem mudar a
+ * assinatura pública.
+ */
+export function calculateApiVideoQualityScore(video: BibliotecaVideoResult): number {
+  let score = 30; // embeddable confirmado (já filtrado na busca)
+  score += 25; // status ativo/processado/público confirmado
+  if (video.durationSeconds > 0 && video.durationSeconds <= MAX_VIDEO_DURATION_SECONDS) score += 20;
+  if (video.channelTitle && video.channelTitle !== 'Canal não informado') score += 10;
+  if (video.title && video.title !== 'Vídeo sem título') score += 10;
+  return Math.min(100, score);
+}
+
+/** Converte um candidato validado da API (filtro de 4 níveis) num CuratedEnglishVideo pronto para uso (status 'needs_validation'). */
+export function apiCandidateToCuratedVideo(video: BibliotecaVideoResult, levelFilter: EnglishLevelFilter): CuratedEnglishVideo {
+  return {
+    id: `youtube-${video.id}`,
+    youtubeVideoId: video.id,
+    title: video.title,
+    channelTitle: video.channelTitle,
+    durationSeconds: video.durationSeconds,
+    cefrLevel: CEFR_BY_LEVEL_FILTER[levelFilter],
+    levelGroup: LEVEL_FILTER_TO_LEVEL_GROUP[levelFilter],
+    themes: ['Listening'],
+    skills: ['listening'],
+    source: 'youtube_api',
+    status: 'needs_validation',
+    embeddable: true,
+    validatedAt: new Date().toISOString(),
+    useCount: 0,
+    failureCount: 0,
+  };
+}
+
+/**
+ * Descoberta de candidatos novos para o filtro de nível de 4 opções
+ * (Básico/Intermediário/Avançado/Fluente). Só serve para ENRIQUECER o pool
+ * quando o banco curado estiver fraco num nível — nunca é pré-requisito
+ * para a seção funcionar. Sem VITE_YOUTUBE_API_KEY, devolve lista vazia
+ * silenciosamente (nunca lança, nunca quebra a experiência).
+ */
+export async function discoverWeeklyVideoCandidates(levelFilter: EnglishLevelFilter): Promise<CuratedEnglishVideo[]> {
+  if (!isYouTubeEnglishConfigured()) return [];
+  const raw = await searchWeeklyVideoCandidates(levelFilter, 10);
+  return raw.map(video => apiCandidateToCuratedVideo(video, levelFilter));
 }

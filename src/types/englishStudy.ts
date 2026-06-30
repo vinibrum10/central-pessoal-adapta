@@ -292,6 +292,53 @@ export interface WatchedVideoEntry {
   status: 'watched' | 'completed';
 }
 
+// ============================================================
+// FILTRO DE NÍVEL (UI) — 4 OPÇÕES (Básico/Intermediário/Avançado/Fluente)
+// ============================================================
+// DECISÃO DE ARQUITETURA: `CuratedVideoLevelGroup` ('beginner'|'intermediate'|
+// 'advanced') é mantido como está — é o agrupamento de DADOS (3 grupos,
+// mapeados 1:1 a partir do `cefrLevel` de cada vídeo, ver levelGroupFor() em
+// curatedEnglishVideos.ts) e não deveria mudar para não invalidar o seed
+// existente nem forçar migração de dados já salvos. "Fluente" é modelado como
+// um FILTRO DE UI sobre esse mesmo dado: ele também aponta para
+// levelGroup === 'advanced', mas restringe ainda mais por `cefrLevel` (exige
+// C2, nunca C1). Isso é mais simples do que adicionar um 4º levelGroup
+// porque: (1) não exige migração de vídeos já cadastrados, (2) não exige
+// mudar a lógica de fallback existente em dailyVideoSelector.ts (que já
+// trabalha em cima de 3 grupos), (3) deixa "Fluente" puramente como um filtro
+// adicional de cefrLevel, fácil de entender e testar. Ver
+// LEVEL_FILTER_TO_LEVEL_GROUP / LEVEL_FILTER_TO_CEFR em
+// src/services/dailyVideoSelector.ts para o mapeamento completo.
+export type EnglishLevelFilter = 'basic' | 'intermediate' | 'advanced' | 'fluent';
+
+export type WeeklyVideoStatus = 'available' | 'in_progress' | 'completed' | 'swapped';
+
+/**
+ * Um item do histórico semanal de vídeos do Inglês Diário — todo vídeo
+ * disponibilizado (vídeo do dia inicial ou via "Trocar vídeo") na semana
+ * atual entra aqui, mesmo que o usuário não o conclua. Particionado por
+ * `weekKey` (ISO week, ver src/utils/weekKey.ts) para nunca repetir um
+ * `youtubeVideoId` já disponibilizado na mesma semana.
+ */
+export interface WeeklyVideoHistoryEntry {
+  id: string;
+  youtubeVideoId: string;
+  title: string;
+  channelTitle: string;
+  levelFilter: EnglishLevelFilter;
+  cefrLevel: EnglishCefrLevel;
+  durationSeconds: number;
+  /** Qualidade mínima calculada pelo app (0-100) — NÃO é avaliação do YouTube. Ver calculateVideoQualityScore em englishVideoLibrary.ts. */
+  qualityScore: number;
+  source: 'curated' | 'youtube_api';
+  status: WeeklyVideoStatus;
+  selectedAt: string;
+  weekKey: string;
+  watchUrl: string;
+  embedUrl: string;
+  progressPercent?: number;
+}
+
 export interface EnglishStudyData {
   /**
    * IDs de vídeo confirmados como quebrados (erro real do player do YouTube
@@ -317,6 +364,10 @@ export interface EnglishStudyData {
   duolingoStreak: DuolingoStreak;
   weeklyWords: WeeklyWord[];
   watchedVideos: WatchedVideoEntry[];
+  /** Histórico semanal completo de vídeos disponibilizados (ver WeeklyVideoHistoryEntry) — particionado por weekKey, nunca apagado entre semanas. */
+  weeklyVideoHistory: WeeklyVideoHistoryEntry[];
+  /** Última escolha do usuário no filtro de nível da seção "Assistir vídeo do dia" — persistida para reabrir já com o filtro certo. */
+  lastLevelFilter?: EnglishLevelFilter;
 }
 
 export interface YouTubeEnglishVideo {

@@ -11,6 +11,8 @@ import { Badge, ProgressBar } from '../components/Badge';
 import { MetricCard, PageHeader } from '../components/DesignSystem';
 import { useAuth } from '../contexts/AuthContext';
 import { dailyEnglishVideos, getDailyEnglishVideoById, type DailyEnglishVideo } from '../data/englishDailyVideos';
+import { CURATED_ENGLISH_VIDEOS } from '../data/curatedEnglishVideos';
+import { curatedToDailyVideo } from '../services/englishVideoLibrary';
 import {
   buscarVideosIngles,
   getYouTubeEmbedUrl,
@@ -24,11 +26,25 @@ import {
   isWithinShadowingDuration,
   selectLocalVideo,
   selectNextVideo,
+  selectWeeklyVideo,
+  calculateVideoQualityScore,
+  LEVEL_FILTER_LABEL,
+  MAX_VIDEO_DURATION_SECONDS,
   NIVEL_CEFR,
   type NivelFiltro,
   type DuracaoFiltro,
   type VideoSelectionResult,
 } from '../services/dailyVideoSelector';
+import {
+  getCurrentWeekHistory,
+  getUsedVideoIdsThisWeek,
+  buildWeeklyHistoryEntry,
+  appendWeeklyHistoryEntry,
+  updateWeeklyHistoryStatus,
+  markCurrentWeekEntrySwapped,
+  resetCurrentWeekRotation,
+} from '../services/englishVideoHistory';
+import { getCurrentWeekKey } from '../utils/weekKey';
 import { generateEnglishQuiz } from '../services/englishQuizApi';
 import { translateWeeklyWord } from '../services/englishWordTranslateApi';
 import {
@@ -52,6 +68,8 @@ import {
   reviewWeeklyWordInData,
   saveDuolingoStreak,
   saveEnglishStudyData,
+  readLastLevelFilterLocal,
+  setLevelFilterInData,
 } from '../services/englishStudyStorage';
 import type { ReviewGrade } from '../services/spacedRepetitionEngine';
 import { gerarId } from '../utils';
@@ -60,11 +78,13 @@ import type {
   EnglishQuizAttempt,
   EnglishCefrLevel,
   EnglishDailyStudy,
+  EnglishLevelFilter,
   EnglishStudyData,
   GeneratedEnglishQuiz,
   PreplyAula,
   ShadowingSession,
   StudySession,
+  WeeklyVideoHistoryEntry,
   WeeklyWord,
   WeeklyWordSource,
   WeeklyWordStatus,
@@ -117,6 +137,8 @@ const emptyStudyData: EnglishStudyData = {
   watchedVideos: [],
   duolingoStreak: { currentStreak: 0, longestStreak: 0, lastUpdatedDate: '', history: [] },
   weeklyWords: [],
+  weeklyVideoHistory: [],
+  lastLevelFilter: undefined,
 };
 
 const passingScorePercent = 60;
@@ -173,7 +195,8 @@ function selectDailyVideo(date: string, userId: string | null, data: EnglishStud
   if (
     savedStudy
     && !savedStudy.completed
-    && isWithinShadowingDuration(savedStudy.durationSeconds)
+    && savedStudy.durationSeconds > 0
+    && savedStudy.durationSeconds <= MAX_VIDEO_DURATION_SECONDS
     && !unavailable.has(savedStudy.videoId)
   ) {
     return resolveDailyVideoFromStudy(savedStudy);
@@ -571,7 +594,11 @@ export function InglesPage() {
   const [shadowingWizardOpen, setShadowingWizardOpen] = useState(false);
   const [progressModalOpen, setProgressModalOpen] = useState(false);
   const [preplyModalOpen, setPreplyModalOpen] = useState(false);
+  const [levelFilter, setLevelFilterState] = useState<EnglishLevelFilter>(() => readLastLevelFilterLocal() ?? 'advanced');
+  const [weeklyHistoryModalOpen, setWeeklyHistoryModalOpen] = useState(false);
+  const [rotationExhausted, setRotationExhausted] = useState(false);
   const todayDate = getCurrentStudyDate();
+  const currentWeekKey = useMemo(() => getCurrentWeekKey(), [todayDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dailyVideoForDate = useMemo(() => selectDailyVideo(todayDate, userId, data), [data, todayDate, userId]);
   const todayStudy = useMemo(() => getTodayStudy(data, dailyVideoForDate, todayDate), [dailyVideoForDate, data, todayDate]);
@@ -604,6 +631,10 @@ export function InglesPage() {
   const completedVideoIds = useMemo(
     () => new Set(data.watchedVideos.filter(v => v.status === 'completed').map(v => v.videoId)),
     [data.watchedVideos],
+  );
+  const currentWeekHistory = useMemo(
+    () => getCurrentWeekHistory(data, currentWeekKey).slice().sort((a, b) => b.selectedAt.localeCompare(a.selectedAt)),
+    [data, currentWeekKey],
   );
 
   // Diagnóstico completo do vídeo atual — roda sempre que o vídeo carregado muda.
@@ -776,6 +807,15 @@ export function InglesPage() {
       });
     }
 
+    // Mantém o histórico semanal (item 4) com status/progresso atualizado enquanto o usuário assiste.
+    nextData = updateWeeklyHistoryStatus(
+      nextData,
+      study.videoId,
+      study.completed ? 'completed' : 'in_progress',
+      Math.round(study.progressPercent),
+      currentWeekKey,
+    );
+
     latestDataRef.current = nextData;
     latestStudyRef.current = study;
 
@@ -791,7 +831,7 @@ export function InglesPage() {
     });
     setData(nextData);
     void saveEnglishStudyData(userId, nextData);
-  }, [userId]);
+  }, [userId, currentWeekKey]);
 
   const trackCurrentPlayerSecond = useCallback(() => {
     const player = playerRef.current;
@@ -850,6 +890,7 @@ export function InglesPage() {
           duolingoStreak: studyData.duolingoStreak ?? emptyStudyData.duolingoStreak,
           weeklyWords: studyData.weeklyWords ?? [],
           watchedVideos: studyData.watchedVideos ?? [],
+          weeklyVideoHistory: studyData.weeklyVideoHistory ?? [],
         };
         const studyDate = getCurrentStudyDate();
         const video = selectDailyVideo(studyDate, userId, normalizedData);
@@ -872,6 +913,40 @@ export function InglesPage() {
     latestStudyRef.current = todayStudy;
   }, [todayStudy]);
 
+  // Garante que o vídeo atualmente carregado sempre tenha uma entrada no
+  // histórico semanal (item 4 do pedido: "TODOS os vídeos disponibilizados
+  // na semana"), mesmo quando ele veio do fluxo legado de hidratação inicial
+  // (selectDailyVideo) em vez do fluxo novo (applyWeeklyVideoSelection).
+  useEffect(() => {
+    if (loading) return;
+    const alreadyInHistory = (latestDataRef.current.weeklyVideoHistory ?? []).some(
+      entry => entry.youtubeVideoId === currentVideo.videoId && entry.weekKey === currentWeekKey,
+    );
+    if (alreadyInHistory) return;
+    const curatedMatch = CURATED_ENGLISH_VIDEOS.find(v => v.youtubeVideoId === currentVideo.videoId);
+    const qualityScore = curatedMatch ? calculateVideoQualityScore(curatedMatch) : 60;
+    const entry: WeeklyVideoHistoryEntry = {
+      id: gerarId(),
+      youtubeVideoId: currentVideo.videoId,
+      title: currentVideo.title,
+      channelTitle: currentVideo.channel,
+      levelFilter,
+      cefrLevel: currentVideo.cefrLevel,
+      durationSeconds: todayStudy.durationSeconds || currentVideo.durationSeconds,
+      qualityScore,
+      source: curatedMatch?.source === 'youtube_api' ? 'youtube_api' : 'curated',
+      status: todayStudy.completed ? 'completed' : todayStudy.watchedSeconds.length > 0 ? 'in_progress' : 'available',
+      selectedAt: new Date().toISOString(),
+      weekKey: currentWeekKey,
+      watchUrl: `https://www.youtube.com/watch?v=${currentVideo.videoId}`,
+      embedUrl: getYouTubeEmbedUrl(currentVideo.videoId),
+    };
+    const nextData = appendWeeklyHistoryEntry(latestDataRef.current, entry);
+    latestDataRef.current = nextData;
+    setData(nextData);
+    void saveEnglishStudyData(userId, nextData);
+  }, [currentVideo.videoId, loading]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     currentVideoRef.current = currentVideo;
   }, [currentVideo]);
@@ -880,51 +955,54 @@ export function InglesPage() {
     latestDataRef.current = data;
   }, [data]);
 
-  // Garante que o "vídeo do dia" nunca fique parado em um vídeo já concluído
-  // ou fora da janela de 2-5 minutos: se acontecer, busca um substituto real
-  // (excluindo todo o histórico assistido) assim que os dados carregam ou o
-  // estudo de hoje muda de status. Idempotente por "requestKey" — só dispara
-  // de novo se a condição realmente mudar (evita loop de chamadas à API).
-  const dailyVideoRequestRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (loading) return;
-    if (isPlayerPlayingRef.current || playerRef.current?.getPlayerState() === 1) {
-      console.info('[Inglês Diário] Busca automática ignorada: vídeo em reprodução.');
-      return;
-    }
+  // CORREÇÃO DE BUG (troca infinita de vídeo): este efeito antes disparava
+  // toda vez que `data`/`todayStudy` mudava (inclusive depois de QUALQUER
+  // gravação no histórico semanal ou progresso) e considerava "inválido"
+  // qualquer vídeo fora da janela estrita de shadowing (120-300s) — mas o
+  // sistema de seleção semanal (selectWeeklyVideo) escolhe vídeos de até
+  // 600s de propósito. Resultado: vídeo selecionado pela troca manual/filtro
+  // de nível tinha duração > 300s, era considerado "precisa de vídeo novo",
+  // disparava uma escolha automática de OUTRO vídeo, que por sua vez também
+  // costumava cair fora de 120-300s, reiniciando o ciclo — troca infinita.
+  //
+  // `loadInitialVideoIfNeeded` é a única chamada de seleção automática que
+  // sobra: roda no máximo uma vez por sessão (guardado por
+  // `initialVideoLoadDoneRef`), só quando realmente não há nenhum vídeo
+  // válido para hoje (sem estudo salvo ou vídeo marcado indisponível) — não
+  // dispara mais por causa de progresso, conclusão ou gravação de histórico.
+  const initialVideoLoadDoneRef = useRef(false);
+  const loadInitialVideoIfNeeded = useCallback(async () => {
+    if (initialVideoLoadDoneRef.current) return;
+    if (isPlayerPlayingRef.current || playerRef.current?.getPlayerState() === 1) return;
 
     const savedToday = latestDataRef.current.dailyStudies.find(study => study.date === todayDate);
     const needsFreshVideo = !savedToday
-      || savedToday.completed
-      || !isWithinShadowingDuration(savedToday.durationSeconds)
+      || savedToday.durationSeconds <= 0
+      || savedToday.durationSeconds > MAX_VIDEO_DURATION_SECONDS
       || latestDataRef.current.unavailableVideoIds.includes(savedToday.videoId);
-    if (!needsFreshVideo) return;
+    if (!needsFreshVideo) {
+      initialVideoLoadDoneRef.current = true;
+      return;
+    }
 
-    const requestKey = `${todayDate}:${savedToday ? `${savedToday.videoId}:${savedToday.completed}` : 'none'}`;
-    if (dailyVideoRequestRef.current === requestKey) return;
-    dailyVideoRequestRef.current = requestKey;
+    initialVideoLoadDoneRef.current = true;
+    const motivo = !savedToday ? 'sem estudo do dia' : 'duração inválida ou vídeo indisponível';
+    console.info('[Inglês Diário] Carregamento inicial: nenhum vídeo válido salvo, buscando um.', { motivo });
+    const result = await pickNextVideo(new Set(savedToday ? [savedToday.videoId] : []), `auto:${motivo}`).catch(() => null);
+    if (!result) {
+      // Só acontece se o dataset local estiver literalmente vazio — rede de segurança.
+      setError(NO_FRESH_VIDEO_MESSAGE);
+      return;
+    }
+    setError('');
+    setVideoOriginInfo({ source: result.source, isReview: result.isReview });
+    await saveStudy(createDailyStudy(todayDate, result.video));
+  }, [todayDate, pickNextVideo, saveStudy]);
 
-    let cancelled = false;
-    (async () => {
-      const motivo = !savedToday ? 'sem estudo do dia' : savedToday.completed ? 'estudo concluído' : 'duração fora da janela ou vídeo indisponível';
-      console.info('[Inglês Diário] Busca automática inicial disparada.', { efeito: 'dailyVideoRequest', requestKey, motivo });
-      const result = await pickNextVideo(new Set(savedToday ? [savedToday.videoId] : []), `auto:${motivo}`).catch(() => null);
-      if (cancelled) return;
-      if (!result) {
-        // Só acontece se o dataset local estiver literalmente vazio — rede de segurança.
-        setError(NO_FRESH_VIDEO_MESSAGE);
-        return;
-      }
-      setError('');
-      setVideoOriginInfo({ source: result.source, isReview: result.isReview });
-      if (result.isReview) {
-        console.info('[Inglês Diário] Nenhum vídeo novo disponível — reaproveitando vídeo já assistido para revisão.', { videoId: result.video.videoId });
-      }
-      await saveStudy(createDailyStudy(todayDate, result.video));
-    })();
-
-    return () => { cancelled = true; };
-  }, [loading, todayDate, pickNextVideo, saveStudy]);
+  useEffect(() => {
+    if (loading) return;
+    void loadInitialVideoIfNeeded();
+  }, [loading, loadInitialVideoIfNeeded]);
 
   useEffect(() => {
     if (loading || recoveringVideoRef.current || checkedVideoIdRef.current === currentVideo.videoId) return;
@@ -939,8 +1017,22 @@ export function InglesPage() {
       .then(validation => {
         if (cancelled) return;
         if (!validation.ok) {
+          // CORREÇÃO DE BUG (troca infinita de vídeo): este efeito antes
+          // chamava replaceCurrentVideo() automaticamente quando a validação
+          // remota falhava. replaceCurrentVideo usa o seletor LEGADO (nível
+          // fixo "Avançado", ignora o filtro de nível escolhido pelo
+          // usuário) — se o vídeo escolhido por ele também falhasse na
+          // validação (ex.: instabilidade da API/quota), o efeito disparava
+          // de novo para o novo videoId, criando um ciclo de troca
+          // automática. Troca automática por falha de validação não está na
+          // lista de gatilhos permitidos (só carregamento inicial sem vídeo
+          // válido, clique em "Trocar vídeo", troca de filtro, reset de
+          // rotação ou "Reabrir no app") — então aqui só bloqueamos o vídeo
+          // para seleção futura e avisamos o usuário; a troca em si fica a
+          // cargo de uma ação manual dele.
           blockVideoLocally(videoIdToValidate, validation.reason ?? 'Vídeo atual inválido.');
-          void replaceCurrentVideo(validation.reason ?? 'Vídeo atual inválido.');
+          setError('Este vídeo parece estar indisponível. Use "Trocar vídeo" para escolher outro.');
+          setPlayerStatus('unavailable');
           return;
         }
 
@@ -1135,7 +1227,114 @@ export function InglesPage() {
     if (changingVideo) return;
     console.info('[Inglês Diário] Botão "Trocar vídeo" acionado.', { videoIdAtual: todayStudy.videoId });
     setError('');
-    await replaceCurrentVideo('Troca manual solicitada.');
+
+    // Registra o vídeo atual como "trocado" no histórico semanal antes de buscar o próximo,
+    // mesmo que o usuário não tenha concluído — regra explícita do pedido (item 3/4).
+    const swappedData = markCurrentWeekEntrySwapped(latestDataRef.current, currentVideo.videoId, currentWeekKey);
+    if (swappedData !== latestDataRef.current) {
+      latestDataRef.current = swappedData;
+      setData(swappedData);
+    }
+
+    await applyWeeklyVideoSelection(levelFilter, 'Troca manual solicitada (filtro: ' + LEVEL_FILTER_LABEL[levelFilter] + ').');
+  }
+
+  function handleLevelFilterChange(next: EnglishLevelFilter) {
+    if (next === levelFilter) return;
+    setLevelFilterState(next);
+    const nextData = setLevelFilterInData(latestDataRef.current, next);
+    latestDataRef.current = nextData;
+    setData(nextData);
+    void saveEnglishStudyData(userId, nextData);
+    void applyWeeklyVideoSelection(next, `Filtro de nível trocado para ${LEVEL_FILTER_LABEL[next]}.`);
+  }
+
+  /**
+   * Seleção do próximo vídeo elegível para o filtro de nível informado (4
+   * opções), respeitando a regra de não-repetição semanal — usa o banco
+   * curado (CURATED_ENGLISH_VIDEOS) via selectWeeklyVideo. Em caso de
+   * rotação esgotada (`exhausted: true`), ainda assim seleciona um vídeo
+   * (para nunca travar a tela) mas liga o aviso + botão "Reiniciar rotação
+   * da semana". Registra a nova entrada no histórico semanal e mantém o
+   * fluxo existente de EnglishDailyStudy/player funcionando (compatibilidade
+   * com shadowing/quiz/progresso, que dependem de `todayStudy`/`currentVideo`).
+   */
+  async function applyWeeklyVideoSelection(level: EnglishLevelFilter, reason: string) {
+    if (recoveringVideoRef.current) return;
+    recoveringVideoRef.current = true;
+    stopWatchTimer();
+    isPlayerPlayingRef.current = false;
+    setIsPlayerPlaying(false);
+    setPlayerStatus('loading');
+    setChangingVideo(true);
+    try {
+      const usedThisWeek = getUsedVideoIdsThisWeek(latestDataRef.current, currentWeekKey);
+      const result = selectWeeklyVideo({
+        curatedVideos: CURATED_ENGLISH_VIDEOS,
+        levelFilter: level,
+        usedThisWeekIds: usedThisWeek,
+        unavailableVideoIds: new Set(latestDataRef.current.unavailableVideoIds),
+        currentVideoId: currentVideo.videoId,
+      });
+      if (!result) {
+        setRotationExhausted(false);
+        setError(`Nenhum vídeo elegível para o nível ${LEVEL_FILTER_LABEL[level]} no momento. Tente outro nível.`);
+        setPlayerStatus('unavailable');
+        return;
+      }
+      setRotationExhausted(result.exhausted);
+      const qualityScore = calculateVideoQualityScore(result.video);
+      const historyEntry = buildWeeklyHistoryEntry({ video: result.video, levelFilter: level, qualityScore, status: 'available', weekKey: currentWeekKey });
+      const nextDailyVideo = curatedToDailyVideo(result.video);
+      const nextStudy = createDailyStudy(todayDate, nextDailyVideo);
+      let nextData = appendWeeklyHistoryEntry(latestDataRef.current, historyEntry);
+      nextData = mergeDailyStudy(nextData, nextStudy);
+      setAnswers({});
+      setQuizMessage('');
+      setError('');
+      setVideoOriginInfo({ source: result.video.source === 'youtube_api' ? 'api' : 'local-exact', isReview: result.exhausted });
+      latestDataRef.current = nextData;
+      setData(nextData);
+      await saveEnglishStudyData(userId, nextData);
+    } catch (err) {
+      console.error('[Inglês Diário] Falha ao trocar de nível.', reason, err);
+      setError('Não consegui carregar outro vídeo agora. Tente novamente em instantes.');
+      setPlayerStatus('unavailable');
+    } finally {
+      recoveringVideoRef.current = false;
+      setChangingVideo(false);
+    }
+  }
+
+  async function handleResetWeekRotation() {
+    const nextData = resetCurrentWeekRotation(latestDataRef.current, currentWeekKey);
+    latestDataRef.current = nextData;
+    setData(nextData);
+    await saveEnglishStudyData(userId, nextData);
+    setRotationExhausted(false);
+    await applyWeeklyVideoSelection(levelFilter, 'Rotação da semana reiniciada manualmente.');
+  }
+
+  function handleReopenHistoryEntry(entry: WeeklyVideoHistoryEntry) {
+    const dailyVideo: DailyEnglishVideo = {
+      videoId: entry.youtubeVideoId,
+      title: entry.title,
+      channel: entry.channelTitle,
+      level: entry.cefrLevel === 'A1' || entry.cefrLevel === 'A2' ? 'iniciante' : entry.cefrLevel === 'C1' || entry.cefrLevel === 'C2' ? 'avançado' : 'intermediário',
+      cefrLevel: entry.cefrLevel,
+      theme: 'Listening',
+      durationSeconds: entry.durationSeconds,
+      summary: '',
+    };
+    const nextStudy = createDailyStudy(todayDate, dailyVideo);
+    const nextData = mergeDailyStudy(latestDataRef.current, nextStudy);
+    latestDataRef.current = nextData;
+    setData(nextData);
+    void saveEnglishStudyData(userId, nextData);
+    setWeeklyHistoryModalOpen(false);
+    setAnswers({});
+    setQuizMessage('');
+    setError('');
   }
 
   /**
@@ -1383,7 +1582,29 @@ export function InglesPage() {
           action={<Button size="sm" variant="secondary" icon={<RotateCcw size={14} className={changingVideo ? 'animate-spin' : ''} />} onClick={handleChangeVideo} disabled={changingVideo}>{changingVideo ? 'Buscando...' : 'Trocar vídeo'}</Button>}
         />
         <CardBody className="space-y-4">
-          <StateNote>Vídeo do dia: nível avançado, 2-5 minutos, temas de carreira, tecnologia, notícias ou cultura americana — carregado automaticamente.</StateNote>
+          {/* Filtro de nível — 4 opções (Básico, Intermediário, Avançado, Fluente) */}
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Nível</p>
+            <div className="flex flex-wrap gap-2">
+              {(['basic', 'intermediate', 'advanced', 'fluent'] as EnglishLevelFilter[]).map(level => (
+                <button
+                  key={level}
+                  type="button"
+                  onClick={() => handleLevelFilterChange(level)}
+                  disabled={changingVideo}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-all disabled:opacity-50 ${
+                    levelFilter === level
+                      ? 'bg-primary-600 text-white'
+                      : 'bg-surface-100 text-surface-600 hover:bg-surface-200 dark:bg-surface-700 dark:text-surface-300 dark:hover:bg-surface-600'
+                  }`}
+                >
+                  {LEVEL_FILTER_LABEL[level]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <StateNote>Vídeos sempre com até 10 minutos, validados por qualidade mínima calculada pelo app — carregado automaticamente conforme o nível escolhido.</StateNote>
 
           <div className="aspect-video w-full overflow-hidden rounded-lg bg-surface-950 shadow-sm">
             {!loading && (
@@ -1406,17 +1627,23 @@ export function InglesPage() {
           {videoOriginInfo?.isReview && (
             <StateNote>Você já viu todos os vídeos novos disponíveis. Hoje este vídeo entrou como revisão.</StateNote>
           )}
+          {rotationExhausted && (
+            <div className="space-y-2 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-700 dark:border-warning-900/40 dark:bg-warning-900/20 dark:text-warning-300">
+              <p>Todos os vídeos desse nível já foram exibidos nesta semana. Você pode reiniciar a rotação ou escolher outro nível.</p>
+              <Button size="sm" variant="secondary" onClick={handleResetWeekRotation}>Reiniciar rotação da semana</Button>
+            </div>
+          )}
 
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-lg font-semibold tracking-tight text-surface-950 dark:text-white">{currentVideo.title}</h2>
               <Badge variant={todayStudy.completed ? 'success' : quizAvailable ? 'primary' : 'default'}>{getGoalStatus(todayStudy)}</Badge>
+              <Badge variant="default">{LEVEL_FILTER_LABEL[levelFilter]}</Badge>
+              <Badge variant="default">{formatTime(todayStudy.durationSeconds)}</Badge>
               <Badge variant="default">{videoOriginLabel(videoOriginInfo?.source)}</Badge>
             </div>
             <div className="mt-2 flex flex-wrap gap-2 text-sm text-surface-500 dark:text-surface-400">
               <span>{currentVideo.channel}</span>
-              <span>•</span>
-              <span>{formatTime(todayStudy.durationSeconds)}</span>
               <span>•</span>
               <span>{currentVideo.level}</span>
               <span>•</span>
@@ -1438,9 +1665,67 @@ export function InglesPage() {
               <SummaryItem label="Nota" value={todayStudy.quizTotal ? `${todayStudy.quizScore}/${todayStudy.quizTotal} (${quizPercent}%)` : 'pendente'} />
             </div>
           </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="ghost" icon={<History size={14} />} onClick={() => setWeeklyHistoryModalOpen(true)}>
+              Histórico da semana ({currentWeekHistory.length})
+            </Button>
+            <a
+              href={`https://www.youtube.com/watch?v=${currentVideo.videoId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 px-3 py-1.5 text-sm font-medium text-surface-600 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-700"
+            >
+              Abrir no YouTube
+            </a>
+          </div>
         </CardBody>
       </Card>
       </div>
+
+      <Modal isOpen={weeklyHistoryModalOpen} onClose={() => setWeeklyHistoryModalOpen(false)} title="Histórico da semana" size="lg">
+        <div className="space-y-3">
+          {currentWeekHistory.length === 0 && (
+            <p className="text-sm text-surface-500 dark:text-surface-400">Nenhum vídeo disponibilizado ainda nesta semana.</p>
+          )}
+          {currentWeekHistory.map(entry => (
+            <div key={entry.id} className="rounded-lg border border-surface-200 p-3 text-sm dark:border-surface-700">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-medium text-surface-900 dark:text-white">{entry.title}</p>
+                <Badge variant={
+                  entry.status === 'completed' ? 'success'
+                  : entry.status === 'in_progress' ? 'primary'
+                  : entry.status === 'swapped' ? 'default'
+                  : 'default'
+                }>
+                  {entry.status === 'completed' ? 'concluído'
+                    : entry.status === 'in_progress' ? 'em andamento'
+                    : entry.status === 'swapped' ? 'trocado'
+                    : 'disponibilizado'}
+                </Badge>
+              </div>
+              <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">
+                {entry.channelTitle} · {LEVEL_FILTER_LABEL[entry.levelFilter]} ({entry.cefrLevel}) · {formatTime(entry.durationSeconds)} · qualidade {entry.qualityScore}/100
+              </p>
+              <p className="mt-1 text-xs text-surface-400 dark:text-surface-500">
+                Disponibilizado em {new Date(entry.selectedAt).toLocaleString('pt-BR')}
+                {entry.progressPercent !== undefined ? ` · progresso ${Math.round(entry.progressPercent)}%` : ''}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button size="sm" variant="secondary" onClick={() => handleReopenHistoryEntry(entry)}>Reabrir no app</Button>
+                <a
+                  href={entry.watchUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 px-3 py-1.5 text-xs font-medium text-surface-600 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-700"
+                >
+                  Abrir no YouTube
+                </a>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Modal>
 
       <div ref={shadowingCardRef}>
       <Card>
