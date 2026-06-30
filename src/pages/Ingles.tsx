@@ -321,6 +321,10 @@ export function InglesPage() {
   const latestStudyRef = useRef<EnglishDailyStudy | null>(null);
   const latestDataRef = useRef<EnglishStudyData>(emptyStudyData);
   const isTrackingRef = useRef(false);
+  const isPlayerPlayingRef = useRef(false);
+  const currentVideoRef = useRef<DailyEnglishVideo | null>(null);
+  const activePlayerVideoIdRef = useRef<string | null>(null);
+  const lastProgressPersistAtRef = useRef(0);
   const invalidVideoIdsRef = useRef(new Set<string>());
   const checkedVideoIdRef = useRef<string | null>(null);
   const recoveringVideoRef = useRef(false);
@@ -451,13 +455,15 @@ export function InglesPage() {
   }, []);
 
   const persistStudyProgress = useCallback((study: EnglishDailyStudy) => {
+    const now = Date.now();
     const previousProgress = latestStudyRef.current?.progressPercent ?? 0;
     let nextData = mergeDailyStudy(latestDataRef.current, study);
+    const crossedUnlock = previousProgress < unlockPercent && study.progressPercent >= unlockPercent;
 
     // Cruzou o limiar de "assistido o suficiente" agora — marca no histórico
     // permanente para que esse vídeo nunca mais seja sugerido novamente,
     // mesmo que o usuário não termine o questionário.
-    if (previousProgress < unlockPercent && study.progressPercent >= unlockPercent) {
+    if (crossedUnlock) {
       const watchedVideo = resolveDailyVideoFromStudy(study);
       nextData = markVideoWatched(nextData, {
         videoId: study.videoId,
@@ -470,6 +476,17 @@ export function InglesPage() {
 
     latestDataRef.current = nextData;
     latestStudyRef.current = study;
+
+    if (!crossedUnlock && now - lastProgressPersistAtRef.current < 5000) {
+      return;
+    }
+
+    lastProgressPersistAtRef.current = now;
+    console.info('[Inglês Diário] Salvando progresso sem recriar player.', {
+      videoId: study.videoId,
+      watchedSeconds: study.watchedSeconds.length,
+      progressPercent: Math.round(study.progressPercent),
+    });
     setData(nextData);
     void saveEnglishStudyData(userId, nextData);
   }, [userId]);
@@ -481,7 +498,7 @@ export function InglesPage() {
 
     const currentTime = player.getCurrentTime();
     const durationFromPlayer = player.getDuration();
-    const duration = Math.floor(durationFromPlayer || study.durationSeconds || currentVideo.durationSeconds);
+    const duration = Math.floor(durationFromPlayer || study.durationSeconds || currentVideoRef.current?.durationSeconds || 0);
     const currentSecond = Math.floor(currentTime);
 
     if (
@@ -504,7 +521,7 @@ export function InglesPage() {
       watchedSeconds,
     });
     persistStudyProgress(nextStudy);
-  }, [currentVideo.durationSeconds, persistStudyProgress]);
+  }, [persistStudyProgress]);
 
   const startWatchTimer = useCallback(() => {
     if (document.visibilityState !== 'visible') return;
@@ -554,6 +571,10 @@ export function InglesPage() {
   }, [todayStudy]);
 
   useEffect(() => {
+    currentVideoRef.current = currentVideo;
+  }, [currentVideo]);
+
+  useEffect(() => {
     latestDataRef.current = data;
   }, [data]);
 
@@ -565,7 +586,12 @@ export function InglesPage() {
   const dailyVideoRequestRef = useRef<string | null>(null);
   useEffect(() => {
     if (loading) return;
-    const savedToday = data.dailyStudies.find(study => study.date === todayDate);
+    if (isPlayerPlayingRef.current || playerRef.current?.getPlayerState() === 1) {
+      console.info('[Inglês Diário] Busca automática ignorada: vídeo em reprodução.');
+      return;
+    }
+
+    const savedToday = latestDataRef.current.dailyStudies.find(study => study.date === todayDate);
     const needsFreshVideo = !savedToday
       || savedToday.completed
       || !isWithinShadowingDuration(savedToday.durationSeconds);
@@ -577,6 +603,11 @@ export function InglesPage() {
 
     let cancelled = false;
     (async () => {
+      console.info('[Inglês Diário] Busca automática inicial disparada.', {
+        efeito: 'dailyVideoRequest',
+        requestKey,
+        motivo: !savedToday ? 'sem estudo do dia' : savedToday.completed ? 'estudo concluído' : 'duração fora da janela',
+      });
       const excludeIds = new Set([
         ...getWatchedVideoIds(latestDataRef.current),
         ...(savedToday ? [savedToday.videoId] : []),
@@ -593,26 +624,30 @@ export function InglesPage() {
     })();
 
     return () => { cancelled = true; };
-  }, [loading, todayDate, data.dailyStudies, pickFreshVideo, saveStudy]);
+  }, [loading, todayDate, pickFreshVideo, saveStudy]);
 
   useEffect(() => {
     if (loading || recoveringVideoRef.current || checkedVideoIdRef.current === currentVideo.videoId) return;
 
     let cancelled = false;
     checkedVideoIdRef.current = currentVideo.videoId;
+    const videoIdToValidate = currentVideo.videoId;
+    const videoToValidate = currentVideo;
+    console.info('[Inglês Diário] Validando vídeo carregado.', { videoId: videoIdToValidate });
 
-    validateDailyVideo(currentVideo)
+    validateDailyVideo(videoToValidate)
       .then(validation => {
         if (cancelled) return;
         if (!validation.ok) {
-          invalidVideoIdsRef.current.add(currentVideo.videoId);
+          invalidVideoIdsRef.current.add(videoIdToValidate);
           void replaceCurrentVideo(validation.reason ?? 'Vídeo atual inválido.');
           return;
         }
 
-        if (validation.video && Math.abs(validation.video.durationSeconds - todayStudy.durationSeconds) > 1) {
+        const latestStudy = latestStudyRef.current;
+        if (validation.video && latestStudy?.videoId === videoIdToValidate && Math.abs(validation.video.durationSeconds - latestStudy.durationSeconds) > 1) {
           const nextStudy = recalculateStudy({
-            ...todayStudy,
+            ...latestStudy,
             title: validation.video.title,
             durationSeconds: validation.video.durationSeconds,
           });
@@ -621,30 +656,41 @@ export function InglesPage() {
       })
       .catch(err => {
         console.warn('[Inglês Diário] Falha ao validar vídeo atual.', {
-          videoId: currentVideo.videoId,
+          videoId: videoIdToValidate,
           erro: err,
         });
       });
 
     return () => { cancelled = true; };
-  }, [currentVideo, loading, saveStudy, todayStudy]);
+  }, [currentVideo.videoId, loading, saveStudy]);
 
   useEffect(() => {
     if (loading) return;
     let cancelled = false;
+    const videoIdForPlayer = currentVideo.videoId;
 
     function createPlayer() {
       if (cancelled || !window.YT?.Player) return;
-      if (!isValidYouTubeVideoId(currentVideo.videoId)) {
-        void recoverFromUnavailableVideo(currentVideo.videoId, 'videoId ausente ou inválido antes de criar o player.');
+      if (!isValidYouTubeVideoId(videoIdForPlayer)) {
+        void recoverFromUnavailableVideo(videoIdForPlayer, 'videoId ausente ou inválido antes de criar o player.');
         return;
       }
+      if (playerRef.current && activePlayerVideoIdRef.current === videoIdForPlayer) {
+        console.info('[Inglês Diário] Player já montado para o vídeo atual; mantendo iframe.', { videoId: videoIdForPlayer });
+        return;
+      }
+
+      console.info('[Inglês Diário] Montando iframe/player do YouTube.', {
+        videoId: videoIdForPlayer,
+        src: getYouTubeEmbedUrl(videoIdForPlayer),
+      });
       playerRef.current?.destroy();
       stopWatchTimer();
+      activePlayerVideoIdRef.current = videoIdForPlayer;
       setPlayerStatus('loading');
       setIsPlayerPlaying(false);
       playerRef.current = new window.YT.Player(playerContainerId, {
-        videoId: currentVideo.videoId,
+        videoId: videoIdForPlayer,
         playerVars: {
           modestbranding: 1,
           rel: 0,
@@ -654,34 +700,52 @@ export function InglesPage() {
         },
         events: {
           onReady: event => {
-            const duration = Math.floor(event.target.getDuration() || currentVideo.durationSeconds);
+            const fallbackDuration = currentVideoRef.current?.videoId === videoIdForPlayer
+              ? currentVideoRef.current.durationSeconds
+              : 0;
+            const duration = Math.floor(event.target.getDuration() || fallbackDuration);
             const iframe = event.target.getIframe?.();
             iframe?.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
             iframe?.setAttribute('allowfullscreen', 'true');
             iframe?.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+            console.info('[Inglês Diário] Player pronto.', { videoId: videoIdForPlayer, duration });
             setPlayerStatus('ready');
             const study = latestStudyRef.current;
-            if (study && duration > 0 && Math.abs(study.durationSeconds - duration) > 1) {
+            if (study?.videoId === videoIdForPlayer && duration > 0 && Math.abs(study.durationSeconds - duration) > 1) {
               const nextStudy = recalculateStudy({ ...study, durationSeconds: duration });
               void saveStudy(nextStudy);
             }
           },
           onStateChange: event => {
             if (event.data === 1) {
+              isPlayerPlayingRef.current = true;
               setIsPlayerPlaying(true);
               setPlayerStatus('playing');
+              console.info('[Inglês Diário] Reprodução iniciada/retomada.', { videoId: videoIdForPlayer });
               startWatchTimer();
               return;
             }
 
+            isPlayerPlayingRef.current = false;
             setIsPlayerPlaying(false);
             stopWatchTimer();
-            if (event.data === 2 || event.data === 0) setPlayerStatus('paused');
+            if (event.data === 2 || event.data === 0) {
+              setPlayerStatus('paused');
+              console.info('[Inglês Diário] Reprodução pausada/finalizada pelo player.', {
+                videoId: videoIdForPlayer,
+                state: event.data,
+              });
+            }
           },
           onError: event => {
             stopWatchTimer();
+            isPlayerPlayingRef.current = false;
             setPlayerStatus('unavailable');
-            void recoverFromUnavailableVideo(currentVideo.videoId, `Erro do player do YouTube: ${event?.data ?? 'desconhecido'}.`);
+            console.warn('[Inglês Diário] Vídeo marcado como indisponível por erro real do YouTube.', {
+              videoId: videoIdForPlayer,
+              errorCode: event?.data ?? 'desconhecido',
+            });
+            void recoverFromUnavailableVideo(videoIdForPlayer, `Erro do player do YouTube: ${event?.data ?? 'desconhecido'}.`);
           },
         },
       });
@@ -702,23 +766,29 @@ export function InglesPage() {
 
     return () => {
       cancelled = true;
+      console.info('[Inglês Diário] Desmontando iframe/player do YouTube.', { videoId: videoIdForPlayer });
+      isPlayerPlayingRef.current = false;
       setIsPlayerPlaying(false);
       stopWatchTimer();
       playerRef.current?.destroy();
       playerRef.current = null;
+      if (activePlayerVideoIdRef.current === videoIdForPlayer) activePlayerVideoIdRef.current = null;
     };
-  }, [currentVideo.videoId, currentVideo.durationSeconds, loading, playerContainerId, saveStudy, startWatchTimer, stopWatchTimer]);
+  }, [currentVideo.videoId, loading, playerContainerId, saveStudy, startWatchTimer, stopWatchTimer]);
 
   useEffect(() => {
     const handleVisibility = () => {
       if (document.visibilityState !== 'visible') {
         setIsPlayerPlaying(false);
         stopWatchTimer();
+        console.info('[Inglês Diário] Aba perdeu visibilidade; pausando apenas o timer de progresso.');
         return;
       }
 
       if (playerRef.current?.getPlayerState() === 1) {
+        isPlayerPlayingRef.current = true;
         setIsPlayerPlaying(true);
+        console.info('[Inglês Diário] Aba visível novamente; retomando timer de progresso.');
         startWatchTimer();
       }
     };
@@ -840,6 +910,7 @@ export function InglesPage() {
     if (recoveringVideoRef.current) return;
     recoveringVideoRef.current = true;
     stopWatchTimer();
+    isPlayerPlayingRef.current = false;
     setIsPlayerPlaying(false);
     setPlayerStatus('loading');
     setChangingVideo(true);
