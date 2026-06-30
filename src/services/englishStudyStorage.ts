@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured, modoLocalAtivo } from '../lib/supabase';
-import { gerarId, hojeISO } from '../utils';
+import { gerarId } from '../utils';
 import type {
   DailyPlanItem,
   DuolingoStreak,
@@ -17,6 +17,35 @@ import type {
 const TABLE = 'english_study_data';
 const LOCAL_KEY = 'english_study_data_local';
 const SETUP_ERROR_CODES = new Set(['42P01', 'PGRST205', 'PGRST116']);
+const SAO_PAULO_TIME_ZONE = 'America/Sao_Paulo';
+
+function getSaoPauloParts(date = new Date()): { year: number; month: number; day: number } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SAO_PAULO_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  return {
+    year: Number(parts.find(part => part.type === 'year')?.value),
+    month: Number(parts.find(part => part.type === 'month')?.value),
+    day: Number(parts.find(part => part.type === 'day')?.value),
+  };
+}
+
+function isoFromParts(year: number, month: number, day: number): string {
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+export function getCurrentStudyDate(date = new Date()): string {
+  const { year, month, day } = getSaoPauloParts(date);
+  return isoFromParts(year, month, day);
+}
+
+function parseISODateOnly(dateISO: string): Date {
+  const [year, month, day] = dateISO.split('-').map(Number);
+  return new Date(year, month - 1, day, 12, 0, 0, 0);
+}
 
 export const defaultDailyPlanTitles = [
   'Fazer 10 minutos de listening',
@@ -28,7 +57,7 @@ export function createEmptyDuolingoStreak(): DuolingoStreak {
   return { currentStreak: 0, longestStreak: 0, lastUpdatedDate: '', history: [] };
 }
 
-export function createEmptyEnglishStudyData(date = hojeISO()): EnglishStudyData {
+export function createEmptyEnglishStudyData(date = getCurrentStudyDate()): EnglishStudyData {
   return {
     dailyPlan: defaultDailyPlanTitles.map(title => ({ id: gerarId(), title, done: false, date })),
     sessions: [],
@@ -65,17 +94,39 @@ function normalizeData(raw: Partial<EnglishStudyData> | null | undefined): Engli
   };
 }
 
-function readLocal(): EnglishStudyData {
+function localKeyForUser(userId?: string | null): string {
+  return userId ? `${LOCAL_KEY}:${userId}` : LOCAL_KEY;
+}
+
+function readLocal(userId?: string | null): EnglishStudyData {
   try {
-    const raw = localStorage.getItem(LOCAL_KEY);
+    const raw = localStorage.getItem(localKeyForUser(userId)) ?? localStorage.getItem(LOCAL_KEY);
     return normalizeData(raw ? JSON.parse(raw) as Partial<EnglishStudyData> : null);
   } catch {
     return createEmptyEnglishStudyData();
   }
 }
 
-function saveLocal(data: EnglishStudyData): void {
-  localStorage.setItem(LOCAL_KEY, JSON.stringify(data));
+function saveLocal(data: EnglishStudyData, userId?: string | null): void {
+  localStorage.setItem(localKeyForUser(userId), JSON.stringify(data));
+}
+
+function hasEnglishContent(data: EnglishStudyData): boolean {
+  return [
+    data.sessions,
+    data.vocabulary,
+    data.phrases,
+    data.speakingPractices,
+    data.savedVideos,
+    data.dailyStudies,
+    data.generatedQuizzes,
+    data.quizAttempts,
+    data.shadowingSessions,
+    data.preplyAulas,
+    data.weeklyWords,
+  ].some(list => list.length > 0)
+    || data.duolingoStreak.history.length > 0
+    || data.dailyPlan.some(item => item.done);
 }
 
 function shouldUseLocal(userId?: string | null): boolean {
@@ -92,7 +143,7 @@ function isSetupMissingError(error: { code?: string; message?: string } | null):
 }
 
 export async function getEnglishStudyData(userId?: string | null): Promise<EnglishStudyData> {
-  if (shouldUseLocal(userId)) return readLocal();
+  if (shouldUseLocal(userId)) return readLocal(userId);
 
   const { data, error } = await supabase
     .from(TABLE)
@@ -101,15 +152,21 @@ export async function getEnglishStudyData(userId?: string | null): Promise<Engli
     .maybeSingle();
 
   if (error) {
-    if (isSetupMissingError(error)) return readLocal();
+    if (isSetupMissingError(error)) return readLocal(userId);
     throw error;
   }
-  return normalizeData(data?.data as Partial<EnglishStudyData> | null);
+  if (!data?.data) {
+    const localData = readLocal(userId);
+    return hasEnglishContent(localData) ? localData : normalizeData(null);
+  }
+  const normalized = normalizeData(data.data as Partial<EnglishStudyData>);
+  saveLocal(normalized, userId);
+  return normalized;
 }
 
 export async function saveEnglishStudyData(userId: string | null | undefined, data: EnglishStudyData): Promise<void> {
   if (shouldUseLocal(userId)) {
-    saveLocal(data);
+    saveLocal(data, userId);
     return;
   }
 
@@ -121,11 +178,12 @@ export async function saveEnglishStudyData(userId: string | null | undefined, da
     );
   if (error) {
     if (isSetupMissingError(error)) {
-      saveLocal(data);
+      saveLocal(data, userId);
       return;
     }
     throw error;
   }
+  saveLocal(data, userId);
 }
 
 async function mutate(userId: string | null | undefined, updater: (data: EnglishStudyData) => EnglishStudyData): Promise<EnglishStudyData> {
@@ -215,15 +273,15 @@ const REVIEW_INTERVALS_DAYS = [1, 3, 7, 14, 30, 60, 90];
 const WEEKLY_WORD_CAP = 10;
 
 export function addDaysISO(dateISO: string, days: number): string {
-  const date = new Date(`${dateISO}T00:00:00`);
+  const date = parseISODateOnly(dateISO);
   date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
+  return isoFromParts(date.getFullYear(), date.getMonth() + 1, date.getDate());
 }
 
 export function getWeekStartISO(dateISO: string): string {
-  const date = new Date(`${dateISO}T00:00:00`);
+  const date = parseISODateOnly(dateISO);
   date.setDate(date.getDate() - date.getDay());
-  return date.toISOString().slice(0, 10);
+  return isoFromParts(date.getFullYear(), date.getMonth() + 1, date.getDate());
 }
 
 export function countWordsInWeek(words: WeeklyWord[], weekStart: string): number {
@@ -238,7 +296,7 @@ export const addWeeklyWord = (userId: string | null | undefined, word: Omit<Week
       ...word,
       id: gerarId(),
       addedAt: new Date().toISOString(),
-      nextReviewAt: addDaysISO(hojeISO(), REVIEW_INTERVALS_DAYS[0]),
+      nextReviewAt: addDaysISO(getCurrentStudyDate(), REVIEW_INTERVALS_DAYS[0]),
       reviewStage: 0,
       mastered: false,
     };
@@ -259,7 +317,7 @@ export const reviewWeeklyWord = (userId: string | null | undefined, id: string, 
         ...w,
         reviewStage: nextStage,
         lastReviewedAt: new Date().toISOString(),
-        nextReviewAt: addDaysISO(hojeISO(), REVIEW_INTERVALS_DAYS[nextStage]),
+        nextReviewAt: addDaysISO(getCurrentStudyDate(), REVIEW_INTERVALS_DAYS[nextStage]),
         mastered,
       };
     }),

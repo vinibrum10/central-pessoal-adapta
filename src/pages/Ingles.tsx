@@ -21,13 +21,14 @@ import {
   addWeeklyWord,
   deletePreplyAula,
   deleteWeeklyWord,
+  getCurrentStudyDate,
   getEnglishStudyData,
   getWeekStartISO,
   reviewWeeklyWord,
   saveDuolingoStreak,
   saveEnglishStudyData,
 } from '../services/englishStudyStorage';
-import { gerarId, hojeISO } from '../utils';
+import { gerarId } from '../utils';
 import type {
   DuolingoStreak,
   EnglishQuizAttempt,
@@ -119,6 +120,21 @@ function createDailyStudy(date: string, video: DailyEnglishVideo): EnglishDailyS
   };
 }
 
+function hashString(value: string): number {
+  return Array.from(value).reduce((hash, char) => ((hash << 5) - hash + char.charCodeAt(0)) | 0, 0);
+}
+
+function selectDailyVideo(date: string, userId: string | null, data: EnglishStudyData): DailyEnglishVideo {
+  const savedStudy = data.dailyStudies.find(study => study.date === date);
+  if (savedStudy) return resolveDailyVideoFromStudy(savedStudy);
+
+  const recentVideoIds = new Set(data.dailyStudies.slice(0, 10).map(study => study.videoId));
+  const candidates = dailyEnglishVideos.filter(video => !recentVideoIds.has(video.videoId));
+  const pool = candidates.length > 0 ? candidates : dailyEnglishVideos;
+  const index = Math.abs(hashString(`${userId ?? 'anon'}:${date}`)) % pool.length;
+  return pool[index] ?? dailyEnglishVideos[0];
+}
+
 function resolveDailyVideoFromStudy(study: EnglishDailyStudy): DailyEnglishVideo {
   const localVideo = dailyEnglishVideos.find(video => video.videoId === study.videoId);
   if (localVideo) return localVideo;
@@ -134,8 +150,7 @@ function resolveDailyVideoFromStudy(study: EnglishDailyStudy): DailyEnglishVideo
   };
 }
 
-function getTodayStudy(data: EnglishStudyData, video: DailyEnglishVideo) {
-  const today = hojeISO();
+function getTodayStudy(data: EnglishStudyData, video: DailyEnglishVideo, today: string) {
   const savedStudy = data.dailyStudies.find(study => study.date === today);
   if (!savedStudy) return createDailyStudy(today, video);
   return {
@@ -192,13 +207,11 @@ function getQuizStatusLabel(study: EnglishDailyStudy, hasQuiz: boolean) {
 }
 
 function getWeekSummary(data: EnglishStudyData) {
-  const today = new Date(`${hojeISO()}T00:00:00`);
-  const weekStart = new Date(today);
-  weekStart.setDate(today.getDate() - today.getDay());
+  const today = getCurrentStudyDate();
+  const weekStart = getWeekStartISO(today);
 
   const weekStudies = data.dailyStudies.filter(study => {
-    const date = new Date(`${study.date}T00:00:00`);
-    return date >= weekStart && date <= today;
+    return study.date >= weekStart && study.date <= today;
   });
 
   const studiedDays = weekStudies.filter(study => study.watchedSeconds.length > 0 || study.completed).length;
@@ -223,7 +236,7 @@ interface DayActivity {
 }
 
 function getWeekActivity(data: EnglishStudyData): DayActivity[] {
-  const today = hojeISO();
+  const today = getCurrentStudyDate();
   const weekStart = getWeekStartISO(today);
   const days: DayActivity[] = [];
   for (let i = 0; i < 7; i += 1) {
@@ -252,7 +265,7 @@ function getShadowingStreak(sessions: ShadowingSession[]): number {
   if (sessions.length === 0) return 0;
   const dates = new Set(sessions.map(s => s.date));
   let streak = 0;
-  let cursor = hojeISO();
+  let cursor = getCurrentStudyDate();
   while (dates.has(cursor)) {
     streak += 1;
     cursor = addDaysISO(cursor, -1);
@@ -284,8 +297,10 @@ export function InglesPage() {
   const [shadowingWizardOpen, setShadowingWizardOpen] = useState(false);
   const [progressModalOpen, setProgressModalOpen] = useState(false);
   const [preplyModalOpen, setPreplyModalOpen] = useState(false);
+  const todayDate = getCurrentStudyDate();
 
-  const todayStudy = useMemo(() => getTodayStudy(data, dailyEnglishVideos[0]), [data]);
+  const dailyVideoForDate = useMemo(() => selectDailyVideo(todayDate, userId, data), [data, todayDate, userId]);
+  const todayStudy = useMemo(() => getTodayStudy(data, dailyVideoForDate, todayDate), [dailyVideoForDate, data, todayDate]);
   const currentVideo = useMemo(() => resolveDailyVideoFromStudy(todayStudy), [todayStudy]);
   const generatedQuiz = useMemo(
     () => data.generatedQuizzes.find(quiz => quiz.videoId === currentVideo.videoId),
@@ -299,14 +314,14 @@ export function InglesPage() {
   const weekSummary = useMemo(() => getWeekSummary(data), [data]);
   const weekActivity = useMemo(() => getWeekActivity(data), [data]);
   const shadowingStreak = useMemo(() => getShadowingStreak(data.shadowingSessions), [data.shadowingSessions]);
-  const currentWeekStart = useMemo(() => getWeekStartISO(hojeISO()), []);
+  const currentWeekStart = useMemo(() => getWeekStartISO(todayDate), [todayDate]);
   const wordsThisWeek = useMemo(
     () => data.weeklyWords.filter(w => w.weekStart === currentWeekStart),
     [data.weeklyWords, currentWeekStart],
   );
   const wordsDueForReview = useMemo(
-    () => data.weeklyWords.filter(w => !w.mastered && w.nextReviewAt <= hojeISO()),
-    [data.weeklyWords],
+    () => data.weeklyWords.filter(w => !w.mastered && w.nextReviewAt <= todayDate),
+    [data.weeklyWords, todayDate],
   );
   // Shadowing usa sempre nível avançado e vídeos curtos (2-5 min) — sem busca livre/manual.
   const selectedNivel: NivelFiltro = 'Avançado';
@@ -408,8 +423,15 @@ export function InglesPage() {
           duolingoStreak: studyData.duolingoStreak ?? emptyStudyData.duolingoStreak,
           weeklyWords: studyData.weeklyWords ?? [],
         };
-        const study = getTodayStudy(normalizedData, dailyEnglishVideos[0]);
-        setData(mergeDailyStudy(normalizedData, study));
+        const studyDate = getCurrentStudyDate();
+        const video = selectDailyVideo(studyDate, userId, normalizedData);
+        const study = getTodayStudy(normalizedData, video, studyDate);
+        const hydratedData = mergeDailyStudy(normalizedData, study);
+        latestDataRef.current = hydratedData;
+        setData(hydratedData);
+        if (!normalizedData.dailyStudies.some(item => item.date === studyDate)) {
+          void saveEnglishStudyData(userId, hydratedData);
+        }
       })
       .catch(err => setError(err instanceof Error ? err.message : 'Erro ao carregar o estudo diário.'))
       .finally(() => {
@@ -583,7 +605,7 @@ export function InglesPage() {
       return;
     }
 
-    const nextStudy = createDailyStudy(hojeISO(), nextVideo);
+    const nextStudy = createDailyStudy(todayDate, nextVideo);
     setAnswers({});
     setQuizMessage('');
     try {
@@ -692,7 +714,7 @@ export function InglesPage() {
       completedAt: completed ? new Date().toISOString() : todayStudy.completedAt,
     };
     const attempt: EnglishQuizAttempt = {
-      date: hojeISO(),
+      date: todayDate,
       videoId: currentVideo.videoId,
       answers: generatedQuiz.questions.map((_, index) => answers[index]),
       correctCount: score,
@@ -705,7 +727,7 @@ export function InglesPage() {
     const session: StudySession | undefined = completed && !todayStudy.completed
       ? {
           id: gerarId(),
-          date: hojeISO(),
+          date: todayDate,
           source: 'youtube',
           title: currentVideo.title,
           url: `https://www.youtube.com/watch?v=${currentVideo.videoId}`,
@@ -1535,7 +1557,7 @@ function ShadowingWizardModal({
     const now = new Date().toISOString();
     const session: ShadowingSession = {
       id: gerarId(),
-      date: hojeISO(),
+      date: getCurrentStudyDate(),
       videoId: video.videoId,
       title: video.title,
       durationSeconds: video.durationSeconds,
@@ -2033,7 +2055,7 @@ function MeuProgressoModal({
   async function handleRegisterDuolingoToday() {
     const xp = Number(xpInput) || 0;
     setSavingXp(true);
-    const today = hojeISO();
+    const today = getCurrentStudyDate();
     const alreadyToday = data.duolingoStreak.history.some(h => h.date === today);
     const history = alreadyToday
       ? data.duolingoStreak.history.map(h => h.date === today ? { date: today, xp } : h)
@@ -2160,7 +2182,7 @@ function PreplyModal({
     const now = new Date().toISOString();
     const aula: PreplyAula = {
       id: gerarId(),
-      date: hojeISO(),
+      date: getCurrentStudyDate(),
       teacher: teacher.trim(),
       minutes,
       topic: topic.trim(),
