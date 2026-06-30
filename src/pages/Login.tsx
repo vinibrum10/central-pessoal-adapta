@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Mail, Lock, User, Eye, EyeOff, AlertCircle, KeyRound } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/Button';
+import { AppBackground } from '../components/layout/AppBackground';
 
 const googleAtivo = import.meta.env.VITE_GOOGLE_ENABLED === 'true';
 
@@ -107,22 +108,23 @@ export function LoginPage() {
   const titulo = modo === 'login' ? 'Entrar na sua conta' : modo === 'cadastro' ? 'Criar conta' : 'Recuperar senha';
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-surface-50 dark:bg-surface-900 p-4">
-      <div className="w-full max-w-sm">
+    <div className="relative min-h-screen overflow-hidden flex items-center justify-center bg-[#050404] p-4">
+      <AppBackground standalone />
+      <div className="relative z-10 w-full max-w-sm">
         {/* Logo */}
         <div className="flex flex-col items-center gap-3 mb-8">
-          <div className="w-14 h-14 bg-primary-600 rounded-2xl flex items-center justify-center shadow-lg shadow-primary-600/30">
+          <div className="w-14 h-14 bg-[rgba(201,130,58,0.18)] border border-[rgba(201,130,58,0.45)] rounded-2xl flex items-center justify-center shadow-lg shadow-[rgba(201,130,58,0.20)]">
             <AppLogo />
           </div>
           <div className="text-center">
-            <h1 className="text-xl font-bold text-surface-900 dark:text-white">Sistema de Gestão Pessoal</h1>
-            <p className="text-sm text-surface-400 dark:text-surface-500">Organizado, focado e no controle</p>
+            <h1 className="text-xl font-bold text-white">Sistema de Gestão Pessoal</h1>
+            <p className="text-sm text-[#a6a69d]">Organizado, focado e no controle</p>
           </div>
         </div>
 
         {/* Card */}
-        <div className="bg-white dark:bg-surface-800 rounded-2xl shadow-xl border border-surface-200 dark:border-surface-700 p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-surface-900 dark:text-white text-center">{titulo}</h2>
+        <div className="rounded-2xl shadow-2xl border border-[rgba(217,158,94,0.18)] bg-[rgba(10,8,6,0.82)] backdrop-blur-xl p-6 space-y-4">
+          <h2 className="text-lg font-semibold text-white text-center">{titulo}</h2>
 
           {/* Botões sociais — apenas login e cadastro */}
           {modo !== 'recuperar' && (
@@ -134,17 +136,17 @@ export function LoginPage() {
                 title={!googleAtivo ? 'Login com Google não configurado' : ''}
                 className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors disabled:opacity-50 ${
                   googleAtivo
-                    ? 'border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-900 text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700'
-                    : 'border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 text-surface-400 dark:text-surface-600 cursor-not-allowed'
+                    ? 'border-[rgba(217,158,94,0.20)] bg-[rgba(255,255,255,0.05)] text-white hover:bg-[rgba(255,255,255,0.09)]'
+                    : 'border-[rgba(217,158,94,0.10)] bg-[rgba(255,255,255,0.03)] text-[#6b6b65] cursor-not-allowed'
                 }`}
               >
                 <GoogleIcon />
                 <span className="text-xs">{carregandoGoogle ? '...' : 'Entrar com Google'}</span>
               </button>
               <div className="flex items-center gap-3">
-                <div className="flex-1 h-px bg-surface-200 dark:bg-surface-700" />
-                <span className="text-xs text-surface-400 dark:text-surface-500">ou continue com e-mail</span>
-                <div className="flex-1 h-px bg-surface-200 dark:bg-surface-700" />
+                <div className="flex-1 h-px bg-[rgba(217,158,94,0.15)]" />
+                <span className="text-xs text-[#6b6b65]">ou continue com e-mail</span>
+                <div className="flex-1 h-px bg-[rgba(217,158,94,0.15)]" />
               </div>
             </>
           )}
@@ -153,46 +155,46 @@ export function LoginPage() {
             {/* Campo nome — só cadastro */}
             {modo === 'cadastro' && (
               <div className="relative">
-                <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400" />
+                <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a6a69d]" />
                 <input
                   type="text"
                   placeholder="Seu nome"
                   value={nome}
                   onChange={e => setNome(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2.5 rounded-lg border text-sm bg-white dark:bg-surface-900 border-surface-300 dark:border-surface-600 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-lg border text-sm bg-[rgba(255,255,255,0.05)] border-[rgba(217,158,94,0.20)] text-white placeholder-[#6b6b65] focus:outline-none focus:ring-1 focus:ring-[rgba(201,130,58,0.60)] focus:border-[rgba(201,130,58,0.50)]"
                 />
               </div>
             )}
 
             {/* Campo e-mail */}
             <div className="relative">
-              <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400" />
+              <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a6a69d]" />
               <input
                 type="email"
                 placeholder="Seu e-mail"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 autoComplete="email"
-                className="w-full pl-9 pr-3 py-2.5 rounded-lg border text-sm bg-white dark:bg-surface-900 border-surface-300 dark:border-surface-600 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="w-full pl-9 pr-3 py-2.5 rounded-lg border text-sm bg-[rgba(255,255,255,0.05)] border-[rgba(217,158,94,0.20)] text-white placeholder-[#6b6b65] focus:outline-none focus:ring-1 focus:ring-[rgba(201,130,58,0.60)] focus:border-[rgba(201,130,58,0.50)]"
               />
             </div>
 
             {/* Campo senha — login e cadastro */}
             {modo !== 'recuperar' && (
               <div className="relative">
-                <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400" />
+                <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a6a69d]" />
                 <input
                   type={mostrarSenha ? 'text' : 'password'}
                   placeholder="Senha"
                   value={senha}
                   onChange={e => setSenha(e.target.value)}
                   autoComplete={modo === 'login' ? 'current-password' : 'new-password'}
-                  className="w-full pl-9 pr-10 py-2.5 rounded-lg border text-sm bg-white dark:bg-surface-900 border-surface-300 dark:border-surface-600 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-full pl-9 pr-10 py-2.5 rounded-lg border text-sm bg-[rgba(255,255,255,0.05)] border-[rgba(217,158,94,0.20)] text-white placeholder-[#6b6b65] focus:outline-none focus:ring-1 focus:ring-[rgba(201,130,58,0.60)] focus:border-[rgba(201,130,58,0.50)]"
                 />
                 <button
                   type="button"
                   onClick={() => setMostrarSenha(v => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#a6a69d] hover:text-[#e8aa60] transition-colors"
                 >
                   {mostrarSenha ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
@@ -205,7 +207,7 @@ export function LoginPage() {
                 <button
                   type="button"
                   onClick={() => trocarModo('recuperar')}
-                  className="text-xs text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-1 ml-auto"
+                  className="text-xs text-[#c98040] hover:text-[#e8aa60] transition-colors flex items-center gap-1 ml-auto"
                 >
                   <KeyRound size={11} />
                   Esqueceu sua senha?
@@ -215,13 +217,13 @@ export function LoginPage() {
 
             {/* Feedback */}
             {erro && (
-              <div className="flex items-start gap-2 text-xs text-danger-600 dark:text-danger-400 bg-danger-50 dark:bg-danger-900/20 border border-danger-200 dark:border-danger-800 rounded-lg px-3 py-2">
+              <div className="flex items-start gap-2 text-xs text-red-400 bg-[rgba(220,60,60,0.10)] border border-[rgba(220,60,60,0.25)] rounded-lg px-3 py-2">
                 <AlertCircle size={13} className="flex-shrink-0 mt-0.5" />
                 {erro}
               </div>
             )}
             {sucesso && (
-              <div className="text-xs text-success-600 dark:text-success-400 bg-success-50 dark:bg-success-900/20 border border-success-200 dark:border-success-800 rounded-lg px-3 py-2">
+              <div className="text-xs text-emerald-400 bg-[rgba(52,211,153,0.10)] border border-[rgba(52,211,153,0.25)] rounded-lg px-3 py-2">
                 {sucesso}
               </div>
             )}
@@ -233,31 +235,31 @@ export function LoginPage() {
 
           {/* Aviso de acesso */}
           {modo === 'cadastro' && (
-            <div className="flex items-center gap-2 text-xs text-surface-400 dark:text-surface-500 bg-surface-50 dark:bg-surface-700/30 rounded-lg px-3 py-2">
+            <div className="flex items-center gap-2 text-xs text-[#a6a69d] bg-[rgba(255,255,255,0.04)] rounded-lg px-3 py-2 border border-[rgba(217,158,94,0.10)]">
               <span>Novos usuários entram com acesso básico de visualização.</span>
             </div>
           )}
 
           {/* Troca de modo */}
-          <p className="text-center text-xs text-surface-500 dark:text-surface-400">
+          <p className="text-center text-xs text-[#6b6b65]">
             {modo === 'recuperar' ? (
               <>
                 Lembrou a senha?{' '}
-                <button onClick={() => trocarModo('login')} className="text-primary-600 dark:text-primary-400 font-medium hover:underline">
+                <button onClick={() => trocarModo('login')} className="text-[#c98040] hover:text-[#e8aa60] font-medium hover:underline transition-colors">
                   Fazer login
                 </button>
               </>
             ) : modo === 'login' ? (
               <>
                 Ainda não tem conta?{' '}
-                <button onClick={() => trocarModo('cadastro')} className="text-primary-600 dark:text-primary-400 font-medium hover:underline">
+                <button onClick={() => trocarModo('cadastro')} className="text-[#c98040] hover:text-[#e8aa60] font-medium hover:underline transition-colors">
                   Criar agora
                 </button>
               </>
             ) : (
               <>
                 Já tem conta?{' '}
-                <button onClick={() => trocarModo('login')} className="text-primary-600 dark:text-primary-400 font-medium hover:underline">
+                <button onClick={() => trocarModo('login')} className="text-[#c98040] hover:text-[#e8aa60] font-medium hover:underline transition-colors">
                   Fazer login
                 </button>
               </>
@@ -265,7 +267,7 @@ export function LoginPage() {
           </p>
         </div>
 
-        <p className="text-center text-xs text-surface-400 dark:text-surface-500 mt-4">
+        <p className="text-center text-xs text-[#6b6b65] mt-4">
           Sem conta Supabase? O app funciona localmente sem login.
         </p>
       </div>
