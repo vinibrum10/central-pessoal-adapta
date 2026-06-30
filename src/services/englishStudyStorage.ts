@@ -62,6 +62,7 @@ export function createEmptyDuolingoStreak(): DuolingoStreak {
 
 export function createEmptyEnglishStudyData(date = getCurrentStudyDate()): EnglishStudyData {
   return {
+    unavailableVideoIds: [],
     dailyPlan: defaultDailyPlanTitles.map(title => ({ id: gerarId(), title, done: false, date })),
     sessions: [],
     vocabulary: [],
@@ -96,6 +97,11 @@ function normalizeData(raw: Partial<EnglishStudyData> | null | undefined): Engli
     duolingoStreak: raw?.duolingoStreak ?? base.duolingoStreak,
     weeklyWords: (raw?.weeklyWords ?? []).map(migrateWeeklyWord),
     watchedVideos: raw?.watchedVideos ?? [],
+    // Migração de segurança: versões antigas dos dados não tinham esse campo.
+    // Também filtra qualquer lixo não-string que tenha vazado para a lista.
+    unavailableVideoIds: Array.isArray(raw?.unavailableVideoIds)
+      ? raw.unavailableVideoIds.filter((id): id is string => typeof id === 'string')
+      : [],
   };
 }
 
@@ -435,4 +441,19 @@ export function markVideoWatched(data: EnglishStudyData, entry: Omit<WatchedVide
   }
   const newEntry: WatchedVideoEntry = { ...entry, watchedAt };
   return { ...data, watchedVideos: [newEntry, ...data.watchedVideos] };
+}
+
+const MAX_UNAVAILABLE_VIDEO_IDS = 100;
+
+/**
+ * Marca um videoId como confirmadamente quebrado (erro real do player ou
+ * falha de validação remota) para que a seleção de vídeo nunca mais o
+ * restaure/sugira — nem mesmo após recarregar a página. Lista é persistida
+ * e limitada (FIFO) para não crescer indefinidamente.
+ */
+export function markVideoUnavailableInData(data: EnglishStudyData, videoId: string): EnglishStudyData {
+  if (data.unavailableVideoIds.includes(videoId)) return data;
+  console.warn('[Inglês Diário] Vídeo marcado como indisponível permanentemente (não será mais sugerido):', videoId);
+  const unavailableVideoIds = [videoId, ...data.unavailableVideoIds].slice(0, MAX_UNAVAILABLE_VIDEO_IDS);
+  return { ...data, unavailableVideoIds };
 }

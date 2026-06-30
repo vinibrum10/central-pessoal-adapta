@@ -9,6 +9,12 @@ export function isYouTubeEnglishConfigured(): boolean {
   return Boolean(YOUTUBE_API_KEY && YOUTUBE_API_KEY.trim() !== '');
 }
 
+// Diagnóstico de configuração — nunca loga o valor da chave, só se ela existe.
+console.log(
+  '[Inglês Diário] VITE_YOUTUBE_API_KEY',
+  isYouTubeEnglishConfigured() ? 'configurada — YouTube API é a fonte principal de vídeos.' : 'NÃO configurada — usando fallback local (src/data/englishDailyVideos.ts).',
+);
+
 export function getYouTubeEnglishConfigMessage(): string {
   return 'YouTube não configurado. Configure VITE_YOUTUBE_API_KEY para buscar vídeos de listening.';
 }

@@ -209,6 +209,14 @@ export interface WatchedVideoEntry {
 }
 
 export interface EnglishStudyData {
+  /**
+   * IDs de vídeo confirmados como quebrados (erro real do player do YouTube
+   * ou falha de validação remota — privado, removido, sem permissão de
+   * incorporação etc.). Lista pequena e persistida para que um vídeo
+   * indisponível nunca seja restaurado/sugerido de novo após recarregar a
+   * página. Não confundir com `watchedVideos`, que é só preferência.
+   */
+  unavailableVideoIds: string[];
   dailyPlan: DailyPlanItem[];
   sessions: StudySession[];
   vocabulary: VocabularyItem[];
