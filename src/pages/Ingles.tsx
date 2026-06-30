@@ -11,7 +11,15 @@ import { Badge, ProgressBar } from '../components/Badge';
 import { MetricCard, PageHeader } from '../components/DesignSystem';
 import { useAuth } from '../contexts/AuthContext';
 import { dailyEnglishVideos, getDailyEnglishVideoById, type DailyEnglishVideo } from '../data/englishDailyVideos';
-import { buscarVideosIngles, isYouTubeEnglishConfigured, DURACAO_MAX_SECONDS } from '../services/youtubeEnglish';
+import {
+  buscarVideosIngles,
+  getYouTubeEmbedUrl,
+  getYouTubeEnglishConfigMessage,
+  isValidYouTubeVideoId,
+  isYouTubeEnglishConfigured,
+  validateYouTubeEnglishVideo,
+  DURACAO_MAX_SECONDS,
+} from '../services/youtubeEnglish';
 import { generateEnglishQuiz } from '../services/englishQuizApi';
 import { translateWeeklyWord } from '../services/englishWordTranslateApi';
 import {
@@ -49,6 +57,7 @@ type YouTubePlayerState = -1 | 0 | 1 | 2 | 3 | 5;
 type YouTubePlayer = {
   getCurrentTime: () => number;
   getDuration: () => number;
+  getIframe?: () => HTMLIFrameElement;
   getPlayerState: () => YouTubePlayerState;
   destroy: () => void;
 };
@@ -61,7 +70,7 @@ type YouTubePlayerConstructor = new (
     events?: {
       onReady?: (event: { target: YouTubePlayer }) => void;
       onStateChange?: (event: { data: YouTubePlayerState }) => void;
-      onError?: () => void;
+      onError?: (event?: { data?: number }) => void;
     };
   },
 ) => YouTubePlayer;
@@ -312,6 +321,9 @@ export function InglesPage() {
   const latestStudyRef = useRef<EnglishDailyStudy | null>(null);
   const latestDataRef = useRef<EnglishStudyData>(emptyStudyData);
   const isTrackingRef = useRef(false);
+  const invalidVideoIdsRef = useRef(new Set<string>());
+  const checkedVideoIdRef = useRef<string | null>(null);
+  const recoveringVideoRef = useRef(false);
 
   const [data, setData] = useState<EnglishStudyData>(emptyStudyData);
   const [loading, setLoading] = useState(true);
@@ -584,11 +596,49 @@ export function InglesPage() {
   }, [loading, todayDate, data.dailyStudies, pickFreshVideo, saveStudy]);
 
   useEffect(() => {
+    if (loading || recoveringVideoRef.current || checkedVideoIdRef.current === currentVideo.videoId) return;
+
+    let cancelled = false;
+    checkedVideoIdRef.current = currentVideo.videoId;
+
+    validateDailyVideo(currentVideo)
+      .then(validation => {
+        if (cancelled) return;
+        if (!validation.ok) {
+          invalidVideoIdsRef.current.add(currentVideo.videoId);
+          void replaceCurrentVideo(validation.reason ?? 'Vídeo atual inválido.');
+          return;
+        }
+
+        if (validation.video && Math.abs(validation.video.durationSeconds - todayStudy.durationSeconds) > 1) {
+          const nextStudy = recalculateStudy({
+            ...todayStudy,
+            title: validation.video.title,
+            durationSeconds: validation.video.durationSeconds,
+          });
+          void saveStudy(nextStudy);
+        }
+      })
+      .catch(err => {
+        console.warn('[Inglês Diário] Falha ao validar vídeo atual.', {
+          videoId: currentVideo.videoId,
+          erro: err,
+        });
+      });
+
+    return () => { cancelled = true; };
+  }, [currentVideo, loading, saveStudy, todayStudy]);
+
+  useEffect(() => {
     if (loading) return;
     let cancelled = false;
 
     function createPlayer() {
       if (cancelled || !window.YT?.Player) return;
+      if (!isValidYouTubeVideoId(currentVideo.videoId)) {
+        void recoverFromUnavailableVideo(currentVideo.videoId, 'videoId ausente ou inválido antes de criar o player.');
+        return;
+      }
       playerRef.current?.destroy();
       stopWatchTimer();
       setPlayerStatus('loading');
@@ -600,10 +650,15 @@ export function InglesPage() {
           rel: 0,
           playsinline: 1,
           enablejsapi: 1,
+          origin: window.location.origin,
         },
         events: {
           onReady: event => {
             const duration = Math.floor(event.target.getDuration() || currentVideo.durationSeconds);
+            const iframe = event.target.getIframe?.();
+            iframe?.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
+            iframe?.setAttribute('allowfullscreen', 'true');
+            iframe?.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
             setPlayerStatus('ready');
             const study = latestStudyRef.current;
             if (study && duration > 0 && Math.abs(study.durationSeconds - duration) > 1) {
@@ -623,9 +678,10 @@ export function InglesPage() {
             stopWatchTimer();
             if (event.data === 2 || event.data === 0) setPlayerStatus('paused');
           },
-          onError: () => {
+          onError: event => {
             stopWatchTimer();
             setPlayerStatus('unavailable');
+            void recoverFromUnavailableVideo(currentVideo.videoId, `Erro do player do YouTube: ${event?.data ?? 'desconhecido'}.`);
           },
         },
       });
@@ -683,38 +739,158 @@ export function InglesPage() {
     };
   }
 
-  async function handleChangeVideo() {
-    if (changingVideo) return;
+  async function validateDailyVideo(video: DailyEnglishVideo) {
+    if (!isValidYouTubeVideoId(video.videoId)) {
+      return { ok: false, reason: 'videoId ausente ou inválido.' };
+    }
+
+    const validation = await validateYouTubeEnglishVideo(video.videoId);
+    if (!validation.ok) return validation;
+
+    if (validation.video && Math.abs(validation.video.durationSeconds - video.durationSeconds) > 1) {
+      return {
+        ...validation,
+        video: {
+          ...validation.video,
+          durationSeconds: validation.video.durationSeconds,
+        },
+      };
+    }
+    return validation;
+  }
+
+  async function findNextDailyVideo(recentVideoIds: Set<string>): Promise<DailyEnglishVideo | null> {
+    const cachedCandidates = cachedVideosForSelectedFilter.filter(video => (
+      isValidYouTubeVideoId(video.videoId)
+      && !recentVideoIds.has(video.videoId)
+      && !invalidVideoIdsRef.current.has(video.videoId)
+      && isWithinShadowingDuration(video.durationSeconds)
+    ));
+
+    if (cachedCandidates.length > 0) {
+      const cachedVideo = videoResultToDailyVideo(cachedCandidates[0], selectedNivel, dailyEnglishVideos);
+      console.info('[Inglês Diário] Vídeo selecionado do cache.', { videoId: cachedVideo.videoId });
+      return cachedVideo;
+    }
+
+    if (isYouTubeEnglishConfigured()) {
+      for (let queryIndex = 0; queryIndex < 4; queryIndex += 1) {
+        const result = await buscarVideosIngles({
+          nivel: selectedNivel,
+          duracao: selectedDuracao,
+          queryIndex,
+          seenVideoIds: new Set([...recentVideoIds, ...invalidVideoIdsRef.current]),
+          allowFallback: true,
+        });
+        const videos = result.videos.map(youtubeResultToVideoResult);
+        if (videos.length > 0) cacheLibraryResults(selectedNivel, selectedDuracao, videos);
+
+        const candidate = result.videos.find(video => (
+          isValidYouTubeVideoId(video.id)
+          && !recentVideoIds.has(video.id)
+          && !invalidVideoIdsRef.current.has(video.id)
+          && isWithinShadowingDuration(video.durationSeconds)
+        ));
+
+        if (candidate) {
+          console.info('[Inglês Diário] Vídeo selecionado da API.', {
+            videoId: candidate.id,
+            fallback: result.usedFallback,
+          });
+          return videoResultToDailyVideo(youtubeResultToVideoResult(candidate), selectedNivel, dailyEnglishVideos);
+        }
+      }
+    } else {
+      console.warn('[Inglês Diário] YouTube sem configuração.', {
+        motivo: getYouTubeEnglishConfigMessage(),
+        variavelEsperada: 'VITE_YOUTUBE_API_KEY',
+      });
+    }
+
+    const fallback = getLocalFallbackVideos(dailyEnglishVideos, selectedNivel, selectedDuracao)
+      .filter(video => (
+        isValidYouTubeVideoId(video.videoId)
+        && !recentVideoIds.has(video.videoId)
+        && !invalidVideoIdsRef.current.has(video.videoId)
+        && isWithinShadowingDuration(video.durationSeconds)
+      ));
+
+    for (const video of fallback) {
+      if (!isYouTubeEnglishConfigured()) {
+        cacheLibraryResults(selectedNivel, selectedDuracao, fallback);
+        console.info('[Inglês Diário] Vídeo local selecionado sem validação remota.', { videoId: video.videoId });
+        return videoResultToDailyVideo(video, selectedNivel, dailyEnglishVideos);
+      }
+
+      const validation = await validateYouTubeEnglishVideo(video.videoId);
+      if (validation.ok) {
+        cacheLibraryResults(selectedNivel, selectedDuracao, fallback);
+        console.info('[Inglês Diário] Vídeo local validado e selecionado.', { videoId: video.videoId });
+        return videoResultToDailyVideo(video, selectedNivel, dailyEnglishVideos);
+      }
+
+      invalidVideoIdsRef.current.add(video.videoId);
+      console.warn('[Inglês Diário] Vídeo local descartado.', { videoId: video.videoId, motivo: validation.reason });
+    }
+
+    return null;
+  }
+
+  async function replaceCurrentVideo(reason: string) {
+    if (recoveringVideoRef.current) return;
+    recoveringVideoRef.current = true;
     stopWatchTimer();
     setIsPlayerPlaying(false);
-    setError('');
     setPlayerStatus('loading');
     setChangingVideo(true);
 
-    // Exclui TODO o histórico de assistidos (não só os últimos N dias) + o vídeo atual.
-    const excludeIds = new Set([todayStudy.videoId, ...getWatchedVideoIds(latestDataRef.current)]);
+    const recentVideoIds = new Set([
+      todayStudy.videoId,
+      ...getWatchedVideoIds(latestDataRef.current),
+      ...latestDataRef.current.sessions.slice(0, 12)
+        .map(session => getVideoIdFromYouTubeUrl(session.url))
+        .filter(Boolean),
+      ...invalidVideoIdsRef.current,
+    ]);
 
-    let nextVideo: DailyEnglishVideo | null = null;
     try {
-      nextVideo = await pickFreshVideo(excludeIds);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao buscar vídeos.');
-    }
+      console.warn('[Inglês Diário] Buscando substituto para vídeo atual.', {
+        motivo: reason,
+        videoIdAtual: todayStudy.videoId,
+      });
+      const nextVideo = await findNextDailyVideo(recentVideoIds);
+      if (!nextVideo) {
+        setError(NO_FRESH_VIDEO_MESSAGE);
+        setPlayerStatus('unavailable');
+        return;
+      }
 
-    if (!nextVideo) {
-      setError(NO_FRESH_VIDEO_MESSAGE);
-      setChangingVideo(false);
-      return;
-    }
-
-    const nextStudy = createDailyStudy(todayDate, nextVideo);
-    setAnswers({});
-    setQuizMessage('');
-    try {
+      const nextStudy = createDailyStudy(todayDate, nextVideo);
+      setAnswers({});
+      setQuizMessage('');
+      setError('');
       await saveStudy(nextStudy);
+    } catch (err) {
+      console.error('[Inglês Diário] Falha ao substituir vídeo.', err);
+      setError('Não consegui carregar outro vídeo agora. Tente novamente em instantes.');
+      setPlayerStatus('unavailable');
     } finally {
+      recoveringVideoRef.current = false;
       setChangingVideo(false);
     }
+  }
+
+  async function recoverFromUnavailableVideo(videoId: string, reason: string) {
+    invalidVideoIdsRef.current.add(videoId);
+    checkedVideoIdRef.current = null;
+    console.warn('[Inglês Diário] Vídeo indisponível removido da rotação.', { videoId, motivo: reason });
+    await replaceCurrentVideo(reason);
+  }
+
+  async function handleChangeVideo() {
+    if (changingVideo) return;
+    setError('');
+    await replaceCurrentVideo('Troca manual solicitada.');
   }
 
   async function handleGenerateQuiz() {
@@ -832,7 +1008,7 @@ export function InglesPage() {
           date: todayDate,
           source: 'youtube',
           title: currentVideo.title,
-          url: `https://www.youtube.com/watch?v=${currentVideo.videoId}`,
+          url: getYouTubeEmbedUrl(currentVideo.videoId),
           minutes: Math.round(todayStudy.watchedSeconds.length / 60),
           level: currentVideo.level,
           understoodPercent: percent,
@@ -1205,11 +1381,23 @@ function toVideoResult(v: DailyEnglishVideo): VideoResult {
     title: v.title,
     channelTitle: v.channel,
     thumbnailUrl: `https://img.youtube.com/vi/${v.videoId}/mqdefault.jpg`,
-    url: `https://www.youtube.com/watch?v=${v.videoId}`,
+    url: getYouTubeEmbedUrl(v.videoId),
     durationSeconds: v.durationSeconds,
     cefrLevel: v.cefrLevel,
     theme: v.theme,
   };
+}
+
+function getVideoIdFromYouTubeUrl(url?: string): string {
+  if (!url) return '';
+  try {
+    const parsed = new URL(url, window.location.origin);
+    if (parsed.hostname.includes('youtu.be')) return parsed.pathname.split('/').filter(Boolean)[0] ?? '';
+    if (parsed.pathname.startsWith('/embed/')) return parsed.pathname.split('/')[2] ?? '';
+    return parsed.searchParams.get('v') ?? '';
+  } catch {
+    return '';
+  }
 }
 
 function getLocalFallbackVideos(allVideos: DailyEnglishVideo[], nivel: NivelFiltro, duracao: DuracaoFiltro): VideoResult[] {
@@ -1312,6 +1500,10 @@ export function BibliotecaVideos({
     pageStateRef.current = { nextPageToken: null, queryIndex: 0, seenVideoIds: new Set() };
 
     if (!isYouTubeEnglishConfigured()) {
+      console.warn('[Inglês Diário] Busca online desativada.', {
+        motivo: getYouTubeEnglishConfigMessage(),
+        variavelEsperada: 'VITE_YOUTUBE_API_KEY',
+      });
       setIsUsingFallback(true);
       const fallback = getLocalFallbackVideos(allVideos, nivel, duracao);
       setResultados(fallback);
@@ -1350,8 +1542,8 @@ export function BibliotecaVideos({
         onCacheResults(nivel, duracao, videos);
       }
     } catch (e) {
-      const msg = (e as Error).message;
-      setError(msg);
+      console.error('[Inglês Diário] Falha na busca da biblioteca.', e);
+      setError('Não consegui buscar vídeos online agora. Mostrei sugestões salvas para você continuar.');
       // Show local fallback alongside the error so the screen is not blank
       const fallback = getLocalFallbackVideos(allVideos, nivel, duracao);
       if (fallback.length > 0) {
@@ -1416,7 +1608,8 @@ export function BibliotecaVideos({
         onCacheResults(nivel, duracao, videos);
       }
     } catch (e) {
-      setError((e as Error).message);
+      console.error('[Inglês Diário] Falha ao buscar novas opções.', e);
+      setError('Não consegui buscar novas opções agora. Tente novamente em instantes.');
     } finally {
       setIsLoadingMore(false);
     }
@@ -1474,7 +1667,7 @@ export function BibliotecaVideos({
       {/* Aviso fallback */}
       {isUsingFallback && (
         <p className="text-xs text-surface-400 dark:text-surface-500 text-center">
-          Sugestões salvas localmente. Configure <code className="font-mono">VITE_YOUTUBE_API_KEY</code> para buscar vídeos reais do YouTube.
+          Sugestões salvas localmente. A busca online não está disponível neste momento.
         </p>
       )}
 
