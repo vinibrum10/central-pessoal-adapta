@@ -172,9 +172,16 @@ export type WeeklyWordSource = 'manual' | 'video' | 'ai';
 
 export interface WeeklyWord {
   id: string;
+  /** Palavra ou expressão isolada (ex.: "give up"). */
   word: string;
+  /** Tradução da palavra/expressão isolada. */
   translation: string;
+  /** @deprecated frase em inglês — mantido por compatibilidade, use `sentence`. */
   example?: string;
+  /** Frase completa em inglês usando a palavra/expressão (estilo Anki). */
+  sentence?: string;
+  /** Tradução da frase completa (`sentence`), não da palavra isolada. */
+  sentenceTranslation?: string;
   /** Início (domingo) da semana em que a palavra foi adicionada — usado só para o contador/filtro visual "Palavras da Semana". */
   weekStart: string;
   addedAt: string;

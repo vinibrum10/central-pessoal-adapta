@@ -38,8 +38,12 @@ import {
   addWeeklyWordToData,
   deletePreplyAula,
   deleteWeeklyWordFromData,
+  getArchivedCards,
   getCurrentStudyDate,
+  getDueReviewCards,
   getEnglishStudyData,
+  getLearnedCards,
+  getNewWeeklyCards,
   getWatchedVideoIds,
   getWeekStartISO,
   markVideoUnavailableInData,
@@ -61,6 +65,7 @@ import type {
   ShadowingSession,
   StudySession,
   WeeklyWord,
+  WeeklyWordSource,
   WeeklyWordStatus,
 } from '../types/englishStudy';
 
@@ -322,6 +327,95 @@ function getShadowingStreak(sessions: ShadowingSession[]): number {
   return streak;
 }
 
+// ============================================================
+// MISSÃO DE HOJE — rotina guiada (vídeo → shadowing → cards → questionário)
+// ============================================================
+interface MissaoStep {
+  key: string;
+  label: string;
+  done: boolean;
+  hint?: string;
+  onJump?: () => void;
+}
+
+const MISSAO_TOTAL_MINUTES_MAX = 30;
+
+function MissaoDeHojeCard({
+  steps,
+  cardsDueTomorrow,
+  newWordsCount,
+  learningWords,
+}: {
+  steps: MissaoStep[];
+  cardsDueTomorrow: number;
+  newWordsCount: number;
+  learningWords: string[];
+}) {
+  const doneCount = steps.filter(s => s.done).length;
+  const allDone = doneCount === steps.length;
+  const percent = Math.round((doneCount / steps.length) * 100);
+  // Estimativa simples: tempo total (20-30min) dividido igualmente entre as etapas restantes.
+  const remainingMinutes = Math.round((MISSAO_TOTAL_MINUTES_MAX * (steps.length - doneCount)) / steps.length);
+
+  return (
+    <Card>
+      <CardHeader
+        title="Missão de hoje"
+        subtitle={allDone ? 'Rotina concluída! 🎉' : `${doneCount}/${steps.length} etapas concluídas · ~${remainingMinutes} min restantes (20 a 30 min no total)`}
+        icon={<CheckCircle2 size={18} />}
+      />
+      <CardBody className="space-y-3">
+        <ProgressBar value={percent} color={allDone ? 'success' : 'primary'} height="md" />
+        <div className="space-y-2">
+          {steps.map((step, index) => (
+            <button
+              key={step.key}
+              type="button"
+              onClick={step.onJump}
+              disabled={!step.onJump}
+              className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors ${
+                step.done
+                  ? 'border-success-200 bg-success-50/60 dark:border-success-900/40 dark:bg-success-900/10'
+                  : 'border-surface-200 bg-white/70 hover:bg-surface-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10'
+              } ${step.onJump ? 'cursor-pointer' : 'cursor-default'}`}
+            >
+              <span className="flex items-center gap-2.5">
+                <span className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                  step.done ? 'bg-success-600 text-white' : 'bg-surface-200 text-surface-600 dark:bg-surface-700 dark:text-surface-300'
+                }`}>
+                  {step.done ? <CheckCircle2 size={14} /> : index + 1}
+                </span>
+                <span className={step.done ? 'text-surface-500 line-through dark:text-surface-400' : 'text-surface-900 dark:text-white'}>
+                  {step.label}
+                </span>
+              </span>
+              {step.hint && <span className="flex-shrink-0 text-xs text-surface-400 dark:text-surface-500">{step.hint}</span>}
+            </button>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <StateNote>
+            {newWordsCount > 0
+              ? `Você está aprendendo ${newWordsCount} palavra(s)/frase(s) esta semana.`
+              : 'Nenhuma palavra nova adicionada esta semana ainda.'}
+          </StateNote>
+          <StateNote>
+            {cardsDueTomorrow > 0
+              ? `Amanhã: ${cardsDueTomorrow} card(s) voltam para revisão.`
+              : 'Amanhã: nenhum card vence ainda — só o vídeo e o shadowing do dia.'}
+          </StateNote>
+        </div>
+        {learningWords.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Aprendendo agora:</span>
+            {learningWords.map(word => <Badge key={word} variant="default">{word}</Badge>)}
+          </div>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
 const StableYouTubePlayer = memo(function StableYouTubePlayer({
   videoId,
   fallbackDurationSeconds,
@@ -480,14 +574,55 @@ export function InglesPage() {
   const weekActivity = useMemo(() => getWeekActivity(data), [data]);
   const shadowingStreak = useMemo(() => getShadowingStreak(data.shadowingSessions), [data.shadowingSessions]);
   const currentWeekStart = useMemo(() => getWeekStartISO(todayDate), [todayDate]);
-  const wordsThisWeek = useMemo(
-    () => data.weeklyWords.filter(w => w.weekStart === currentWeekStart),
-    [data.weeklyWords, currentWeekStart],
+  // Conceitos sempre separados (nunca misturar "novos da semana" com "vencidos para revisão"):
+  const wordsThisWeek = useMemo(() => getNewWeeklyCards(data.weeklyWords, currentWeekStart), [data.weeklyWords, currentWeekStart]);
+  const wordsDueForReview = useMemo(() => getDueReviewCards(data.weeklyWords, todayDate), [data.weeklyWords, todayDate]);
+  const tomorrowDate = useMemo(() => addDaysISO(todayDate, 1), [todayDate]);
+  const cardsDueTomorrow = useMemo(
+    () => data.weeklyWords.filter(w => w.status !== 'learned' && w.status !== 'archived' && w.nextReviewAt === tomorrowDate).length,
+    [data.weeklyWords, tomorrowDate],
   );
-  const wordsDueForReview = useMemo(
-    () => data.weeklyWords.filter(w => w.status !== 'learned' && w.status !== 'archived' && w.nextReviewAt <= todayDate),
-    [data.weeklyWords, todayDate],
+  const shadowingDoneToday = useMemo(
+    () => data.shadowingSessions.some(session => session.date === todayDate),
+    [data.shadowingSessions, todayDate],
   );
+  const quizDoneToday = todayStudy.quizCompleted || todayStudy.quizStatus === 'completed';
+  const learningWords = useMemo(
+    () => data.weeklyWords.filter(w => w.status === 'learning').slice(0, 5).map(w => w.word),
+    [data.weeklyWords],
+  );
+  const videoCardRef = useRef<HTMLDivElement | null>(null);
+  const shadowingCardRef = useRef<HTMLDivElement | null>(null);
+  const wordsCardRef = useRef<HTMLDivElement | null>(null);
+  const quizCardRef = useRef<HTMLDivElement | null>(null);
+  const missaoSteps: MissaoStep[] = [
+    {
+      key: 'video',
+      label: 'Assistir vídeo do dia',
+      done: todayStudy.progressPercent >= unlockPercent,
+      hint: `${Math.round(todayStudy.progressPercent)}%`,
+      onJump: () => videoCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+    },
+    {
+      key: 'shadowing',
+      label: 'Fazer shadowing com 5 frases',
+      done: shadowingDoneToday,
+      onJump: () => shadowingCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+    },
+    {
+      key: 'cards',
+      label: wordsDueForReview.length > 0 ? `Revisar ${wordsDueForReview.length} card(s) vencido(s)` : 'Revisar cards vencidos',
+      done: wordsDueForReview.length === 0,
+      onJump: () => wordsCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+    },
+    {
+      key: 'quiz',
+      label: 'Responder questionário',
+      done: quizDoneToday,
+      hint: quizAvailable ? undefined : 'bloqueado',
+      onJump: () => quizCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+    },
+  ];
   // Shadowing usa sempre nível avançado e vídeos curtos (2-5 min) — sem busca livre/manual.
   const selectedNivel: NivelFiltro = 'Avançado';
   const selectedDuracao: DuracaoFiltro = 'curto';
@@ -1146,8 +1281,8 @@ export function InglesPage() {
   // o que corrige o bug de palavras somindo: evita a corrida com o save
   // automático do progresso do vídeo, que também escreve com base no estado
   // em memória. Ver comentário em englishStudyStorage.ts.
-  async function handleAddWeeklyWord(word: { word: string; translation: string; example?: string }) {
-    const next = addWeeklyWordToData(latestDataRef.current, { ...word, weekStart: currentWeekStart, source: 'manual' });
+  async function handleAddWeeklyWord(word: { word: string; translation: string; example?: string; sentence?: string; sentenceTranslation?: string; source?: WeeklyWordSource }) {
+    const next = addWeeklyWordToData(latestDataRef.current, { ...word, weekStart: currentWeekStart, source: word.source ?? 'manual' });
     await saveData(next);
   }
 
@@ -1179,9 +1314,12 @@ export function InglesPage() {
         </div>
       )}
 
+      <MissaoDeHojeCard steps={missaoSteps} cardsDueTomorrow={cardsDueTomorrow} newWordsCount={wordsThisWeek.length} learningWords={learningWords} />
+
+      <div ref={videoCardRef}>
       <Card>
         <CardHeader
-          title="Aula de hoje"
+          title="1. Assistir vídeo do dia"
           subtitle="Um vídeo curto, progresso real e questionário para fixar."
           icon={<Video size={18} />}
           action={<Button size="sm" variant="secondary" icon={<RotateCcw size={14} className={changingVideo ? 'animate-spin' : ''} />} onClick={handleChangeVideo} disabled={changingVideo}>{changingVideo ? 'Buscando...' : 'Trocar vídeo'}</Button>}
@@ -1238,9 +1376,47 @@ export function InglesPage() {
           </div>
         </CardBody>
       </Card>
+      </div>
 
+      <div ref={shadowingCardRef}>
       <Card>
-        <CardHeader title="Questionário" icon={<BookOpen size={18} />} />
+        <CardHeader
+          title="2. Fazer shadowing (5 frases)"
+          subtitle={`Ouça, leia e repita. Streak atual: ${shadowingStreak} dia(s).`}
+          icon={<Mic size={18} />}
+          action={<Button size="sm" icon={<Mic size={14} />} onClick={() => setShadowingWizardOpen(true)}>{shadowingDoneToday ? 'Praticar de novo' : 'Iniciar shadowing'}</Button>}
+        />
+        <CardBody>
+          {data.shadowingSessions.length === 0 ? (
+            <StateNote>Nenhuma sessão de shadowing registrada ainda. Use o vídeo de hoje para praticar.</StateNote>
+          ) : (
+            <div className="space-y-2">
+              {data.shadowingSessions.slice(0, 3).map(session => (
+                <div key={session.id} className="flex items-center justify-between rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700">
+                  <span className="text-surface-700 dark:text-surface-200">{session.date} · {session.title}</span>
+                  <Badge variant={session.status === 'completa' ? 'success' : 'default'}>{session.status}</Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardBody>
+      </Card>
+      </div>
+
+      <div ref={wordsCardRef}>
+      <PalavrasDaSemanaCard
+        wordsThisWeek={wordsThisWeek}
+        wordsDueForReview={wordsDueForReview}
+        allWords={data.weeklyWords}
+        onAdd={handleAddWeeklyWord}
+        onReview={handleReviewWeeklyWord}
+        onDelete={handleDeleteWeeklyWord}
+      />
+      </div>
+
+      <div ref={quizCardRef}>
+      <Card>
+        <CardHeader title="4. Responder questionário" icon={<BookOpen size={18} />} />
         <CardBody className="space-y-4">
           {!quizAvailable && (
             <StateNote>Assista pelo menos 80% do vídeo para liberar o questionário.</StateNote>
@@ -1314,6 +1490,7 @@ export function InglesPage() {
           )}
         </CardBody>
       </Card>
+      </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <MetricCard label="Dias estudados" value={weekSummary.studiedDays} icon={<History size={18} />} tone="primary" />
@@ -1327,38 +1504,6 @@ export function InglesPage() {
           <WeekActivityRow days={weekActivity} />
         </CardBody>
       </Card>
-
-      <Card>
-        <CardHeader
-          title="Shadowing guiado"
-          subtitle={`Sequência de 5 passos para praticar pronúncia. Streak atual: ${shadowingStreak} dia(s).`}
-          icon={<Mic size={18} />}
-          action={<Button size="sm" icon={<Mic size={14} />} onClick={() => setShadowingWizardOpen(true)}>Iniciar shadowing</Button>}
-        />
-        <CardBody>
-          {data.shadowingSessions.length === 0 ? (
-            <StateNote>Nenhuma sessão de shadowing registrada ainda. Use o vídeo de hoje para praticar.</StateNote>
-          ) : (
-            <div className="space-y-2">
-              {data.shadowingSessions.slice(0, 3).map(session => (
-                <div key={session.id} className="flex items-center justify-between rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700">
-                  <span className="text-surface-700 dark:text-surface-200">{session.date} · {session.title}</span>
-                  <Badge variant={session.status === 'completa' ? 'success' : 'default'}>{session.status}</Badge>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardBody>
-      </Card>
-
-      <PalavrasDaSemanaCard
-        wordsThisWeek={wordsThisWeek}
-        wordsDueForReview={wordsDueForReview}
-        allWords={data.weeklyWords}
-        onAdd={handleAddWeeklyWord}
-        onReview={handleReviewWeeklyWord}
-        onDelete={handleDeleteWeeklyWord}
-      />
 
       <div className="flex flex-col gap-2 pb-4 sm:flex-row sm:justify-center sm:flex-wrap">
         <Button variant="ghost" icon={<History size={16} />} onClick={() => setShortcutModal('Histórico')}>Histórico</Button>
@@ -1868,9 +2013,26 @@ const SHADOWING_STEPS = [
   'Assista sem legenda',
   'Avalie seu entendimento',
   'Assista com legenda e anote expressões novas',
-  'Pratique o shadowing (repita em voz alta)',
+  'Shadowing: ouça, leia e repita 5 frases',
   'Avalie seu progresso e conclua',
 ];
+
+/** Quebra o resumo do vídeo em até 5 frases curtas para a prática de shadowing. */
+function extractShadowingPhrases(summary: string): string[] {
+  return summary
+    .split(/(?<=[.!?])\s+/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0)
+    .slice(0, 5);
+}
+
+type PhraseGrade = 'nao-consegui' | 'dificuldade' | 'bem';
+
+const PHRASE_GRADE_LABEL: Record<PhraseGrade, string> = {
+  'nao-consegui': 'Não consegui repetir',
+  'dificuldade': 'Repeti com dificuldade',
+  'bem': 'Repeti bem',
+};
 
 const ENTENDIMENTO_BUCKETS = [
   { label: '0-25%', value: 12 },
@@ -1890,28 +2052,37 @@ function ShadowingWizardModal({
   onClose: () => void;
   video: DailyEnglishVideo;
   onSave: (session: ShadowingSession) => Promise<void>;
-  onAddWords: (word: { word: string; translation: string; example?: string }) => Promise<void>;
+  onAddWords: (word: { word: string; translation: string; sentence?: string; source?: WeeklyWordSource }) => Promise<void>;
 }) {
   const [step, setStep] = useState(0);
   const [entendimentoPrimeira, setEntendimentoPrimeira] = useState<number | null>(null);
   const [entendimentoTerceira, setEntendimentoTerceira] = useState<number | null>(null);
-  const [repeatCount, setRepeatCount] = useState(3);
   const [novaExpressaoTexto, setNovaExpressaoTexto] = useState('');
   const [novaExpressaoTraducao, setNovaExpressaoTraducao] = useState('');
   const [expressoesAdicionadas, setExpressoesAdicionadas] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const [manualPhrases, setManualPhrases] = useState<string[]>([]);
+  const [manualPhraseInput, setManualPhraseInput] = useState('');
+  const [phraseGrades, setPhraseGrades] = useState<Record<number, PhraseGrade>>({});
+  const [savedAsCard, setSavedAsCard] = useState<Record<number, boolean>>({});
+
+  const extractedPhrases = useMemo(() => extractShadowingPhrases(video.summary ?? ''), [video.summary]);
+  const phrases = extractedPhrases.length > 0 ? extractedPhrases : manualPhrases;
 
   useEffect(() => {
     if (isOpen) {
       setStep(0);
       setEntendimentoPrimeira(null);
       setEntendimentoTerceira(null);
-      setRepeatCount(3);
       setNovaExpressaoTexto('');
       setNovaExpressaoTraducao('');
       setExpressoesAdicionadas([]);
       setNotes('');
+      setManualPhrases([]);
+      setManualPhraseInput('');
+      setPhraseGrades({});
+      setSavedAsCard({});
     }
   }, [isOpen]);
 
@@ -1921,14 +2092,33 @@ function ShadowingWizardModal({
     void onAddWords({
       word: novaExpressaoTexto.trim(),
       translation: novaExpressaoTraducao.trim() || '—',
+      source: 'video',
     });
     setNovaExpressaoTexto('');
     setNovaExpressaoTraducao('');
   }
 
+  function handleAddManualPhrase() {
+    if (!manualPhraseInput.trim() || manualPhrases.length >= 5) return;
+    setManualPhrases(prev => [...prev, manualPhraseInput.trim()]);
+    setManualPhraseInput('');
+  }
+
+  function handleSavePhraseAsCard(index: number, phrase: string) {
+    setSavedAsCard(prev => ({ ...prev, [index]: true }));
+    void onAddWords({
+      word: phrase.length > 60 ? `${phrase.slice(0, 57)}...` : phrase,
+      translation: '—',
+      sentence: phrase,
+      source: 'video',
+    });
+  }
+
   async function handleFinish() {
     setSaving(true);
     const now = new Date().toISOString();
+    // repeatCount reflete quantas das 5 frases foram efetivamente praticadas (graduadas) nesta sessão.
+    const repeatCount = Math.max(1, Object.keys(phraseGrades).length);
     const session: ShadowingSession = {
       id: gerarId(),
       date: getCurrentStudyDate(),
@@ -2024,25 +2214,60 @@ function ShadowingWizardModal({
 
         {step === 3 && (
           <div className="space-y-3">
-            <StateNote>Pratique o shadowing: repita as falas em voz alta, junto com o áudio, tentando imitar pronúncia e ritmo.</StateNote>
-            <div>
-              <p className="mb-2 text-sm text-surface-600 dark:text-surface-300">Quantas vezes você repetiu o trecho?</p>
-              <div className="flex flex-wrap gap-2">
-                {[1, 2, 3, 4, 5].map(n => (
-                  <button
-                    key={n}
-                    type="button"
-                    onClick={() => setRepeatCount(n)}
-                    className={`h-9 w-9 rounded-lg text-sm font-semibold transition-all ${
-                      repeatCount === n
-                        ? 'bg-primary-600 text-white'
-                        : 'bg-surface-100 text-surface-600 hover:bg-surface-200 dark:bg-surface-700 dark:text-surface-300 dark:hover:bg-surface-600'
-                    }`}
-                  >
-                    {n}
-                  </button>
-                ))}
+            <StateNote>Para cada frase: ouça o vídeo, leia o texto abaixo e repita em voz alta tentando imitar pronúncia e ritmo. Depois avalie como foi.</StateNote>
+
+            {phrases.length === 0 && (
+              <div className="space-y-2">
+                <StateNote>Não consegui extrair frases automaticamente deste vídeo. Digite até 5 frases curtas que você praticou.</StateNote>
+                <div className="flex gap-2">
+                  <input
+                    value={manualPhraseInput}
+                    onChange={e => setManualPhraseInput(e.target.value)}
+                    placeholder="Frase praticada"
+                    className="flex-1 rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+                  />
+                  <Button size="sm" variant="secondary" icon={<Plus size={14} />} disabled={!manualPhraseInput.trim()} onClick={handleAddManualPhrase}>
+                    Adicionar
+                  </Button>
+                </div>
               </div>
+            )}
+
+            <div className="space-y-2">
+              {phrases.map((phrase, index) => (
+                <div key={index} className="space-y-2 rounded-lg border border-surface-200 p-3 dark:border-surface-700">
+                  <p className="text-sm font-medium text-surface-800 dark:text-surface-100">{index + 1}. {phrase}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(['nao-consegui', 'dificuldade', 'bem'] as const).map(grade => (
+                      <button
+                        key={grade}
+                        type="button"
+                        onClick={() => setPhraseGrades(prev => ({ ...prev, [index]: grade }))}
+                        className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                          phraseGrades[index] === grade
+                            ? grade === 'nao-consegui'
+                              ? 'bg-danger-600 text-white'
+                              : grade === 'dificuldade'
+                                ? 'bg-warning-500 text-white'
+                                : 'bg-success-600 text-white'
+                            : 'bg-surface-100 text-surface-600 hover:bg-surface-200 dark:bg-surface-700 dark:text-surface-300 dark:hover:bg-surface-600'
+                        }`}
+                      >
+                        {PHRASE_GRADE_LABEL[grade]}
+                      </button>
+                    ))}
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      icon={<Plus size={12} />}
+                      disabled={savedAsCard[index]}
+                      onClick={() => handleSavePhraseAsCard(index, phrase)}
+                    >
+                      {savedAsCard[index] ? 'Salvo como card' : 'Salvar como card'}
+                    </Button>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -2121,13 +2346,14 @@ function PalavrasDaSemanaCard({
   wordsThisWeek: WeeklyWord[];
   wordsDueForReview: WeeklyWord[];
   allWords: WeeklyWord[];
-  onAdd: (word: { word: string; translation: string; example?: string }) => Promise<void>;
+  onAdd: (word: { word: string; translation: string; sentence?: string; sentenceTranslation?: string }) => Promise<void>;
   onReview: (id: string, grade: ReviewGrade) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
   const [word, setWord] = useState('');
   const [translation, setTranslation] = useState('');
-  const [example, setExample] = useState('');
+  const [sentence, setSentence] = useState('');
+  const [sentenceTranslation, setSentenceTranslation] = useState('');
   const [adding, setAdding] = useState(false);
   const [translating, setTranslating] = useState(false);
   const [translateError, setTranslateError] = useState('');
@@ -2138,12 +2364,10 @@ function PalavrasDaSemanaCard({
 
   const filteredWords = useMemo(() => {
     if (wordFilter === 'todas') return allWords;
-    if (wordFilter === 'hoje') {
-      const today = getCurrentStudyDate();
-      return allWords.filter(w => w.status !== 'learned' && w.status !== 'archived' && w.nextReviewAt <= today);
-    }
+    if (wordFilter === 'hoje') return getDueReviewCards(allWords, getCurrentStudyDate());
     if (wordFilter === 'learning') return allWords.filter(w => w.status === 'learning' || w.status === 'review');
-    return allWords.filter(w => w.status === wordFilter);
+    if (wordFilter === 'learned') return getLearnedCards(allWords);
+    return getArchivedCards(allWords);
   }, [allWords, wordFilter]);
 
   const capReached = wordsThisWeek.length >= 10;
@@ -2158,7 +2382,7 @@ function PalavrasDaSemanaCard({
       // Only apply if the word field hasn't changed in the meantime
       if (word.trim() === term) {
         setTranslation(result.translation);
-        setExample(result.example);
+        setSentence(result.example);
       }
       lastTranslatedWordRef.current = term;
     } catch (err) {
@@ -2178,10 +2402,16 @@ function PalavrasDaSemanaCard({
     if (!word.trim() || !translation.trim() || capReached) return;
     setAdding(true);
     try {
-      await onAdd({ word: word.trim(), translation: translation.trim(), example: example.trim() || undefined });
+      await onAdd({
+        word: word.trim(),
+        translation: translation.trim(),
+        sentence: sentence.trim() || undefined,
+        sentenceTranslation: sentenceTranslation.trim() || undefined,
+      });
       setWord('');
       setTranslation('');
-      setExample('');
+      setSentence('');
+      setSentenceTranslation('');
       lastTranslatedWordRef.current = '';
     } finally {
       setAdding(false);
@@ -2191,34 +2421,43 @@ function PalavrasDaSemanaCard({
   return (
     <Card>
       <CardHeader
-        title="Palavras da Semana"
-        subtitle={`${wordsThisWeek.length}/10 palavras adicionadas esta semana · revisão espaçada por 3 meses`}
+        title="3. Revisar cards"
+        subtitle={`${wordsThisWeek.length}/10 cards novos esta semana · ${wordsDueForReview.length} vencido(s) para revisar`}
         icon={<Sparkles size={18} />}
       />
       <CardBody className="space-y-4">
-        <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <input
             value={word}
             onChange={e => setWord(e.target.value)}
             onBlur={handleWordBlur}
             placeholder="Palavra/expressão em inglês"
             disabled={capReached}
-            className="flex-1 rounded-lg border border-surface-200 px-3 py-2 text-sm disabled:opacity-50 dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+            className="rounded-lg border border-surface-200 px-3 py-2 text-sm disabled:opacity-50 dark:border-surface-700 dark:bg-surface-800 dark:text-white"
           />
           <input
             value={translation}
             onChange={e => setTranslation(e.target.value)}
-            placeholder={translating ? 'Traduzindo com IA...' : 'Tradução (preenchida pela IA)'}
+            placeholder={translating ? 'Traduzindo com IA...' : 'Tradução da palavra (preenchida pela IA)'}
             disabled={capReached || translating}
-            className="flex-1 rounded-lg border border-surface-200 px-3 py-2 text-sm disabled:opacity-50 dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+            className="rounded-lg border border-surface-200 px-3 py-2 text-sm disabled:opacity-50 dark:border-surface-700 dark:bg-surface-800 dark:text-white"
           />
           <input
-            value={example}
-            onChange={e => setExample(e.target.value)}
-            placeholder={translating ? '...' : 'Exemplo (preenchido pela IA)'}
+            value={sentence}
+            onChange={e => setSentence(e.target.value)}
+            placeholder={translating ? '...' : 'Frase completa em inglês usando a palavra'}
             disabled={capReached || translating}
-            className="flex-1 rounded-lg border border-surface-200 px-3 py-2 text-sm disabled:opacity-50 dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+            className="rounded-lg border border-surface-200 px-3 py-2 text-sm disabled:opacity-50 dark:border-surface-700 dark:bg-surface-800 dark:text-white"
           />
+          <input
+            value={sentenceTranslation}
+            onChange={e => setSentenceTranslation(e.target.value)}
+            placeholder="Tradução da frase (opcional)"
+            disabled={capReached}
+            className="rounded-lg border border-surface-200 px-3 py-2 text-sm disabled:opacity-50 dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+          />
+        </div>
+        <div className="flex gap-2">
           <Button
             size="sm"
             variant="secondary"
@@ -2230,18 +2469,18 @@ function PalavrasDaSemanaCard({
             Traduzir
           </Button>
           <Button size="sm" icon={<Plus size={14} />} disabled={capReached || adding || translating || !translation.trim()} loading={adding} onClick={handleAdd}>
-            Adicionar
+            Adicionar card
           </Button>
         </div>
 
         {translateError && <StateNote>{translateError}</StateNote>}
 
-        {capReached && <StateNote>Limite de 10 palavras desta semana atingido. Volte na próxima semana para adicionar mais.</StateNote>}
+        {capReached && <StateNote>Limite de 10 cards novos desta semana atingido — as revisões antigas continuam normalmente. Volte na próxima semana para adicionar mais.</StateNote>}
 
         {wordsDueForReview.length > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning-200 bg-warning-50/60 px-4 py-3 dark:border-warning-900/40 dark:bg-warning-900/10">
             <p className="text-sm text-surface-700 dark:text-surface-200">
-              <strong>{wordsDueForReview.length}</strong> palavra(s) para revisar hoje.
+              <strong>{wordsDueForReview.length}</strong> card(s) vencido(s) para revisar hoje.
             </p>
             <Button size="sm" variant="success" icon={<RotateCw size={14} />} onClick={() => setReviewModalOpen(true)}>
               Revisar agora
@@ -2255,7 +2494,7 @@ function PalavrasDaSemanaCard({
             onClick={() => setShowAllWords(prev => !prev)}
             className="flex w-full items-center justify-between gap-2 rounded-lg border border-surface-200 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-surface-500 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:text-surface-400 dark:hover:bg-surface-800"
           >
-            <span>Todas as palavras ({allWords.length})</span>
+            <span>Todos os cards ({allWords.length})</span>
             {showAllWords ? <EyeOff size={14} /> : <Eye size={14} />}
           </button>
 
@@ -2285,7 +2524,7 @@ function PalavrasDaSemanaCard({
               </div>
 
               {filteredWords.length === 0 ? (
-                <div className="mt-2"><StateNote>Nenhuma palavra nesse filtro.</StateNote></div>
+                <div className="mt-2"><StateNote>Nenhum card nesse filtro.</StateNote></div>
               ) : (
                 <div className="mt-2 max-h-64 space-y-1.5 overflow-y-auto pr-1">
                   {filteredWords.map(item => (
@@ -2293,7 +2532,12 @@ function PalavrasDaSemanaCard({
                       <div className="min-w-0">
                         <span className="font-medium text-surface-900 dark:text-white">{item.word}</span>
                         <span className="text-surface-500 dark:text-surface-400"> — {item.translation}</span>
-                        {item.example && <p className="text-xs text-surface-400 dark:text-surface-500">{item.example}</p>}
+                        {(item.sentence ?? item.example) && (
+                          <p className="text-xs text-surface-400 dark:text-surface-500">{item.sentence ?? item.example}</p>
+                        )}
+                        {item.sentenceTranslation && (
+                          <p className="text-xs italic text-surface-400 dark:text-surface-500">{item.sentenceTranslation}</p>
+                        )}
                         <p className="text-[11px] text-surface-400 dark:text-surface-500">
                           revisões: {item.totalReviews} · intervalo: {item.intervalDays}d · próxima: {item.nextReviewAt}
                         </p>
@@ -2391,21 +2635,22 @@ function FlashcardReviewModal({
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Revisar Palavras da Semana" size="lg">
+    <Modal isOpen={isOpen} onClose={onClose} title="Revisar cards" size="lg">
       <div className="space-y-4">
         {finished ? (
           <div className="space-y-3 text-center">
             <CheckCircle2 size={32} className="mx-auto text-success-600" />
             <p className="text-sm font-medium text-surface-900 dark:text-white">
-              {words.length === 0 ? 'Nenhuma palavra para revisar agora.' : 'Revisão concluída por hoje!'}
+              {words.length === 0 ? 'Nenhum card para revisar agora.' : 'Revisão concluída por hoje!'}
             </p>
             <Button onClick={onClose}>Fechar</Button>
           </div>
         ) : (
           <>
-            <p className="text-center text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
-              Cartão {index + 1} de {words.length}
-            </p>
+            <div className="flex items-center justify-between text-xs text-surface-500 dark:text-surface-400">
+              <span className="font-semibold uppercase tracking-wide">Card {index + 1} de {words.length}</span>
+              <span>revisões: {currentWord.totalReviews} · intervalo atual: {currentWord.intervalDays}d</span>
+            </div>
 
             <button
               type="button"
@@ -2418,7 +2663,9 @@ function FlashcardReviewModal({
                     Qual a tradução desta frase?
                   </p>
                   <p className="text-lg font-semibold text-surface-900 dark:text-white">
-                    {currentWord.example ? maskWordInExample(currentWord.example, currentWord.word) : currentWord.word}
+                    {(currentWord.sentence ?? currentWord.example)
+                      ? maskWordInExample((currentWord.sentence ?? currentWord.example)!, currentWord.word)
+                      : currentWord.word}
                   </p>
                   <p className="flex items-center gap-1 text-xs text-surface-400 dark:text-surface-500">
                     <RotateCw size={12} /> Toque para virar o cartão
@@ -2428,8 +2675,11 @@ function FlashcardReviewModal({
                 <>
                   <p className="text-lg font-semibold text-surface-900 dark:text-white">{currentWord.word}</p>
                   <p className="text-base text-primary-600 dark:text-primary-300">{currentWord.translation}</p>
-                  {currentWord.example && (
-                    <p className="text-sm text-surface-500 dark:text-surface-400">{currentWord.example}</p>
+                  {(currentWord.sentence ?? currentWord.example) && (
+                    <p className="text-sm text-surface-500 dark:text-surface-400">{currentWord.sentence ?? currentWord.example}</p>
+                  )}
+                  {currentWord.sentenceTranslation && (
+                    <p className="text-sm italic text-surface-400 dark:text-surface-500">{currentWord.sentenceTranslation}</p>
                   )}
                 </>
               )}
@@ -2437,9 +2687,9 @@ function FlashcardReviewModal({
 
             {flipped && (
               <div className="flex flex-wrap justify-center gap-2">
-                <Button variant="danger" disabled={submitting} onClick={() => handleAnswer('again')}>Errei</Button>
+                <Button variant="danger" disabled={submitting} onClick={() => handleAnswer('again')}>Não lembrei</Button>
                 <Button variant="secondary" disabled={submitting} onClick={() => handleAnswer('hard')}>Difícil</Button>
-                <Button variant="primary" disabled={submitting} onClick={() => handleAnswer('good')}>Bom</Button>
+                <Button variant="primary" disabled={submitting} onClick={() => handleAnswer('good')}>Lembrei</Button>
                 <Button variant="success" disabled={submitting} onClick={() => handleAnswer('easy')}>Fácil</Button>
               </div>
             )}

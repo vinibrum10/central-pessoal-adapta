@@ -114,6 +114,9 @@ function migrateWeeklyWord(raw: Partial<WeeklyWord> & { word: string; translatio
   if (raw.status && typeof raw.intervalDays === 'number') {
     return {
       ...raw,
+      // Cards antigos só tinham `example` (frase em inglês) — usa como
+      // `sentence` se o card ainda não tiver o campo novo preenchido.
+      sentence: raw.sentence ?? raw.example,
       createdAt: raw.createdAt ?? raw.addedAt ?? new Date().toISOString(),
       updatedAt: raw.updatedAt ?? raw.addedAt ?? new Date().toISOString(),
       easeFactor: raw.easeFactor ?? INITIAL_EASE_FACTOR,
@@ -133,6 +136,7 @@ function migrateWeeklyWord(raw: Partial<WeeklyWord> & { word: string; translatio
     word: raw.word,
     translation: raw.translation,
     example: raw.example,
+    sentence: raw.example,
     weekStart: raw.weekStart,
     addedAt,
     createdAt: addedAt,
@@ -358,13 +362,26 @@ export function countWordsInWeek(words: WeeklyWord[], weekStart: string): number
   return words.filter(w => w.weekStart === weekStart).length;
 }
 
-export function createWeeklyWord(word: { word: string; translation: string; example?: string; weekStart: string; source?: WeeklyWordSource }): WeeklyWord {
+export interface NewWeeklyWordInput {
+  word: string;
+  translation: string;
+  /** @deprecated use `sentence` — mantido para chamadores antigos. */
+  example?: string;
+  sentence?: string;
+  sentenceTranslation?: string;
+  weekStart: string;
+  source?: WeeklyWordSource;
+}
+
+export function createWeeklyWord(word: NewWeeklyWordInput): WeeklyWord {
   const now = new Date().toISOString();
   return {
     id: gerarId(),
     word: word.word,
     translation: word.translation,
-    example: word.example,
+    example: word.sentence ?? word.example,
+    sentence: word.sentence ?? word.example,
+    sentenceTranslation: word.sentenceTranslation,
     weekStart: word.weekStart,
     addedAt: now,
     createdAt: now,
@@ -381,22 +398,53 @@ export function createWeeklyWord(word: { word: string; translation: string; exam
   };
 }
 
-export function addWeeklyWordToData(data: EnglishStudyData, word: { word: string; translation: string; example?: string; weekStart: string; source?: WeeklyWordSource }): EnglishStudyData {
+/**
+ * Adiciona um card novo. O limite semanal (WEEKLY_WORD_CAP) só controla
+ * cards NOVOS — revisões de cards antigos nunca são bloqueadas por ele
+ * (ver getDueReviewCards, que ignora `weekStart`).
+ */
+export function addWeeklyWordToData(data: EnglishStudyData, word: NewWeeklyWordInput): EnglishStudyData {
   const weekCount = countWordsInWeek(data.weeklyWords, word.weekStart);
   if (weekCount >= WEEKLY_WORD_CAP) {
-    console.warn('[EnglishWords] Limite semanal (10) atingido — palavra não adicionada:', word.word);
+    console.warn('[EnglishWords] Limite semanal (10) atingido — card não adicionado:', word.word);
     return data;
   }
   const newWord = createWeeklyWord(word);
-  console.log('[EnglishWords] Palavra adicionada:', newWord.word, '| id:', newWord.id, '| nextReviewAt:', newWord.nextReviewAt);
+  console.log('[EnglishWords] Card adicionado:', newWord.word, '| id:', newWord.id, '| nextReviewAt:', newWord.nextReviewAt);
   const next = { ...data, weeklyWords: [newWord, ...data.weeklyWords] };
-  console.log('[EnglishWords] Total de palavras salvas (todas as semanas):', next.weeklyWords.length);
+  console.log('[EnglishWords] Total de cards salvos (todas as semanas):', next.weeklyWords.length);
   return next;
 }
 
 export function deleteWeeklyWordFromData(data: EnglishStudyData, id: string): EnglishStudyData {
-  console.log('[EnglishWords] Removendo palavra id:', id);
+  console.log('[EnglishWords] Removendo card id:', id);
   return { ...data, weeklyWords: data.weeklyWords.filter(w => w.id !== id) };
+}
+
+// ----------------------------------------------------------------
+// Separação de conceitos: cada uma destas funções olha só para UM
+// recorte da lista de cards. Nunca misturar "novos da semana" com
+// "vencidos para revisão" — são filtros independentes.
+// ----------------------------------------------------------------
+
+/** Cards adicionados NESTA semana (controla só o contador/limite de 10 novos). */
+export function getNewWeeklyCards(words: WeeklyWord[], weekStart: string): WeeklyWord[] {
+  return words.filter(w => w.weekStart === weekStart);
+}
+
+/** Cards vencidos para revisão hoje, de QUALQUER semana — nunca limitado pelo cap semanal. */
+export function getDueReviewCards(words: WeeklyWord[], todayISO: string): WeeklyWord[] {
+  return words.filter(w => w.status !== 'learned' && w.status !== 'archived' && w.nextReviewAt <= todayISO);
+}
+
+/** Cards que completaram a escada de repetição (intervalo ≥ 365 dias com sucesso). */
+export function getLearnedCards(words: WeeklyWord[]): WeeklyWord[] {
+  return words.filter(w => w.status === 'learned');
+}
+
+/** Cards arquivados manualmente (fora da rotação de revisão). */
+export function getArchivedCards(words: WeeklyWord[]): WeeklyWord[] {
+  return words.filter(w => w.status === 'archived');
 }
 
 export function reviewWeeklyWordInData(data: EnglishStudyData, id: string, grade: ReviewGrade): EnglishStudyData {

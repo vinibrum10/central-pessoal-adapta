@@ -6,6 +6,15 @@ export const INITIAL_EASE_FACTOR = 2.5;
 export const MIN_EASE_FACTOR = 1.3;
 export const LEARNED_INTERVAL_THRESHOLD_DAYS = 365;
 
+// Escada de intervalos pedida pelo usuário (em dias):
+//  - Não lembrei (again): 1 dia, zera o progresso.
+//  - Difícil (hard): 2 ou 3 dias, não avança a escada principal.
+//  - Lembrei (good): 7 → 30 → 90 → 180 → 365.
+//  - Fácil (easy): pula um degrau a mais na mesma escada (15/30 → 90 → 180 → 365).
+// Ao chegar em 365 dias por "Lembrei"/"Fácil", o card vira "learned".
+const GOOD_LADDER_DAYS = [7, 30, 90, 180, 365];
+const EASY_LADDER_DAYS = [15, 30, 90, 180, 365];
+
 export interface ReviewableWord {
   intervalDays: number;
   repetitions: number;
@@ -28,8 +37,10 @@ export interface ReviewResult {
 }
 
 /**
- * Calcula o próximo estado de revisão de uma palavra (estilo Anki/SM-2 simplificado).
- * Função pura e isolada da camada de persistência para poder ser testada sozinha.
+ * Calcula o próximo estado de revisão de um card (palavra/frase) ao estilo
+ * Anki, seguindo a escada de intervalos definida pelo usuário (ver
+ * GOOD_LADDER_DAYS/EASY_LADDER_DAYS acima). Função pura e isolada da camada
+ * de persistência para poder ser testada sozinha.
  */
 export function calculateNextReview(word: ReviewableWord, grade: ReviewGrade, todayISO: string, addDaysISO: (dateISO: string, days: number) => string): ReviewResult {
   let { intervalDays, repetitions, easeFactor, lapses, totalReviews, correctReviews } = word;
@@ -37,38 +48,40 @@ export function calculateNextReview(word: ReviewableWord, grade: ReviewGrade, to
 
   switch (grade) {
     case 'again':
+      // Não lembrei: revisar amanhã, progresso zerado.
       intervalDays = 1;
       repetitions = 0;
       easeFactor = Math.max(MIN_EASE_FACTOR, easeFactor - 0.2);
       lapses += 1;
       break;
     case 'hard':
-      intervalDays = Math.max(1, Math.round(intervalDays * 1.2));
+      // Difícil: revisar em 2 ou 3 dias, sem avançar a escada principal.
+      intervalDays = repetitions === 0 ? 2 : 3;
       easeFactor = Math.max(MIN_EASE_FACTOR, easeFactor - 0.15);
+      correctReviews += 1;
+      break;
+    case 'good': {
+      // Lembrei: 7 → 30 → 90 → 180 → 365.
+      const idx = Math.min(repetitions, GOOD_LADDER_DAYS.length - 1);
+      intervalDays = GOOD_LADDER_DAYS[idx];
       repetitions += 1;
       correctReviews += 1;
       break;
-    case 'good':
-      if (repetitions === 0) intervalDays = 1;
-      else if (repetitions === 1) intervalDays = 3;
-      else if (repetitions === 2) intervalDays = 7;
-      else intervalDays = Math.round(intervalDays * easeFactor);
-      repetitions += 1;
-      correctReviews += 1;
-      break;
-    case 'easy':
-      intervalDays = repetitions === 0 ? 4 : Math.round(intervalDays * easeFactor * 1.3);
+    }
+    case 'easy': {
+      // Fácil: pula um degrau a mais — 15/30 → 90 → 180 → 365.
+      const idx = Math.min(repetitions + 1, EASY_LADDER_DAYS.length - 1);
+      intervalDays = EASY_LADDER_DAYS[idx];
       easeFactor = Math.min(3.0, easeFactor + 0.15);
       repetitions += 1;
       correctReviews += 1;
       break;
+    }
   }
 
   const status: WeeklyWordStatus = grade === 'again'
     ? 'learning'
-    : (intervalDays >= LEARNED_INTERVAL_THRESHOLD_DAYS && lapses === 0
-      ? 'learned'
-      : (repetitions <= 1 ? 'learning' : 'review'));
+    : (intervalDays >= LEARNED_INTERVAL_THRESHOLD_DAYS ? 'learned' : 'review');
 
   const nextReviewAt = addDaysISO(todayISO, intervalDays);
 
