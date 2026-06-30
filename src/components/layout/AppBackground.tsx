@@ -1,46 +1,136 @@
 /**
- * Fundo tecnológico global: grade de circuito + glows HUD + traços de energia
- * em cobre/azul. Puramente decorativo — fica atrás do conteúdo (-z-10), não
- * captura cliques, e só aparece no tema escuro (no claro o body mantém o
- * gradiente suave atual).
+ * Fundo tecnológico global do app — grade sutil + circuitos técnicos à
+ * esquerda + HUD circular grande à direita (estilo radar/sci-fi), em
+ * cobre/bronze sobre base grafite/azul-marinho muito escura.
+ *
+ * Implementação: CSS para base/grade/vinheta + um SVG inline decorativo
+ * (leve, sem filtros pesados) para os circuitos e o HUD — sem imagens
+ * estáticas pesadas.
+ *
+ * Puramente decorativo: fixo atrás do conteúdo (-z-10), pointer-events
+ * desativado, e só aparece no tema escuro (no claro o body mantém o
+ * gradiente suave já existente).
+ *
+ * Pontos fáceis de ajustar depois:
+ * - Opacidade da grade: classe no <div> "grade de circuito" abaixo.
+ * - Brilho cobre dos glows: classes bg-primary-500/.. nos <div> de glow.
+ * - Tamanho do HUD direito: grupo <g id="hud-direito"> (raios dos <circle>).
+ * - Intensidade dos circuitos da esquerda: opacity dos <path>/<circle> em <g id="circuitos-esquerda">.
  */
 export function AppBackground() {
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 hidden overflow-hidden dark:block">
-      {/* base grafite/azul muito escuro */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_120%_80%_at_50%_-10%,#1a1612_0%,#0a0807_55%,#020202_100%)]" />
+      {/* 1) base: preto / grafite / azul-marinho muito escuro */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_130%_90%_at_18%_-8%,#181a1f_0%,#0c0c0e_38%,#050505_70%,#020202_100%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_90%_70%_at_92%_55%,rgba(40,30,18,0.35)_0%,transparent_60%)]" />
 
-      {/* grade de circuito */}
+      {/* 2) grade sutil em toda a área */}
       <div
-        className="absolute inset-0 opacity-[0.14]"
+        className="absolute inset-0 opacity-[0.05]"
         style={{
           backgroundImage:
-            'linear-gradient(90deg, rgba(217,158,94,0.7) 1px, transparent 1px),' +
-            'linear-gradient(0deg, rgba(96,165,250,0.4) 1px, transparent 1px)',
-          backgroundSize: '52px 52px, 52px 52px',
+            'linear-gradient(90deg, rgba(217,158,94,0.8) 1px, transparent 1px),' +
+            'linear-gradient(0deg, rgba(217,158,94,0.8) 1px, transparent 1px)',
+          backgroundSize: '46px 46px, 46px 46px',
         }}
       />
 
-      {/* traços de energia diagonais (curvas largas em cobre, estilo "circuito iluminado") */}
-      <div className="absolute right-[-10%] top-[8%] h-[3px] w-[70%] -rotate-[18deg] rounded-full bg-gradient-to-r from-transparent via-primary-300/60 to-transparent blur-[2px]" />
-      <div className="absolute right-[-15%] top-[14%] h-[2px] w-[55%] -rotate-[18deg] rounded-full bg-gradient-to-r from-transparent via-primary-200/40 to-transparent blur-[1px]" />
-      <div className="absolute left-[-10%] bottom-[12%] h-[3px] w-[60%] rotate-[14deg] rounded-full bg-gradient-to-r from-transparent via-blue-300/35 to-transparent blur-[2px]" />
+      {/* 3) circuitos (esquerda) + HUD circular grande (direita), via SVG leve */}
+      <svg
+        className="absolute inset-0 h-full w-full"
+        viewBox="0 0 1600 900"
+        preserveAspectRatio="xMidYMid slice"
+        fill="none"
+      >
+        <defs>
+          <linearGradient id="copperStroke" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#e9b074" stopOpacity="0.55" />
+            <stop offset="100%" stopColor="#a8662f" stopOpacity="0.15" />
+          </linearGradient>
+        </defs>
 
-      {/* glows HUD circulares — cobre (topo-esquerda) e azul (baixo-direita) */}
-      <div className="absolute -left-32 -top-32 h-[32rem] w-[32rem] rounded-full bg-primary-500/20 blur-[140px]" />
-      <div className="absolute -bottom-40 -right-24 h-[30rem] w-[30rem] rounded-full bg-blue-500/15 blur-[150px]" />
-      <div className="absolute right-[-6%] top-[20%] h-80 w-80 rounded-full bg-primary-400/14 blur-[110px]" />
-      <div className="absolute left-1/2 top-1/3 h-72 w-72 -translate-x-1/2 rounded-full bg-primary-400/8 blur-[100px]" />
+        {/* ---- HUD circular grande, lado direito, cortado pela borda ---- */}
+        <g id="hud-direito" stroke="#d9a35e" strokeWidth="1">
+          <circle cx="1560" cy="380" r="260" opacity="0.10" />
+          <circle cx="1560" cy="380" r="225" opacity="0.16" strokeDasharray="6 10" />
+          <circle cx="1560" cy="380" r="165" opacity="0.22" />
+          <circle cx="1560" cy="380" r="110" opacity="0.28" strokeDasharray="2 6" />
+          <circle cx="1560" cy="380" r="60" opacity="0.30" />
 
-      {/* anéis HUD — centro fica limpo para preservar leitura */}
-      <div className="absolute right-[8%] top-[12%] h-64 w-64 rounded-full border border-primary-300/15" />
-      <div className="absolute right-[8%] top-[12%] h-64 w-64 scale-125 rounded-full border border-primary-300/8" />
-      <div className="absolute right-[8%] top-[12%] h-64 w-64 scale-150 rounded-full border border-primary-300/5" />
-      <div className="absolute bottom-[10%] left-[6%] h-48 w-48 rounded-full border border-blue-300/15" />
-      <div className="absolute bottom-[10%] left-[6%] h-48 w-48 scale-125 rounded-full border border-blue-300/8" />
+          {/* arcos incompletos (radar) */}
+          <path d="M 1300 250 A 260 260 0 0 1 1560 120" opacity="0.20" />
+          <path d="M 1560 640 A 260 260 0 0 1 1810 470" opacity="0.18" />
+          <path d="M 1320 470 A 225 225 0 0 0 1450 600" opacity="0.20" />
 
-      {/* leve vinheta para manter o centro limpo e legível */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_65%_55%_at_50%_45%,transparent_0%,rgba(2,2,2,0.4)_100%)]" />
+          {/* linhas radiantes finas */}
+          <line x1="1560" y1="380" x2="1230" y2="200" opacity="0.14" />
+          <line x1="1560" y1="380" x2="1290" y2="600" opacity="0.12" />
+          <line x1="1560" y1="380" x2="1700" y2="120" opacity="0.14" />
+          <line x1="1560" y1="380" x2="1430" y2="700" opacity="0.10" />
+
+          {/* ticks tipo radar no anel externo */}
+          {Array.from({ length: 16 }).map((_, i) => {
+            const angle = (i / 16) * Math.PI * 2;
+            const innerR = 260;
+            const outerR = 272;
+            const x1 = 1560 + Math.cos(angle) * innerR;
+            const y1 = 380 + Math.sin(angle) * innerR;
+            const x2 = 1560 + Math.cos(angle) * outerR;
+            const y2 = 380 + Math.sin(angle) * outerR;
+            return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} opacity="0.16" />;
+          })}
+
+          {/* nós luminosos (glow simples: círculo grande translúcido + ponto sólido) */}
+          <circle cx="1560" cy="120" r="10" fill="#e9b074" opacity="0.10" />
+          <circle cx="1560" cy="120" r="3" fill="#f3c79a" opacity="0.7" />
+          <circle cx="1320" cy="470" r="8" fill="#e9b074" opacity="0.10" />
+          <circle cx="1320" cy="470" r="2.5" fill="#f3c79a" opacity="0.6" />
+          <circle cx="1700" cy="120" r="7" fill="#7fa8d9" opacity="0.10" />
+          <circle cx="1700" cy="120" r="2" fill="#bcd6f5" opacity="0.5" />
+        </g>
+
+        {/* ---- circuitos técnicos, lado esquerdo ---- */}
+        <g id="circuitos-esquerda" stroke="url(#copperStroke)" strokeWidth="1.1" strokeLinecap="round">
+          <path d="M -20 130 L 90 130 L 90 190 L 200 190 L 200 150 L 260 150" opacity="0.45" />
+          <path d="M -20 260 L 60 260 L 60 330 L 150 330" opacity="0.35" />
+          <path d="M -20 520 L 100 520 L 100 470 L 180 470 L 180 410" opacity="0.4" />
+          <path d="M -20 650 L 70 650 L 70 720 L 190 720 L 190 760" opacity="0.32" />
+          <path d="M -20 820 L 110 820 L 110 770" opacity="0.3" />
+
+          {/* pequeno HUD circular no meio-esquerda */}
+          <g id="hud-esquerda-pequeno" opacity="0.5">
+            <circle cx="150" cy="470" r="46" />
+            <circle cx="150" cy="470" r="30" strokeDasharray="3 5" />
+            <line x1="150" y1="424" x2="150" y2="402" />
+            <line x1="150" y1="516" x2="150" y2="538" />
+            <line x1="104" y1="470" x2="82" y2="470" />
+            <line x1="196" y1="470" x2="218" y2="470" />
+          </g>
+
+          {/* nós luminosos nas interseções */}
+          <circle cx="200" cy="190" r="7" fill="#e9b074" opacity="0.12" stroke="none" />
+          <circle cx="200" cy="190" r="2.4" fill="#f3c79a" opacity="0.65" stroke="none" />
+          <circle cx="100" cy="520" r="7" fill="#e9b074" opacity="0.12" stroke="none" />
+          <circle cx="100" cy="520" r="2.4" fill="#f3c79a" opacity="0.6" stroke="none" />
+          <circle cx="190" cy="760" r="6" fill="#e9b074" opacity="0.1" stroke="none" />
+          <circle cx="190" cy="760" r="2" fill="#f3c79a" opacity="0.5" stroke="none" />
+        </g>
+
+        {/* ---- traços diagonais suaves, para profundidade ---- */}
+        <line x1="-40" y1="40" x2="520" y2="380" stroke="#d9a35e" strokeWidth="1" opacity="0.05" />
+        <line x1="900" y1="900" x2="1500" y2="560" stroke="#6f93c2" strokeWidth="1" opacity="0.05" />
+      </svg>
+
+      {/* 4) glows pontuais (cobre à esquerda, cobre+azul à direita) — blur em CSS, barato */}
+      <div className="absolute -left-24 top-16 h-72 w-72 rounded-full bg-primary-500/14 blur-[110px]" />
+      <div className="absolute -right-20 top-1/4 h-[26rem] w-[26rem] rounded-full bg-primary-500/16 blur-[140px]" />
+      <div className="absolute -bottom-24 -right-10 h-72 w-72 rounded-full bg-blue-500/10 blur-[120px]" />
+
+      {/* 5) linha horizontal luminosa próxima ao topo */}
+      <div className="absolute inset-x-[6%] top-[64px] h-px bg-gradient-to-r from-transparent via-primary-300/50 to-transparent" />
+
+      {/* 6) vinheta — mantém o centro limpo para leitura do conteúdo */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_62%_55%_at_46%_46%,transparent_0%,rgba(2,2,2,0.45)_100%)]" />
     </div>
   );
 }
