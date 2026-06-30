@@ -249,7 +249,9 @@ O app remove automaticamente itens legados de Drive que apontem para pastas anti
 6. Rode a migration `supabase/migrations/20260623_english_study_data.sql`.
 7. Para apoio com Claude, configure `ANTHROPIC_API_KEY` na Vercel como variável server-side. Nunca use `VITE_` para essa chave.
 8. Opcionalmente configure `ANTHROPIC_MODEL=claude-sonnet-4-5`.
-9. No app: **Estudo → Inglês**.
+9. Para gerar questionários do Inglês, configure `GEMINI_API_KEY` na Vercel como variável server-side. Nunca use `VITE_` para essa chave.
+10. Configure `GEMINI_MODEL=gemini-2.5-flash`.
+11. No app: **Estudo → Inglês**.
 
 Os dados de estudo ficam na tabela `english_study_data`, isolados por usuário via RLS. Em desenvolvimento local sem Supabase, o app usa LocalStorage apenas como fallback.
 O Claude é chamado pela rota serverless `/api/claude`; a chave Anthropic nunca é enviada para o bundle React.

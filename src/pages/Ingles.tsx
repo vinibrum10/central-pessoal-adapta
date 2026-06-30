@@ -87,25 +87,6 @@ const emptyStudyData: EnglishStudyData = {
 
 const passingScorePercent = 60;
 const unlockPercent = 80;
-const ENGLISH_VIDEO_PREF_KEY = 'sgp-english-video-preferences';
-const defaultLibraryLevel: NivelFiltro = 'Intermediário';
-const defaultLibraryDuration: DuracaoFiltro = 'medio';
-
-function getSavedVideoPreferences(): { nivel: NivelFiltro; duracao: DuracaoFiltro } {
-  try {
-    const raw = localStorage.getItem(ENGLISH_VIDEO_PREF_KEY);
-    if (!raw) return { nivel: defaultLibraryLevel, duracao: defaultLibraryDuration };
-    const parsed = JSON.parse(raw) as Partial<{ nivel: NivelFiltro; duracao: DuracaoFiltro }>;
-    const nivelOpts: NivelFiltro[] = ['Iniciante', 'Intermediário', 'Avançado'];
-    const duracaoOpts: DuracaoFiltro[] = ['curto', 'medio', 'longo'];
-    return {
-      nivel: parsed.nivel && nivelOpts.includes(parsed.nivel) ? parsed.nivel : defaultLibraryLevel,
-      duracao: parsed.duracao && duracaoOpts.includes(parsed.duracao) ? parsed.duracao : defaultLibraryDuration,
-    };
-  } catch {
-    return { nivel: defaultLibraryLevel, duracao: defaultLibraryDuration };
-  }
-}
 
 function getLibraryFilterKey(nivel: NivelFiltro, duracao: DuracaoFiltro) {
   return `${nivel}:${duracao}`;
@@ -296,8 +277,7 @@ export function InglesPage() {
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [quizLoading, setQuizLoading] = useState(false);
   const [quizMessage, setQuizMessage] = useState('');
-  const [shortcutModal, setShortcutModal] = useState<'Biblioteca' | 'Histórico' | 'Configurações' | null>(null);
-  const [videoPreferences, setVideoPreferences] = useState(getSavedVideoPreferences);
+  const [shortcutModal, setShortcutModal] = useState<'Histórico' | 'Configurações' | null>(null);
   const [libraryResultsByFilter, setLibraryResultsByFilter] = useState<Record<string, VideoResult[]>>({});
   const [changingVideo, setChangingVideo] = useState(false);
   const [shadowingWizardOpen, setShadowingWizardOpen] = useState(false);
@@ -327,14 +307,11 @@ export function InglesPage() {
     () => data.weeklyWords.filter(w => !w.mastered && w.nextReviewAt <= hojeISO()),
     [data.weeklyWords],
   );
-  const selectedNivel = videoPreferences.nivel;
-  const selectedDuracao = videoPreferences.duracao;
+  // Shadowing usa sempre nível avançado e vídeos curtos (2-5 min) — sem busca livre/manual.
+  const selectedNivel: NivelFiltro = 'Avançado';
+  const selectedDuracao: DuracaoFiltro = 'curto';
   const selectedFilterKey = getLibraryFilterKey(selectedNivel, selectedDuracao);
   const cachedVideosForSelectedFilter = libraryResultsByFilter[selectedFilterKey] ?? [];
-
-  const updateVideoPreferences = useCallback((patch: Partial<{ nivel: NivelFiltro; duracao: DuracaoFiltro }>) => {
-    setVideoPreferences(prev => ({ ...prev, ...patch }));
-  }, []);
 
   const cacheLibraryResults = useCallback((nivel: NivelFiltro, duracao: DuracaoFiltro, videos: VideoResult[]) => {
     setLibraryResultsByFilter(prev => ({
@@ -350,10 +327,6 @@ export function InglesPage() {
     setData(withSession);
     await saveEnglishStudyData(userId, withSession);
   }, [userId]);
-
-  useEffect(() => {
-    localStorage.setItem(ENGLISH_VIDEO_PREF_KEY, JSON.stringify(videoPreferences));
-  }, [videoPreferences]);
 
   const saveData = useCallback(async (nextData: EnglishStudyData) => {
     latestDataRef.current = nextData;
@@ -660,14 +633,14 @@ export function InglesPage() {
       };
       await saveData(mergeDailyStudy(mergeGeneratedQuiz(latestDataRef.current, quiz), nextStudy));
       setQuizMessage(quiz.warning ?? 'Questionário gerado com IA.');
-    } catch (err) {
+    } catch {
       const nextStudy: EnglishDailyStudy = {
         ...generatingStudy,
         quizStatus: 'available',
         quizGenerated: false,
       };
       await saveStudy(nextStudy);
-      setError(err instanceof Error ? err.message : 'Falha de rede ao gerar questionário.');
+      setError('Não foi possível gerar o questionário agora. Tente novamente.');
     } finally {
       setQuizLoading(false);
     }
@@ -813,49 +786,7 @@ export function InglesPage() {
           action={<Button size="sm" variant="secondary" icon={<RotateCcw size={14} className={changingVideo ? 'animate-spin' : ''} />} onClick={handleChangeVideo} disabled={changingVideo}>{changingVideo ? 'Buscando...' : 'Trocar vídeo'}</Button>}
         />
         <CardBody className="space-y-4">
-          <div className="rounded-lg border border-surface-200 bg-surface-50/80 p-3 dark:border-white/10 dark:bg-white/5">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Preferência da aula</p>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div>
-                <p className="mb-2 text-xs font-medium text-surface-500 dark:text-surface-400">Nível</p>
-                <div className="flex flex-wrap gap-2">
-                  {(['Iniciante', 'Intermediário', 'Avançado'] as NivelFiltro[]).map(nivel => (
-                    <button
-                      key={nivel}
-                      type="button"
-                      onClick={() => updateVideoPreferences({ nivel })}
-                      className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
-                        selectedNivel === nivel
-                          ? 'bg-primary-600 text-white'
-                          : 'bg-white text-surface-600 hover:bg-surface-100 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700'
-                      }`}
-                    >
-                      {nivel}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="mb-2 text-xs font-medium text-surface-500 dark:text-surface-400">Duração</p>
-                <div className="flex flex-wrap gap-2">
-                  {(['curto', 'medio', 'longo'] as DuracaoFiltro[]).map(duracao => (
-                    <button
-                      key={duracao}
-                      type="button"
-                      onClick={() => updateVideoPreferences({ duracao })}
-                      className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
-                        selectedDuracao === duracao
-                          ? 'bg-primary-600 text-white'
-                          : 'bg-white text-surface-600 hover:bg-surface-100 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700'
-                      }`}
-                    >
-                      {DURACAO_LABEL[duracao]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+          <StateNote>Vídeo do dia: nível avançado, 2-5 minutos, temas de carreira, tecnologia, notícias ou cultura americana — carregado automaticamente.</StateNote>
 
           <div className="aspect-video w-full overflow-hidden rounded-lg bg-surface-950 shadow-sm">
             <div id={playerContainerId} className="h-full w-full" />
@@ -1157,7 +1088,7 @@ function youtubeResultToVideoResult(video: Awaited<ReturnType<typeof buscarVideo
   };
 }
 
-function BibliotecaVideos({
+export function BibliotecaVideos({
   allVideos,
   onSelectVideo,
   nivel,

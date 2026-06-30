@@ -28,8 +28,8 @@ function isGeneratedQuiz(value: unknown): value is Omit<GeneratedEnglishQuiz, 'g
     && typeof quiz.level === 'string'
     && typeof quiz.questionCount === 'number'
     && Array.isArray(quiz.questions)
-    && quiz.questions.length >= 3
-    && quiz.questions.length <= 5
+    && quiz.questions.length >= 1
+    && quiz.questions.length <= 10
     && quiz.questions.every(question =>
       question
       && typeof question.id === 'string'
@@ -59,7 +59,7 @@ export async function generateEnglishQuiz(payload: GenerateEnglishQuizPayload): 
   if (!response.ok || !isGeneratedQuiz(data)) {
     const error = 'error' in data && typeof data.error === 'string'
       ? data.error
-      : 'Quiz não pôde ser gerado. Tente novamente.';
+      : 'Não foi possível gerar o questionário agora. Tente novamente.';
     throw new Error(error);
   }
 

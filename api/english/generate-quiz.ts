@@ -1,3 +1,5 @@
+import { GoogleGenAI } from '@google/genai';
+
 type QuizSource = 'transcript' | 'summary' | 'metadata';
 type Difficulty = 'easy' | 'medium' | 'hard';
 
@@ -28,6 +30,21 @@ type QuizQuestion = {
   difficulty: Difficulty;
 };
 
+type GeminiQuizQuestion = {
+  id: string;
+  type: 'multiple_choice';
+  question: string;
+  options: string[];
+  correctAnswer: string;
+  explanation: string;
+  level: string;
+  skill: string;
+};
+
+type GeminiQuizResponse = {
+  questions: GeminiQuizQuestion[];
+};
+
 type GeneratedQuiz = {
   videoId: string;
   title: string;
@@ -50,28 +67,23 @@ type ServerResponse = {
   setHeader: (name: string, value: string) => void;
 };
 
-const DEFAULT_MODEL = 'gpt-5.5';
+const DEFAULT_MODEL = 'gemini-2.5-flash';
 const MAX_TRANSCRIPT_LENGTH = 12000;
 const MAX_SUMMARY_LENGTH = 3000;
 
 const quizSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['videoId', 'title', 'level', 'questionCount', 'warning', 'questions'],
+  required: ['questions'],
   properties: {
-    videoId: { type: 'string' },
-    title: { type: 'string' },
-    level: { type: 'string' },
-    questionCount: { type: 'number' },
-    warning: { type: ['string', 'null'] },
     questions: {
       type: 'array',
-      minItems: 3,
-      maxItems: 5,
+      minItems: 1,
+      maxItems: 10,
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['id', 'type', 'question', 'options', 'correctIndex', 'explanation', 'skill', 'difficulty'],
+        required: ['id', 'type', 'question', 'options', 'correctAnswer', 'explanation', 'level', 'skill'],
         properties: {
           id: { type: 'string' },
           type: { type: 'string', enum: ['multiple_choice'] },
@@ -82,10 +94,10 @@ const quizSchema = {
             maxItems: 4,
             items: { type: 'string' },
           },
-          correctIndex: { type: 'number', minimum: 0, maximum: 3 },
+          correctAnswer: { type: 'string' },
           explanation: { type: 'string' },
-          skill: { type: 'string' },
-          difficulty: { type: 'string', enum: ['easy', 'medium', 'hard'] },
+          level: { type: 'string', enum: ['A1', 'A2', 'B1', 'B2'] },
+          skill: { type: 'string', enum: ['listening', 'vocabulary', 'grammar', 'comprehension'] },
         },
       },
     },
@@ -103,7 +115,7 @@ function parseBody(body: unknown): GenerateQuizRequest {
 
 function clampQuestionCount(value: unknown) {
   const count = typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : 5;
-  return Math.min(5, Math.max(3, count));
+  return Math.min(10, Math.max(1, count));
 }
 
 function trimString(value: unknown, maxLength: number) {
@@ -137,8 +149,14 @@ function buildPrompt(body: Required<Pick<GenerateQuizRequest, 'videoId' | 'title
     'O objetivo é testar compreensão auditiva, vocabulário e frases úteis.',
     'Use inglês simples nas perguntas e alternativas.',
     'Use português apenas nas explicações.',
-    'Não invente detalhes que não estejam no conteúdo.',
-    'Retorne somente JSON no schema solicitado.',
+    source === 'metadata'
+      ? 'Como não há transcrição suficiente, crie perguntas gerais de vocabulário e compreensão sobre o tema do vídeo.'
+      : 'Não invente detalhes que não estejam no conteúdo.',
+    'Não misture este questionário com outro vídeo.',
+    'Retorne somente JSON no schema solicitado, sem markdown.',
+    'Cada correctAnswer deve ser exatamente igual a uma das 4 opções.',
+    'Use skill apenas como listening, vocabulary, grammar ou comprehension.',
+    'Use level apenas como A1, A2, B1 ou B2.',
     '',
     `Video ID: ${body.videoId}`,
     `Title: ${body.title}`,
@@ -153,20 +171,6 @@ function buildPrompt(body: Required<Pick<GenerateQuizRequest, 'videoId' | 'title
     'Reliable content:',
     content,
   ].filter(Boolean).join('\n');
-}
-
-function extractOutputText(data: { output_text?: unknown; output?: unknown }): string {
-  if (typeof data.output_text === 'string') return data.output_text;
-  if (!Array.isArray(data.output)) return '';
-
-  return data.output.flatMap(item => {
-    const content = (item as { content?: unknown }).content;
-    if (!Array.isArray(content)) return [];
-    return content.map(part => {
-      const text = (part as { text?: unknown }).text;
-      return typeof text === 'string' ? text : '';
-    });
-  }).join('');
 }
 
 function isQuestion(value: unknown): value is QuizQuestion {
@@ -190,6 +194,44 @@ function isQuestion(value: unknown): value is QuizQuestion {
   );
 }
 
+function skillToDifficulty(skill: string): Difficulty {
+  if (skill === 'grammar') return 'hard';
+  if (skill === 'comprehension') return 'medium';
+  return 'easy';
+}
+
+function normalizeGeminiQuestion(value: unknown, index: number): QuizQuestion | null {
+  const question = value as Partial<GeminiQuizQuestion> | null;
+  if (
+    !question
+    || question.type !== 'multiple_choice'
+    || typeof question.question !== 'string'
+    || !Array.isArray(question.options)
+    || question.options.length !== 4
+    || !question.options.every(option => typeof option === 'string' && option.trim().length > 0)
+    || typeof question.correctAnswer !== 'string'
+    || typeof question.explanation !== 'string'
+    || typeof question.skill !== 'string'
+  ) {
+    return null;
+  }
+
+  const options = question.options.map(option => option.trim());
+  const correctIndex = options.findIndex(option => option.toLowerCase() === question.correctAnswer?.trim().toLowerCase());
+  if (correctIndex < 0) return null;
+
+  return {
+    id: typeof question.id === 'string' && question.id.trim() ? question.id.trim() : `q${index + 1}`,
+    type: 'multiple_choice',
+    question: question.question.trim(),
+    options,
+    correctIndex,
+    explanation: question.explanation.trim(),
+    skill: question.skill.trim(),
+    difficulty: skillToDifficulty(question.skill.trim()),
+  };
+}
+
 function validateQuiz(value: unknown, fallback: {
   videoId: string;
   title: string;
@@ -197,19 +239,21 @@ function validateQuiz(value: unknown, fallback: {
   source: QuizSource;
   warning?: string;
 }): GeneratedQuiz | null {
-  const quiz = value as Partial<GeneratedQuiz> | null;
+  const quiz = value as Partial<GeneratedQuiz | GeminiQuizResponse> | null;
   if (!quiz || !Array.isArray(quiz.questions)) return null;
-  const questions = quiz.questions.filter(isQuestion);
-  if (questions.length < 3 || questions.length > 5) return null;
+  const questions = quiz.questions
+    .map((question, index) => isQuestion(question) ? question : normalizeGeminiQuestion(question, index))
+    .filter((question): question is QuizQuestion => Boolean(question));
+  if (questions.length < 1 || questions.length > 10) return null;
 
   return {
-    videoId: typeof quiz.videoId === 'string' ? quiz.videoId : fallback.videoId,
-    title: typeof quiz.title === 'string' ? quiz.title : fallback.title,
-    level: typeof quiz.level === 'string' ? quiz.level : fallback.level,
+    videoId: fallback.videoId,
+    title: fallback.title,
+    level: fallback.level,
     questionCount: questions.length,
     generatedAt: new Date().toISOString(),
     source: fallback.source,
-    warning: typeof quiz.warning === 'string' ? quiz.warning : fallback.warning,
+    warning: fallback.warning,
     questions,
   };
 }
@@ -222,11 +266,11 @@ export default async function handler(req: ServerRequest, res: ServerResponse) {
     return;
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     json(res, 503, {
       success: false,
-      error: 'OpenAI não configurada. Configure OPENAI_API_KEY nas variáveis de ambiente do backend.',
+      error: 'Não foi possível gerar o questionário agora. Tente novamente.',
     });
     return;
   }
@@ -257,56 +301,29 @@ export default async function handler(req: ServerRequest, res: ServerResponse) {
   const { source, content, warning } = resolveSource(body);
 
   try {
-    const openaiResponse = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
+      model: process.env.GEMINI_MODEL || DEFAULT_MODEL,
+      contents: buildPrompt({ videoId, title, channel, level, theme, durationSeconds }, questionCount, source, content, warning),
+      config: {
+        responseMimeType: 'application/json',
+        responseJsonSchema: quizSchema,
+        temperature: 0.4,
+        maxOutputTokens: 2400,
       },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || DEFAULT_MODEL,
-        input: buildPrompt({ videoId, title, channel, level, theme, durationSeconds }, questionCount, source, content, warning),
-        text: {
-          format: {
-            type: 'json_schema',
-            name: 'english_daily_quiz',
-            strict: true,
-            schema: quizSchema,
-          },
-          verbosity: 'low',
-        },
-        reasoning: { effort: 'low' },
-        max_output_tokens: 1800,
-        store: false,
-      }),
     });
-
-    const data = await openaiResponse.json() as {
-      output_text?: unknown;
-      output?: unknown;
-      error?: { message?: string; type?: string };
-    };
-
-    if (!openaiResponse.ok) {
-      const status = openaiResponse.status;
-      console.error('OpenAI quiz generation failed', { status, type: data.error?.type });
-      if (status === 401 || status === 403) throw new Error('Chave OpenAI inválida ou sem permissão.');
-      if (status === 429) throw new Error('Limite de uso da OpenAI atingido. Tente novamente mais tarde.');
-      throw new Error('Erro na chamada da OpenAI. Tente novamente em instantes.');
-    }
-
-    const outputText = extractOutputText(data);
+    const outputText = response.text ?? '';
     let parsed: unknown;
     try {
       parsed = JSON.parse(outputText);
     } catch {
-      json(res, 502, { success: false, error: 'Retorno inválido da IA. Tente gerar novamente.' });
+      json(res, 502, { success: false, error: 'Não foi possível gerar o questionário agora. Tente novamente.' });
       return;
     }
 
     const quiz = validateQuiz(parsed, { videoId, title, level, source, warning });
     if (!quiz) {
-      json(res, 502, { success: false, error: 'Retorno inválido da IA. Tente gerar novamente.' });
+      json(res, 502, { success: false, error: 'Não foi possível gerar o questionário agora. Tente novamente.' });
       return;
     }
 
@@ -315,7 +332,7 @@ export default async function handler(req: ServerRequest, res: ServerResponse) {
     console.error('English quiz endpoint error', { message: error instanceof Error ? error.message : 'unknown' });
     json(res, 502, {
       success: false,
-      error: error instanceof Error ? error.message : 'Quiz não pôde ser gerado.',
+      error: 'Não foi possível gerar o questionário agora. Tente novamente.',
     });
   }
 }
