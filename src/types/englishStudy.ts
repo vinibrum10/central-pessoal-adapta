@@ -203,6 +203,83 @@ export interface WeeklyWord {
   mastered?: boolean;
 }
 
+// ============================================================
+// BANCO CURADO DE VÍDEOS (Inglês Diário)
+// ============================================================
+// Ver src/data/curatedEnglishVideos.ts para o seed e documentação de como
+// adicionar vídeos novos, e src/services/englishVideoLibrary.ts /
+// englishVideoSelector (em dailyVideoSelector.ts) para como esse banco é
+// consumido.
+
+export type CuratedVideoSource = 'curated' | 'youtube_api' | 'manual';
+export type CuratedVideoStatus = 'active' | 'needs_validation' | 'unavailable' | 'archived';
+export type CuratedVideoLevelGroup = 'beginner' | 'intermediate' | 'advanced';
+export type CuratedVideoDifficulty = 'easy' | 'medium' | 'hard';
+
+export interface ShadowingSentenceSeed {
+  text: string;
+  translation?: string;
+  /** Segundo aproximado em que a frase começa no vídeo, se conhecido. */
+  startTimeSeconds?: number;
+  difficulty?: CuratedVideoDifficulty;
+}
+
+export interface SuggestedVocabularyCardSeed {
+  word: string;
+  /** Frase completa usando a palavra (vira `WeeklyWord.sentence` se o usuário aceitar o card sugerido). */
+  phrase?: string;
+  translation: string;
+  example?: string;
+  difficulty?: CuratedVideoDifficulty;
+}
+
+/**
+ * Entrada do banco curado de vídeos — a fonte PRINCIPAL da aula diária de
+ * Inglês Diário. A API do YouTube só é usada para descobrir/validar novos
+ * candidatos (ver discoverYouTubeCandidates em englishVideoLibrary.ts); a
+ * aula em si nunca depende de uma busca ao vivo na API.
+ *
+ * `status`/`useCount`/`failureCount`/`lastUsedAt` aqui são os valores de
+ * SEED (estado inicial). O estado real, por usuário, é sobreposto em
+ * runtime a partir de `EnglishStudyData.curatedVideoStats` — assim um vídeo
+ * que falha para um usuário não fica marcado como quebrado para todos.
+ */
+export interface CuratedEnglishVideo {
+  id: string;
+  youtubeVideoId: string;
+  title: string;
+  channelTitle: string;
+  durationSeconds: number;
+  cefrLevel: EnglishCefrLevel;
+  levelGroup: CuratedVideoLevelGroup;
+  themes: string[];
+  skills: string[];
+  source: CuratedVideoSource;
+  status: CuratedVideoStatus;
+  embeddable: boolean;
+  /** ISO date/datetime da última validação manual ou automática (duração, embeddable, público). */
+  validatedAt?: string;
+  /** ISO date/datetime do último uso como vídeo do dia (valor de seed; sobreposto por usuário em runtime). */
+  lastUsedAt?: string;
+  useCount: number;
+  failureCount: number;
+  shadowingSentences?: ShadowingSentenceSeed[];
+  suggestedVocabularyCards?: SuggestedVocabularyCardSeed[];
+  /** Resumo em inglês usado para o questionário gerado por IA e como fallback de frases de shadowing. */
+  summary?: string;
+  transcript?: string;
+  notes?: string;
+}
+
+/** Estado de runtime por vídeo curado, persistido por usuário (não é seed — é o que de fato aconteceu na conta dele). */
+export interface CuratedVideoStats {
+  useCount: number;
+  failureCount: number;
+  lastUsedAt?: string;
+  /** Quando presente, sobrepõe o `status` de seed (ex.: vídeo falhou de verdade para este usuário). */
+  statusOverride?: CuratedVideoStatus;
+}
+
 /** Histórico permanente de vídeos do "Inglês Diário" já assistidos pelo usuário — usado para nunca repetir um vídeo na seleção do vídeo do dia / "Trocar vídeo". */
 export interface WatchedVideoEntry {
   videoId: string;
@@ -224,6 +301,8 @@ export interface EnglishStudyData {
    * página. Não confundir com `watchedVideos`, que é só preferência.
    */
   unavailableVideoIds: string[];
+  /** Estado de runtime por vídeo curado (useCount/failureCount/lastUsedAt/statusOverride), chave = youtubeVideoId. Ver CuratedVideoStats. */
+  curatedVideoStats: Record<string, CuratedVideoStats>;
   dailyPlan: DailyPlanItem[];
   sessions: StudySession[];
   vocabulary: VocabularyItem[];

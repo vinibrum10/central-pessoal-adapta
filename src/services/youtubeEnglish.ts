@@ -12,7 +12,7 @@ export function isYouTubeEnglishConfigured(): boolean {
 // Diagnóstico de configuração — nunca loga o valor da chave, só se ela existe.
 console.log(
   '[Inglês Diário] VITE_YOUTUBE_API_KEY',
-  isYouTubeEnglishConfigured() ? 'configurada — YouTube API é a fonte principal de vídeos.' : 'NÃO configurada — usando fallback local (src/data/englishDailyVideos.ts).',
+  isYouTubeEnglishConfigured() ? 'configurada — disponível para descoberta/validação de novos candidatos (a aula diária usa o Banco Curado como fonte principal).' : 'NÃO configurada — usando só o Banco Curado de vídeos (src/data/curatedEnglishVideos.ts).',
 );
 
 export function getYouTubeEnglishConfigMessage(): string {

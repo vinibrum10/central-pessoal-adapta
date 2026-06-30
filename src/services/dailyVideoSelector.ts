@@ -1,4 +1,5 @@
 import type { DailyEnglishVideo } from '../data/englishDailyVideos';
+import type { CuratedEnglishVideo, CuratedVideoLevelGroup } from '../types/englishStudy';
 import { getYouTubeEnglishConfigMessage, isYouTubeEnglishConfigured } from './youtubeEnglish';
 
 export type NivelFiltro = 'Iniciante' | 'Intermediário' | 'Avançado';
@@ -138,14 +139,19 @@ export function selectLocalVideo(ctx: LocalSelectionContext, seed: string): Vide
 }
 
 /**
- * Seleção completa com fallback progressivo: tenta a API do YouTube primeiro
- * (só se `VITE_YOUTUBE_API_KEY` estiver configurada) e cai para o dataset
- * local em qualquer outro caso — chave ausente, API fora do ar, quota
- * excedida ou sem candidato válido. Nunca lança: erros da API são
- * capturados e tratados como "sem candidato".
+ * Seleção completa do vídeo do dia. DECISÃO DE ARQUITETURA: o banco curado
+ * local (`ctx.localVideos`, projeção dos vídeos curados ativos — ver
+ * src/data/curatedEnglishVideos.ts) é a fonte PRINCIPAL e é tentado
+ * PRIMEIRO. A API do YouTube (`ctx.fetchFromApi`) só é chamada como ÚLTIMO
+ * RECURSO, e só no caso extremo do banco curado estar literalmente vazio
+ * (sem nenhum vídeo ativo) — na prática isso não deveria acontecer com o
+ * seed atual. Isso é proposital: a aula diária nunca deve depender de uma
+ * busca ao vivo no YouTube para funcionar; a API serve para DESCOBRIR
+ * candidatos novos (ver discoverYouTubeCandidates em englishVideoLibrary.ts),
+ * não para escolher o vídeo de hoje em tempo real.
  */
 export async function selectNextVideo(ctx: VideoSelectionContext, seed: string): Promise<VideoSelectionResult | null> {
-  console.log('[VideoSelector] Iniciando seleção de vídeo.', {
+  console.log('[VideoSelector] Iniciando seleção de vídeo (banco curado é a fonte principal).', {
     nivel: ctx.nivel,
     duracao: ctx.duracao,
     totalLocal: ctx.localVideos.length,
@@ -154,23 +160,119 @@ export async function selectNextVideo(ctx: VideoSelectionContext, seed: string):
     apiConfigurada: isYouTubeEnglishConfigured(),
   });
 
-  if (ctx.fetchFromApi) {
-    if (isYouTubeEnglishConfigured()) {
-      try {
-        console.log('[VideoSelector] Tentando YouTube API como fonte principal...');
-        const apiVideo = await ctx.fetchFromApi();
-        if (apiVideo) {
-          console.log('[VideoSelector] Vídeo escolhido via API do YouTube.', { videoId: apiVideo.videoId, titulo: apiVideo.title });
-          return { video: apiVideo, source: 'api', isReview: false };
-        }
-        console.log('[VideoSelector] API do YouTube não retornou nenhum candidato; caindo para o dataset local.');
-      } catch (err) {
-        console.warn('[VideoSelector] Busca via YouTube API falhou; usando fallback local.', err instanceof Error ? err.message : err);
+  const localResult = selectLocalVideo(ctx, seed);
+  if (localResult) return localResult;
+
+  console.warn('[VideoSelector] Banco curado local vazio — recorrendo à API do YouTube como último recurso (descoberta ao vivo).');
+  if (ctx.fetchFromApi && isYouTubeEnglishConfigured()) {
+    try {
+      const apiVideo = await ctx.fetchFromApi();
+      if (apiVideo) {
+        console.log('[VideoSelector] Vídeo escolhido via API do YouTube (último recurso).', { videoId: apiVideo.videoId, titulo: apiVideo.title });
+        return { video: apiVideo, source: 'api', isReview: false };
       }
-    } else {
-      console.log('[VideoSelector]', getYouTubeEnglishConfigMessage(), '— usando dataset local diretamente.');
+    } catch (err) {
+      console.warn('[VideoSelector] Busca via YouTube API falhou.', err instanceof Error ? err.message : err);
     }
+  } else if (!isYouTubeEnglishConfigured()) {
+    console.log('[VideoSelector]', getYouTubeEnglishConfigMessage());
   }
 
-  return selectLocalVideo(ctx, seed);
+  return null;
+}
+
+// ============================================================
+// SELETOR NATIVO DO BANCO CURADO (CuratedEnglishVideo) — Parte 4 do pedido
+// ============================================================
+const LEVEL_GROUP_NEARBY: Record<CuratedVideoLevelGroup, CuratedVideoLevelGroup[]> = {
+  advanced: ['intermediate', 'beginner'],
+  intermediate: ['advanced', 'beginner'],
+  beginner: ['intermediate', 'advanced'],
+};
+
+export type VideoSelectionMode = 'daily' | 'change' | 'recovery';
+
+export interface SelectDailyEnglishVideoParams {
+  curatedVideos: CuratedEnglishVideo[];
+  userLevel: CuratedVideoLevelGroup;
+  preferredThemes?: string[];
+  watchedVideoIds: Set<string>;
+  completedVideoIds: Set<string>;
+  unavailableVideoIds: Set<string>;
+  currentVideoId?: string | null;
+  mode: VideoSelectionMode;
+}
+
+export interface CuratedVideoSelectionResult {
+  video: CuratedEnglishVideo;
+  isReview: boolean;
+  reason: string;
+}
+
+/**
+ * Seletor nativo do banco curado — opera direto sobre `CuratedEnglishVideo`
+ * (sem o adapter para `DailyEnglishVideo`), pensado para uso futuro
+ * server-side/admin ou quando o restante da página migrar para consumir o
+ * tipo curado diretamente. Implementa as mesmas 10 regras do pedido:
+ * banco curado ativo -> nunca indisponível -> prefere não concluído ->
+ * nível exato -> níveis próximos -> modo revisão -> nunca retorna null se
+ * houver >=1 vídeo ativo -> nunca repete o vídeo atual ao trocar, se houver
+ * alternativa. A API do YouTube NÃO é chamada aqui — descoberta é
+ * responsabilidade de discoverYouTubeCandidates (englishVideoLibrary.ts).
+ */
+export function selectDailyEnglishVideo(params: SelectDailyEnglishVideoParams): CuratedVideoSelectionResult | null {
+  const { curatedVideos, userLevel, preferredThemes, watchedVideoIds, completedVideoIds, unavailableVideoIds, currentVideoId, mode } = params;
+
+  const blockedForChange = mode !== 'daily' && currentVideoId ? new Set([...unavailableVideoIds, currentVideoId]) : unavailableVideoIds;
+
+  let active = curatedVideos.filter(v => v.status === 'active' && !blockedForChange.has(v.youtubeVideoId));
+  if (active.length === 0) {
+    // Nem trocando dá pra evitar o vídeo atual — usa qualquer ativo não-bloqueado-de-verdade.
+    active = curatedVideos.filter(v => v.status === 'active' && !unavailableVideoIds.has(v.youtubeVideoId));
+  }
+  if (active.length === 0) {
+    console.warn('[CuratedVideoSelector] Nenhum vídeo ativo e disponível no banco curado.', { total: curatedVideos.length });
+    return null;
+  }
+
+  const byTheme = (pool: CuratedEnglishVideo[]) => {
+    if (!preferredThemes || preferredThemes.length === 0) return pool;
+    const matched = pool.filter(v => v.themes.some(t => preferredThemes.includes(t)));
+    return matched.length > 0 ? matched : pool;
+  };
+
+  const tiers: Array<{ reason: string; pool: CuratedEnglishVideo[] }> = [
+    {
+      reason: 'nível exato, nunca assistido',
+      pool: byTheme(active.filter(v => v.levelGroup === userLevel && !watchedVideoIds.has(v.youtubeVideoId))),
+    },
+    {
+      reason: 'nível próximo, nunca assistido',
+      pool: byTheme(active.filter(v => LEVEL_GROUP_NEARBY[userLevel].includes(v.levelGroup) && !watchedVideoIds.has(v.youtubeVideoId))),
+    },
+    {
+      reason: 'qualquer nível, nunca assistido',
+      pool: byTheme(active.filter(v => !watchedVideoIds.has(v.youtubeVideoId))),
+    },
+    {
+      reason: 'assistido mas não concluído (terminar antes de revisar)',
+      pool: active.filter(v => watchedVideoIds.has(v.youtubeVideoId) && !completedVideoIds.has(v.youtubeVideoId)),
+    },
+  ];
+
+  for (const tier of tiers) {
+    if (tier.pool.length === 0) continue;
+    const video = pickLeastUsed(tier.pool);
+    console.log('[CuratedVideoSelector] Vídeo escolhido.', { reason: tier.reason, videoId: video.youtubeVideoId, candidatos: tier.pool.length });
+    return { video, isReview: false, reason: tier.reason };
+  }
+
+  // Modo revisão: todos já assistidos/concluídos — reaproveita o menos usado recentemente.
+  const video = pickLeastUsed(active);
+  console.log('[CuratedVideoSelector] Modo revisão — reaproveitando vídeo já visto.', { videoId: video.youtubeVideoId });
+  return { video, isReview: true, reason: 'modo revisão — nenhum vídeo novo disponível' };
+}
+
+function pickLeastUsed(pool: CuratedEnglishVideo[]): CuratedEnglishVideo {
+  return [...pool].sort((a, b) => a.useCount - b.useCount || (a.lastUsedAt ?? '').localeCompare(b.lastUsedAt ?? ''))[0];
 }

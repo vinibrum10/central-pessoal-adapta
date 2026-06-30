@@ -47,6 +47,7 @@ import {
   getWatchedVideoIds,
   getWeekStartISO,
   markVideoUnavailableInData,
+  resetVideoStateInData,
   markVideoWatched,
   reviewWeeklyWordInData,
   saveDuolingoStreak,
@@ -101,6 +102,7 @@ declare global {
 
 const emptyStudyData: EnglishStudyData = {
   unavailableVideoIds: [],
+  curatedVideoStats: {},
   dailyPlan: [],
   sessions: [],
   vocabulary: [],
@@ -123,7 +125,7 @@ const unlockPercent = 80;
 // (src/services/dailyVideoSelector.ts) sempre retorna um vídeo (relaxando
 // nível/duração ou reaproveitando um já assistido em modo revisão) desde que
 // o dataset local tenha pelo menos 1 vídeo. Mantido como rede de segurança.
-const NO_FRESH_VIDEO_MESSAGE = 'Não encontrei nenhum vídeo disponível agora. Tente novamente em instantes.';
+const NO_FRESH_VIDEO_MESSAGE = 'Não encontrei um vídeo válido agora. Você ainda pode revisar cards e fazer shadowing salvo.';
 
 function getLibraryFilterKey(nivel: NivelFiltro, duracao: DuracaoFiltro) {
   return `${nivel}:${duracao}`;
@@ -243,6 +245,18 @@ function addQuizAttempt(data: EnglishStudyData, attempt: EnglishQuizAttempt): En
     ...data,
     quizAttempts: [attempt, ...data.quizAttempts],
   };
+}
+
+function videoOriginLabel(source: VideoSelectionResult['source'] | undefined): string {
+  switch (source) {
+    case 'api': return 'YouTube API';
+    case 'local-exact':
+    case 'local-relaxed-level':
+    case 'local-relaxed-duration':
+      return 'Banco curado';
+    case 'local-review': return 'Revisão';
+    default: return 'Banco curado';
+  }
 }
 
 function getGoalStatus(study: EnglishDailyStudy) {
@@ -546,6 +560,7 @@ export function InglesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [playerStatus, setPlayerStatus] = useState<'loading' | 'ready' | 'playing' | 'paused' | 'unavailable' | 'error'>('loading');
+  const [videoOriginInfo, setVideoOriginInfo] = useState<{ source: VideoSelectionResult['source']; isReview: boolean } | null>(null);
   const [, setIsPlayerPlaying] = useState(false);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [quizLoading, setQuizLoading] = useState(false);
@@ -586,6 +601,31 @@ export function InglesPage() {
     () => data.shadowingSessions.some(session => session.date === todayDate),
     [data.shadowingSessions, todayDate],
   );
+  const completedVideoIds = useMemo(
+    () => new Set(data.watchedVideos.filter(v => v.status === 'completed').map(v => v.videoId)),
+    [data.watchedVideos],
+  );
+
+  // Diagnóstico completo do vídeo atual — roda sempre que o vídeo carregado muda.
+  useEffect(() => {
+    if (loading) return;
+    const watchedIds = getWatchedVideoIds(data);
+    console.log('[Inglês Diário][diagnóstico] Vídeo atual carregado.', {
+      videoId: currentVideo.videoId,
+      titulo: currentVideo.title,
+      duracaoSegundos: currentVideo.durationSeconds,
+      nivel: currentVideo.level,
+      cefrLevel: currentVideo.cefrLevel,
+      tema: currentVideo.theme,
+      origem: videoOriginInfo?.source ?? (data.dailyStudies.some(s => s.date === todayDate && s.videoId === currentVideo.videoId) ? 'restaurado-do-storage' : 'desconhecida'),
+      isReview: videoOriginInfo?.isReview ?? false,
+      embedUrl: getYouTubeEmbedUrl(currentVideo.videoId),
+      emUnavailableVideoIds: data.unavailableVideoIds.includes(currentVideo.videoId),
+      emWatchedVideoIds: watchedIds.has(currentVideo.videoId),
+      emCompletedVideoIds: completedVideoIds.has(currentVideo.videoId),
+      restauradoDoStorage: data.dailyStudies.some(s => s.date === todayDate && s.videoId === currentVideo.videoId),
+    });
+  }, [currentVideo.videoId, loading]); // eslint-disable-line react-hooks/exhaustive-deps
   const quizDoneToday = todayStudy.quizCompleted || todayStudy.quizStatus === 'completed';
   const learningWords = useMemo(
     () => data.weeklyWords.filter(w => w.status === 'learning').slice(0, 5).map(w => w.word),
@@ -876,6 +916,7 @@ export function InglesPage() {
         return;
       }
       setError('');
+      setVideoOriginInfo({ source: result.source, isReview: result.isReview });
       if (result.isReview) {
         console.info('[Inglês Diário] Nenhum vídeo novo disponível — reaproveitando vídeo já assistido para revisão.', { videoId: result.video.videoId });
       }
@@ -1069,6 +1110,7 @@ export function InglesPage() {
       setAnswers({});
       setQuizMessage('');
       setError('');
+      setVideoOriginInfo({ source: result.source, isReview: result.isReview });
       if (result.isReview) {
         console.info('[Inglês Diário] Nenhum vídeo novo disponível — reaproveitando vídeo já assistido para revisão.', { videoId: result.video.videoId });
       }
@@ -1094,6 +1136,22 @@ export function InglesPage() {
     console.info('[Inglês Diário] Botão "Trocar vídeo" acionado.', { videoIdAtual: todayStudy.videoId });
     setError('');
     await replaceCurrentVideo('Troca manual solicitada.');
+  }
+
+  /**
+   * Rotina de desenvolvimento/recuperação: limpa SÓ unavailableVideoIds e
+   * curatedVideoStats (vídeos bloqueados/estatísticas de uso), nunca
+   * palavras/cards, shadowing, questionário ou progresso. Útil se
+   * `unavailableVideoIds` acumulou bloqueios demais (ex.: instabilidade de
+   * rede marcou vídeos bons como indisponíveis).
+   */
+  async function handleResetVideoState() {
+    invalidVideoIdsRef.current.clear();
+    const next = resetVideoStateInData(latestDataRef.current);
+    await saveData(next);
+    setError('');
+    setShortcutModal(null);
+    void replaceCurrentVideo('Reset manual de estado de vídeo.');
   }
 
   async function handleGenerateQuiz() {
@@ -1345,11 +1403,15 @@ export function InglesPage() {
           {playerStatus === 'loading' && <StateNote>Carregando vídeo...</StateNote>}
           {playerStatus === 'unavailable' && <StateNote>Vídeo indisponível. Use "Trocar vídeo" para escolher outro.</StateNote>}
           {playerStatus === 'error' && <StateNote>Erro ao carregar player do YouTube. Verifique sua conexão e tente novamente.</StateNote>}
+          {videoOriginInfo?.isReview && (
+            <StateNote>Você já viu todos os vídeos novos disponíveis. Hoje este vídeo entrou como revisão.</StateNote>
+          )}
 
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-lg font-semibold tracking-tight text-surface-950 dark:text-white">{currentVideo.title}</h2>
               <Badge variant={todayStudy.completed ? 'success' : quizAvailable ? 'primary' : 'default'}>{getGoalStatus(todayStudy)}</Badge>
+              <Badge variant="default">{videoOriginLabel(videoOriginInfo?.source)}</Badge>
             </div>
             <div className="mt-2 flex flex-wrap gap-2 text-sm text-surface-500 dark:text-surface-400">
               <span>{currentVideo.channel}</span>
@@ -1359,6 +1421,8 @@ export function InglesPage() {
               <span>{currentVideo.level}</span>
               <span>•</span>
               <span>{currentVideo.theme}</span>
+              <span>•</span>
+              <span>{videoOriginInfo?.isReview ? 'vídeo de revisão' : 'vídeo novo'}</span>
             </div>
           </div>
 
@@ -1552,9 +1616,21 @@ export function InglesPage() {
           )}
 
           {shortcutModal === 'Configurações' && (
-            <p className="text-sm text-surface-600 dark:text-surface-300">
-              Meta atual: assistir pelo menos 80% de trechos únicos e acertar 60% do questionário.
-            </p>
+            <div className="space-y-4">
+              <p className="text-sm text-surface-600 dark:text-surface-300">
+                Meta atual: assistir pelo menos 80% de trechos únicos e acertar 60% do questionário.
+              </p>
+              <div className="rounded-lg border border-surface-200 p-4 dark:border-surface-700">
+                <p className="text-sm font-medium text-surface-900 dark:text-white">Vídeo travado ou sempre indisponível?</p>
+                <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">
+                  Limpa só o histórico de vídeos bloqueados/indisponíveis ({data.unavailableVideoIds.length} no momento) e escolhe um vídeo novo.
+                  Palavras, cards, shadowing, questionário e progresso não são afetados.
+                </p>
+                <Button size="sm" variant="secondary" className="mt-3" onClick={handleResetVideoState}>
+                  Resetar estado de vídeo
+                </Button>
+              </div>
+            </div>
           )}
         </div>
       </Modal>

@@ -2,6 +2,7 @@ import { supabase, isSupabaseConfigured, modoLocalAtivo } from '../lib/supabase'
 import { gerarId } from '../utils';
 import { calculateNextReview, INITIAL_EASE_FACTOR, type ReviewGrade } from './spacedRepetitionEngine';
 import type {
+  CuratedVideoStats,
   DailyPlanItem,
   DuolingoStreak,
   EnglishStudyData,
@@ -63,6 +64,7 @@ export function createEmptyDuolingoStreak(): DuolingoStreak {
 export function createEmptyEnglishStudyData(date = getCurrentStudyDate()): EnglishStudyData {
   return {
     unavailableVideoIds: [],
+    curatedVideoStats: {},
     dailyPlan: defaultDailyPlanTitles.map(title => ({ id: gerarId(), title, done: false, date })),
     sessions: [],
     vocabulary: [],
@@ -102,7 +104,20 @@ function normalizeData(raw: Partial<EnglishStudyData> | null | undefined): Engli
     unavailableVideoIds: Array.isArray(raw?.unavailableVideoIds)
       ? raw.unavailableVideoIds.filter((id): id is string => typeof id === 'string')
       : [],
+    // Migração: vídeos já bloqueados no formato antigo (unavailableVideoIds)
+    // viram statusOverride 'unavailable' no formato novo, sem perder o bloqueio.
+    curatedVideoStats: migrateCuratedVideoStats(raw),
   };
+}
+
+function migrateCuratedVideoStats(raw: Partial<EnglishStudyData> | null | undefined): Record<string, CuratedVideoStats> {
+  const stats: Record<string, CuratedVideoStats> = { ...(raw?.curatedVideoStats ?? {}) };
+  const legacyUnavailable = Array.isArray(raw?.unavailableVideoIds) ? raw.unavailableVideoIds : [];
+  for (const id of legacyUnavailable) {
+    if (typeof id !== 'string' || stats[id]) continue;
+    stats[id] = { useCount: 0, failureCount: 1, statusOverride: 'unavailable' };
+  }
+  return stats;
 }
 
 /**
@@ -500,8 +515,27 @@ const MAX_UNAVAILABLE_VIDEO_IDS = 100;
  * e limitada (FIFO) para não crescer indefinidamente.
  */
 export function markVideoUnavailableInData(data: EnglishStudyData, videoId: string): EnglishStudyData {
-  if (data.unavailableVideoIds.includes(videoId)) return data;
+  const alreadyBlocked = data.unavailableVideoIds.includes(videoId) && data.curatedVideoStats[videoId]?.statusOverride === 'unavailable';
+  if (alreadyBlocked) return data;
   console.warn('[Inglês Diário] Vídeo marcado como indisponível permanentemente (não será mais sugerido):', videoId);
-  const unavailableVideoIds = [videoId, ...data.unavailableVideoIds].slice(0, MAX_UNAVAILABLE_VIDEO_IDS);
-  return { ...data, unavailableVideoIds };
+  const unavailableVideoIds = data.unavailableVideoIds.includes(videoId)
+    ? data.unavailableVideoIds
+    : [videoId, ...data.unavailableVideoIds].slice(0, MAX_UNAVAILABLE_VIDEO_IDS);
+  const current = data.curatedVideoStats[videoId] ?? { useCount: 0, failureCount: 0 };
+  const curatedVideoStats = {
+    ...data.curatedVideoStats,
+    [videoId]: { ...current, failureCount: current.failureCount + 1, statusOverride: 'unavailable' as const },
+  };
+  return { ...data, unavailableVideoIds, curatedVideoStats };
+}
+
+/**
+ * Limpa SÓ o estado quebrado de vídeo (vídeos bloqueados, estatísticas de
+ * uso/falha) — nunca mexe em palavras/cards, shadowing, quiz ou progresso.
+ * Útil quando `unavailableVideoIds` acumulou bloqueios demais (ex.: por
+ * instabilidade de rede) e o usuário quer "resetar" só a parte de vídeo.
+ */
+export function resetVideoStateInData(data: EnglishStudyData): EnglishStudyData {
+  console.warn('[Inglês Diário] Resetando estado de vídeo (unavailableVideoIds + curatedVideoStats). Palavras/cards e progresso preservados.');
+  return { ...data, unavailableVideoIds: [], curatedVideoStats: {} };
 }
