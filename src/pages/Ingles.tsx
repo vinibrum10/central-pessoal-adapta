@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BarChart3, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, Eye, EyeOff, History, Mic, Plus,
   RotateCcw, RotateCw, Settings, Sparkles, Trash2, TrendingUp, Video,
@@ -312,10 +312,120 @@ function getShadowingStreak(sessions: ShadowingSession[]): number {
   return streak;
 }
 
+const StableYouTubePlayer = memo(function StableYouTubePlayer({
+  videoId,
+  fallbackDurationSeconds,
+  onReady,
+  onPlaying,
+  onPausedOrEnded,
+  onError,
+  onUnmount,
+  onScriptError,
+}: {
+  videoId: string;
+  fallbackDurationSeconds: number;
+  onReady: (player: YouTubePlayer, videoId: string, duration: number) => void;
+  onPlaying: (videoId: string) => void;
+  onPausedOrEnded: (videoId: string, state: YouTubePlayerState) => void;
+  onError: (videoId: string, errorCode?: number) => void;
+  onUnmount: (videoId: string) => void;
+  onScriptError: () => void;
+}) {
+  const containerId = useMemo(() => `youtube-player-${gerarId()}`, []);
+  const playerRef = useRef<YouTubePlayer | null>(null);
+  const fallbackDurationRef = useRef(fallbackDurationSeconds);
+  const callbacksRef = useRef({ onReady, onPlaying, onPausedOrEnded, onError, onUnmount, onScriptError });
+
+  useEffect(() => {
+    fallbackDurationRef.current = fallbackDurationSeconds;
+    callbacksRef.current = { onReady, onPlaying, onPausedOrEnded, onError, onUnmount, onScriptError };
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    const videoIdForPlayer = videoId;
+
+    function createPlayer() {
+      if (cancelled || !window.YT?.Player) return;
+      if (!isValidYouTubeVideoId(videoIdForPlayer)) {
+        callbacksRef.current.onError(videoIdForPlayer);
+        return;
+      }
+
+      console.info('[Inglês Diário] Montando iframe/player do YouTube.', {
+        videoId: videoIdForPlayer,
+        src: getYouTubeEmbedUrl(videoIdForPlayer),
+      });
+
+      playerRef.current?.destroy();
+      playerRef.current = new window.YT.Player(containerId, {
+        videoId: videoIdForPlayer,
+        playerVars: {
+          modestbranding: 1,
+          rel: 0,
+          playsinline: 1,
+          enablejsapi: 1,
+          origin: window.location.origin,
+        },
+        events: {
+          onReady: event => {
+            const iframe = event.target.getIframe?.();
+            iframe?.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
+            iframe?.setAttribute('allowfullscreen', 'true');
+            iframe?.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+            const duration = Math.floor(event.target.getDuration() || fallbackDurationRef.current || 0);
+            console.info('[Inglês Diário] Player pronto.', { videoId: videoIdForPlayer, duration });
+            callbacksRef.current.onReady(event.target, videoIdForPlayer, duration);
+          },
+          onStateChange: event => {
+            if (event.data === 1) {
+              callbacksRef.current.onPlaying(videoIdForPlayer);
+              return;
+            }
+
+            if (event.data === 2 || event.data === 0) {
+              callbacksRef.current.onPausedOrEnded(videoIdForPlayer, event.data);
+            }
+          },
+          onError: event => {
+            console.warn('[Inglês Diário] Vídeo marcado como indisponível por erro real do YouTube.', {
+              videoId: videoIdForPlayer,
+              errorCode: event?.data ?? 'desconhecido',
+            });
+            callbacksRef.current.onError(videoIdForPlayer, event?.data);
+          },
+        },
+      });
+    }
+
+    if (window.YT?.Player) {
+      createPlayer();
+    } else {
+      const existingScript = document.querySelector<HTMLScriptElement>('script[src="https://www.youtube.com/iframe_api"]');
+      window.onYouTubeIframeAPIReady = createPlayer;
+      if (!existingScript) {
+        const tag = document.createElement('script');
+        tag.src = 'https://www.youtube.com/iframe_api';
+        tag.onerror = () => callbacksRef.current.onScriptError();
+        document.body.appendChild(tag);
+      }
+    }
+
+    return () => {
+      cancelled = true;
+      console.info('[Inglês Diário] Desmontando iframe/player do YouTube.', { videoId: videoIdForPlayer });
+      playerRef.current?.destroy();
+      playerRef.current = null;
+      callbacksRef.current.onUnmount(videoIdForPlayer);
+    };
+  }, [containerId, videoId]);
+
+  return <div id={containerId} className="h-full w-full" />;
+});
+
 export function InglesPage() {
   const { user } = useAuth();
   const userId = user?.id ?? null;
-  const playerContainerId = useMemo(() => `youtube-player-${gerarId()}`, []);
   const playerRef = useRef<YouTubePlayer | null>(null);
   const intervalRef = useRef<number | null>(null);
   const latestStudyRef = useRef<EnglishDailyStudy | null>(null);
@@ -323,7 +433,6 @@ export function InglesPage() {
   const isTrackingRef = useRef(false);
   const isPlayerPlayingRef = useRef(false);
   const currentVideoRef = useRef<DailyEnglishVideo | null>(null);
-  const activePlayerVideoIdRef = useRef<string | null>(null);
   const lastProgressPersistAtRef = useRef(0);
   const invalidVideoIdsRef = useRef(new Set<string>());
   const checkedVideoIdRef = useRef<string | null>(null);
@@ -664,117 +773,51 @@ export function InglesPage() {
     return () => { cancelled = true; };
   }, [currentVideo.videoId, loading, saveStudy]);
 
-  useEffect(() => {
-    if (loading) return;
-    let cancelled = false;
-    const videoIdForPlayer = currentVideo.videoId;
-
-    function createPlayer() {
-      if (cancelled || !window.YT?.Player) return;
-      if (!isValidYouTubeVideoId(videoIdForPlayer)) {
-        void recoverFromUnavailableVideo(videoIdForPlayer, 'videoId ausente ou inválido antes de criar o player.');
-        return;
-      }
-      if (playerRef.current && activePlayerVideoIdRef.current === videoIdForPlayer) {
-        console.info('[Inglês Diário] Player já montado para o vídeo atual; mantendo iframe.', { videoId: videoIdForPlayer });
-        return;
-      }
-
-      console.info('[Inglês Diário] Montando iframe/player do YouTube.', {
-        videoId: videoIdForPlayer,
-        src: getYouTubeEmbedUrl(videoIdForPlayer),
-      });
-      playerRef.current?.destroy();
-      stopWatchTimer();
-      activePlayerVideoIdRef.current = videoIdForPlayer;
-      setPlayerStatus('loading');
-      setIsPlayerPlaying(false);
-      playerRef.current = new window.YT.Player(playerContainerId, {
-        videoId: videoIdForPlayer,
-        playerVars: {
-          modestbranding: 1,
-          rel: 0,
-          playsinline: 1,
-          enablejsapi: 1,
-          origin: window.location.origin,
-        },
-        events: {
-          onReady: event => {
-            const fallbackDuration = currentVideoRef.current?.videoId === videoIdForPlayer
-              ? currentVideoRef.current.durationSeconds
-              : 0;
-            const duration = Math.floor(event.target.getDuration() || fallbackDuration);
-            const iframe = event.target.getIframe?.();
-            iframe?.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
-            iframe?.setAttribute('allowfullscreen', 'true');
-            iframe?.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
-            console.info('[Inglês Diário] Player pronto.', { videoId: videoIdForPlayer, duration });
-            setPlayerStatus('ready');
-            const study = latestStudyRef.current;
-            if (study?.videoId === videoIdForPlayer && duration > 0 && Math.abs(study.durationSeconds - duration) > 1) {
-              const nextStudy = recalculateStudy({ ...study, durationSeconds: duration });
-              void saveStudy(nextStudy);
-            }
-          },
-          onStateChange: event => {
-            if (event.data === 1) {
-              isPlayerPlayingRef.current = true;
-              setIsPlayerPlaying(true);
-              setPlayerStatus('playing');
-              console.info('[Inglês Diário] Reprodução iniciada/retomada.', { videoId: videoIdForPlayer });
-              startWatchTimer();
-              return;
-            }
-
-            isPlayerPlayingRef.current = false;
-            setIsPlayerPlaying(false);
-            stopWatchTimer();
-            if (event.data === 2 || event.data === 0) {
-              setPlayerStatus('paused');
-              console.info('[Inglês Diário] Reprodução pausada/finalizada pelo player.', {
-                videoId: videoIdForPlayer,
-                state: event.data,
-              });
-            }
-          },
-          onError: event => {
-            stopWatchTimer();
-            isPlayerPlayingRef.current = false;
-            setPlayerStatus('unavailable');
-            console.warn('[Inglês Diário] Vídeo marcado como indisponível por erro real do YouTube.', {
-              videoId: videoIdForPlayer,
-              errorCode: event?.data ?? 'desconhecido',
-            });
-            void recoverFromUnavailableVideo(videoIdForPlayer, `Erro do player do YouTube: ${event?.data ?? 'desconhecido'}.`);
-          },
-        },
-      });
+  const handlePlayerReady = useCallback((player: YouTubePlayer, videoId: string, duration: number) => {
+    playerRef.current = player;
+    setPlayerStatus('ready');
+    const study = latestStudyRef.current;
+    if (study?.videoId === videoId && duration > 0 && Math.abs(study.durationSeconds - duration) > 1) {
+      const nextStudy = recalculateStudy({ ...study, durationSeconds: duration });
+      void saveStudy(nextStudy);
     }
+  }, [saveStudy]);
 
-    if (window.YT?.Player) {
-      createPlayer();
-    } else {
-      const existingScript = document.querySelector<HTMLScriptElement>('script[src="https://www.youtube.com/iframe_api"]');
-      window.onYouTubeIframeAPIReady = createPlayer;
-      if (!existingScript) {
-        const tag = document.createElement('script');
-        tag.src = 'https://www.youtube.com/iframe_api';
-        tag.onerror = () => setPlayerStatus('error');
-        document.body.appendChild(tag);
-      }
-    }
+  const handlePlayerPlaying = useCallback((videoId: string) => {
+    isPlayerPlayingRef.current = true;
+    setIsPlayerPlaying(true);
+    setPlayerStatus('playing');
+    console.info('[Inglês Diário] Reprodução iniciada/retomada.', { videoId });
+    startWatchTimer();
+  }, [startWatchTimer]);
 
-    return () => {
-      cancelled = true;
-      console.info('[Inglês Diário] Desmontando iframe/player do YouTube.', { videoId: videoIdForPlayer });
-      isPlayerPlayingRef.current = false;
-      setIsPlayerPlaying(false);
-      stopWatchTimer();
-      playerRef.current?.destroy();
+  const handlePlayerPausedOrEnded = useCallback((videoId: string, state: YouTubePlayerState) => {
+    isPlayerPlayingRef.current = false;
+    setIsPlayerPlaying(false);
+    stopWatchTimer();
+    setPlayerStatus('paused');
+    console.info('[Inglês Diário] Reprodução pausada/finalizada pelo player.', { videoId, state });
+  }, [stopWatchTimer]);
+
+  const handlePlayerError = useCallback((videoId: string, errorCode?: number) => {
+    stopWatchTimer();
+    isPlayerPlayingRef.current = false;
+    setPlayerStatus('unavailable');
+    console.warn('[Inglês Diário] Vídeo marcado como indisponível por erro real do YouTube.', {
+      videoId,
+      errorCode: errorCode ?? 'desconhecido',
+    });
+    void recoverFromUnavailableVideo(videoId, `Erro do player do YouTube: ${errorCode ?? 'desconhecido'}.`);
+  }, [stopWatchTimer]);
+
+  const handlePlayerUnmount = useCallback((videoId: string) => {
+    if (playerRef.current && currentVideoRef.current?.videoId === videoId) {
       playerRef.current = null;
-      if (activePlayerVideoIdRef.current === videoIdForPlayer) activePlayerVideoIdRef.current = null;
-    };
-  }, [currentVideo.videoId, loading, playerContainerId, saveStudy, startWatchTimer, stopWatchTimer]);
+    }
+    isPlayerPlayingRef.current = false;
+    setIsPlayerPlaying(false);
+    stopWatchTimer();
+  }, [stopWatchTimer]);
 
   useEffect(() => {
     const handleVisibility = () => {
@@ -1193,7 +1236,18 @@ export function InglesPage() {
           <StateNote>Vídeo do dia: nível avançado, 2-5 minutos, temas de carreira, tecnologia, notícias ou cultura americana — carregado automaticamente.</StateNote>
 
           <div className="aspect-video w-full overflow-hidden rounded-lg bg-surface-950 shadow-sm">
-            <div id={playerContainerId} className="h-full w-full" />
+            {!loading && (
+              <StableYouTubePlayer
+                videoId={currentVideo.videoId}
+                fallbackDurationSeconds={currentVideo.durationSeconds}
+                onReady={handlePlayerReady}
+                onPlaying={handlePlayerPlaying}
+                onPausedOrEnded={handlePlayerPausedOrEnded}
+                onError={handlePlayerError}
+                onUnmount={handlePlayerUnmount}
+                onScriptError={() => setPlayerStatus('error')}
+              />
+            )}
           </div>
 
           {playerStatus === 'loading' && <StateNote>Carregando vídeo...</StateNote>}
