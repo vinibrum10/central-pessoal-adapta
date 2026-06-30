@@ -253,7 +253,11 @@ export function calcularFaturaCartaoMes(
 }
 
 export function calcularAReceberMes(mes: number, ano: number, data: AppData) {
-  const lista = (data.aReceber ?? []).filter(a => a.mes === mes + 1 && a.ano === ano);
+  // Regra de competência: pendentes e recebidos aparecem no mês/ano previsto do recebimento.
+  // A dataRecebimento registra quando entrou, mas não muda a competência original do item.
+  const lista = (data.aReceber ?? [])
+    .filter(a => a.status !== 'cancelado' && a.mes === mes + 1 && a.ano === ano)
+    .sort((a, b) => (a.diaPrevisto ?? 1) - (b.diaPrevisto ?? 1) || a.descricao.localeCompare(b.descricao));
   const totalAReceber = lista.filter(a => a.status === 'a_receber').reduce((s, a) => s + a.valor, 0);
   const totalRecebido = lista.filter(a => a.status === 'recebido').reduce((s, a) => s + a.valor, 0);
   return { lista, totalAReceber, totalRecebido, totalEmAberto: totalAReceber };

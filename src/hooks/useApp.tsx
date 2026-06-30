@@ -1,5 +1,5 @@
-import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
-import type { AppData, Tarefa, FaixaTarefa, StatusTarefa, Meta, FrequenciaRevisao, StatusMeta, EventoAgenda, ConfiguracaoAgenda, ClassificacaoPrazoMeta, SugestaoCalendario } from '../types';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
+import type { AppData, Tarefa, FaixaTarefa, StatusTarefa, Meta, FrequenciaRevisao, StatusMeta, EventoAgenda, ConfiguracaoAgenda, ClassificacaoPrazoMeta, SugestaoCalendario, AReceber, StatusAReceber } from '../types';
 import { calcularClassificacaoPrazo, processarRotinas } from '../utils';
 import { dadosDemonstracaoInicial } from '../data/dadosDemonstracao';
 import { useAuth } from '../contexts/AuthContext';
@@ -174,6 +174,146 @@ function migrarReceitas(raw: Record<string, unknown>[]): AppData['receitas'] {
   });
 }
 
+function parseNumeroSeguro(value: unknown, fallback = 0): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const normalized = value
+      .trim()
+      .replace(/[^\d,.-]/g, '')
+      .replace(/\.(?=\d{3}(?:\D|$))/g, '')
+      .replace(',', '.');
+    const parsed = Number(normalized);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+function getString(raw: Record<string, unknown>, keys: string[], fallback = ''): string {
+  for (const key of keys) {
+    const value = raw[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  }
+  return fallback;
+}
+
+function getIsoDate(raw: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = raw[key];
+    if (typeof value !== 'string' || !value.trim()) continue;
+    const text = value.trim();
+    const iso = text.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?/);
+    if (iso) return `${iso[1]}-${iso[2]}-${iso[3] ?? '01'}`;
+    const br = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  }
+  return undefined;
+}
+
+function normalizarStatusAReceber(value: unknown): StatusAReceber {
+  const status = String(value ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (['recebido', 'pago', 'concluido', 'quitado'].includes(status)) return 'recebido';
+  if (['cancelado', 'cancelada'].includes(status)) return 'cancelado';
+  return 'a_receber';
+}
+
+function chaveAReceber(item: Pick<AReceber, 'pessoa' | 'descricao' | 'valor' | 'mes' | 'ano' | 'status'>): string {
+  return [
+    item.pessoa.trim().toLowerCase(),
+    item.descricao.trim().toLowerCase(),
+    item.valor.toFixed(2),
+    item.mes,
+    item.ano,
+    item.status,
+  ].join('|');
+}
+
+function migrarAReceber(rawItens: Record<string, unknown>[]): AReceber[] {
+  const hoje = new Date().toISOString().slice(0, 10);
+  const dedupe = new Set<string>();
+  const itens: AReceber[] = [];
+
+  for (const raw of rawItens) {
+    const dataPrevista = getIsoDate(raw, [
+      'dataPrevista',
+      'dataVencimento',
+      'vencimento',
+      'dueDate',
+      'data',
+      'dataRecebimento',
+      'receivedDate',
+      'createdAt',
+      'dataCriacao',
+    ]);
+    const mes = parseNumeroSeguro(raw.mes ?? raw.mesReferencia ?? raw.month, dataPrevista ? Number(dataPrevista.slice(5, 7)) : 0);
+    const ano = parseNumeroSeguro(raw.ano ?? raw.anoReferencia ?? raw.year, dataPrevista ? Number(dataPrevista.slice(0, 4)) : 0);
+    const valor = parseNumeroSeguro(raw.valor ?? raw.value ?? raw.amount ?? raw.total, 0);
+    const descricao = getString(raw, ['descricao', 'descrição', 'titulo', 'title', 'nome', 'name'], 'Valor a receber');
+
+    if (!mes || !ano || valor <= 0) continue;
+
+    const item: AReceber = {
+      id: getString(raw, ['id'], ''),
+      pessoa: getString(raw, ['pessoa', 'origem', 'cliente', 'pagador', 'source'], 'Não informado'),
+      descricao,
+      valor,
+      mes,
+      ano,
+      tipoRecebimento: (raw.tipoRecebimento === 'parcelado' || raw.tipo === 'parcelado') ? 'parcelado' : 'unico',
+      grupoRecebimentoId: getString(raw, ['grupoRecebimentoId', 'grupoId', 'installmentGroupId'], '') || undefined,
+      parcelaAtual: parseNumeroSeguro(raw.parcelaAtual ?? raw.parcela ?? raw.installmentNumber, 0) || undefined,
+      totalParcelas: parseNumeroSeguro(raw.totalParcelas ?? raw.parcelas ?? raw.installments, 0) || undefined,
+      diaPrevisto: parseNumeroSeguro(raw.diaPrevisto ?? raw.diaVencimento ?? raw.dueDay, dataPrevista ? Number(dataPrevista.slice(8, 10)) : 0) || undefined,
+      formaPrevista: getString(raw, ['formaPrevista', 'formaPagamento', 'paymentMethod'], '') || undefined,
+      observacao: getString(raw, ['observacao', 'observação', 'notes', 'nota'], '') || undefined,
+      status: normalizarStatusAReceber(raw.status ?? raw.situacao ?? raw.state),
+      dataRecebimento: getIsoDate(raw, ['dataRecebimento', 'receivedDate']) ?? undefined,
+      receitaVinculadaId: getString(raw, ['receitaVinculadaId', 'receitaId'], '') || undefined,
+      dataCriacao: getIsoDate(raw, ['dataCriacao', 'createdAt', 'created_at']) ?? hoje,
+      dataAtualizacao: getIsoDate(raw, ['dataAtualizacao', 'updatedAt', 'updated_at']) ?? hoje,
+    };
+
+    if (!item.id) item.id = `ar-${chaveAReceber(item).replace(/[^a-z0-9]+/g, '-').slice(0, 80)}`;
+    const dedupeKey = item.id || chaveAReceber(item);
+    if (dedupe.has(dedupeKey)) continue;
+    dedupe.add(dedupeKey);
+    itens.push(item);
+  }
+
+  return itens;
+}
+
+function coletarAReceberLegado(raw: Record<string, unknown>): Record<string, unknown>[] {
+  const keys = [
+    'aReceber',
+    'valoresAReceber',
+    'contasAReceber',
+    'recebiveis',
+    'recebíveis',
+    'recebimentos',
+    'incomeReceivable',
+  ];
+  const encontrados = keys.flatMap(key => Array.isArray(raw[key]) ? raw[key] as Record<string, unknown>[] : []);
+  const receitas = Array.isArray(raw.receitas) ? raw.receitas as Record<string, unknown>[] : [];
+  const receitasAReceber = receitas
+    .filter(r => r.aReceberOrigemId || r.statusAReceber === 'a_receber')
+    .map(r => ({
+      id: r.aReceberOrigemId ?? r.id,
+      pessoa: r.pessoa ?? r.origem ?? 'Receita',
+      descricao: r.descricao,
+      valor: r.valor,
+      data: r.dataReceita ?? r.data,
+      mes: r.mesReferencia,
+      ano: r.anoReferencia,
+      status: r.statusAReceber ?? 'a_receber',
+      receitaVinculadaId: r.statusAReceber === 'recebido' ? r.id : undefined,
+      parcelaAtual: r.parcelaAReceber,
+      totalParcelas: r.totalParcelasAReceber,
+      dataCriacao: r.dataCriacao,
+    }));
+  return [...encontrados, ...receitasAReceber];
+}
+
 // ---- Migração de eventos de agenda ----
 function migrarEventosAgenda(raw: Record<string, unknown>[]): EventoAgenda[] {
   return raw.map(e => ({
@@ -232,27 +372,61 @@ function migrarDados(raw: Record<string, unknown>): AppData {
     statusPagamentos: Array.isArray(raw.statusPagamentos)
       ? (raw.statusPagamentos as AppData['statusPagamentos'])
       : [],
-    aReceber: Array.isArray(raw.aReceber)
-      ? (raw.aReceber as AppData['aReceber'])
-      : [],
+    aReceber: migrarAReceber(coletarAReceberLegado(raw)),
     sugestoes: Array.isArray(raw.sugestoes)
       ? (raw.sugestoes as SugestaoCalendario[])
       : [],
   };
 }
 
-function hasRealLocalData(): boolean {
+function migrarStoredAppData(stored: string): AppData {
+  const raw = JSON.parse(stored) as Record<string, unknown>;
+  const migrado = migrarDados(raw);
+  return { ...migrado, tarefas: processarRotinas(migrado.tarefas) };
+}
+
+function hasConteudoReal(data: AppData): boolean {
+  return [
+    data.metas,
+    data.tarefas,
+    data.receitas,
+    data.despesas,
+    data.cartoes,
+    data.dividas,
+    data.reservas,
+    data.bens,
+    data.aReceber,
+  ].some(lista => Array.isArray(lista) && lista.length > 0);
+}
+
+function loadLocalDataFromKeys(keys: string[]): AppData | null {
+  for (const key of keys) {
+    try {
+      const stored = localStorage.getItem(key);
+      if (!stored) continue;
+      return migrarStoredAppData(stored);
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function hasRealLocalData(keys: string[]): boolean {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (!stored) return false;
-    const raw = JSON.parse(stored) as Record<string, unknown>;
-    const metas = Array.isArray(raw.metas) ? raw.metas : [];
-    const tarefas = Array.isArray(raw.tarefas) ? raw.tarefas : [];
-    const receitas = Array.isArray(raw.receitas) ? raw.receitas : [];
-    return metas.length > 0 || tarefas.length > 0 || receitas.length > 0;
+    const localData = loadLocalDataFromKeys(keys);
+    return Boolean(localData && hasConteudoReal(localData));
   } catch {
     return false;
   }
+}
+
+function mesclarAReceberPreservandoRemoto(remote: AppData, local: AppData | null): AppData {
+  if (!local?.aReceber?.length) return remote;
+  const existentes = new Set((remote.aReceber ?? []).map(item => item.id || chaveAReceber(item)));
+  const recuperados = local.aReceber.filter(item => !existentes.has(item.id || chaveAReceber(item)));
+  if (recuperados.length === 0) return remote;
+  return { ...remote, aReceber: [...(remote.aReceber ?? []), ...recuperados] };
 }
 
 export type SyncStatus = 'idle' | 'loading' | 'needs-migration' | 'synced' | 'error';
@@ -276,17 +450,10 @@ const AppContext = createContext<AppContextType | null>(null);
 export function AppProvider({ children }: { children: ReactNode }) {
   const { user, supabaseAtivo, loading: authLoading } = useAuth();
   const storageKey = user?.id ? `${STORAGE_KEY}:${user.id}` : STORAGE_KEY;
+  const candidateStorageKeys = useMemo(() => user?.id ? [storageKey, STORAGE_KEY] : [STORAGE_KEY], [storageKey, user?.id]);
 
   const [data, setDataState] = useState<AppData>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const raw = JSON.parse(stored) as Record<string, unknown>;
-        const migrado = migrarDados(raw);
-        return { ...migrado, tarefas: processarRotinas(migrado.tarefas) };
-      }
-    } catch { /* ignore */ }
-    return dadosDemonstracaoInicial;
+    return loadLocalDataFromKeys([STORAGE_KEY]) ?? dadosDemonstracaoInicial;
   });
 
   const [tema, setTema] = useState<'claro' | 'escuro'>(() => {
@@ -331,13 +498,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (remoteData) {
         // Supabase has data — it's the source of truth
         const migrado = migrarDados(remoteData as unknown as Record<string, unknown>);
-        const comRotinas = { ...migrado, tarefas: processarRotinas(migrado.tarefas) };
+        const comRotinas = mesclarAReceberPreservandoRemoto(
+          { ...migrado, tarefas: processarRotinas(migrado.tarefas) },
+          loadLocalDataFromKeys(candidateStorageKeys),
+        );
         setDataState(comRotinas);
         try { localStorage.setItem(storageKey, JSON.stringify(comRotinas)); } catch { /* ignore */ }
         setSyncStatus('synced');
       } else {
         // No Supabase record yet
-        if (hasRealLocalData()) {
+        const localData = loadLocalDataFromKeys(candidateStorageKeys);
+        if (localData) {
+          setDataState(localData);
+          try { localStorage.setItem(storageKey, JSON.stringify(localData)); } catch { /* ignore */ }
+        }
+        if (hasRealLocalData(candidateStorageKeys)) {
           setSyncStatus('needs-migration');
         } else {
           setSyncStatus('synced');
@@ -346,7 +521,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }).catch(() => {
       setSyncStatus('error');
     });
-  }, [authLoading, supabaseAtivo, user, storageKey]);
+  }, [authLoading, supabaseAtivo, user, storageKey, candidateStorageKeys]);
 
   // Debounce save to Supabase on data changes
   useEffect(() => {

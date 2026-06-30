@@ -303,6 +303,7 @@ export function OrcamentoPage() {
     : null;
   const itensAReceberPendentes = aReceberMes.lista.filter(item => item.status === 'a_receber');
   const itensAReceberRecebidos = aReceberMes.lista.filter(item => item.status === 'recebido');
+  const totalAReceberGeral = (data.aReceber ?? []).filter(item => item.status !== 'cancelado').length;
   const [mostrarAReceberRecebidos, setMostrarAReceberRecebidos] = useState(false);
 
   useEffect(() => {
@@ -1566,7 +1567,14 @@ export function OrcamentoPage() {
           <Card>
             <CardBody className="!px-4 !pb-4">
               {aReceberMes.lista.length === 0 ? (
-                <p className="text-center py-8 text-surface-400">Nenhum valor a receber em {MESES[mesFiltro.mes]} {mesFiltro.ano}</p>
+                <div className="py-8 text-center">
+                  <p className="text-sm text-surface-400">Nenhum valor a receber em {MESES[mesFiltro.mes]} {mesFiltro.ano}</p>
+                  {totalAReceberGeral > 0 && (
+                    <p className="mt-2 text-xs text-surface-500 dark:text-surface-400">
+                      Existem {totalAReceberGeral} valores salvos em outros meses. Use as setas do mês para consultar.
+                    </p>
+                  )}
+                </div>
               ) : (
                 <div className="space-y-4">
                   <div className="space-y-2">

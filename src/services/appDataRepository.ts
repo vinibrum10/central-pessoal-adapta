@@ -66,9 +66,20 @@ async function getPrimaryWorkspaceId(userId: string): Promise<string | null> {
 export async function loadAppData(userId: string): Promise<AppData | null> {
   if (!isSupabaseConfigured) return null;
   const workspaceId = await getPrimaryWorkspaceId(userId);
-  let query = supabase.from('app_data').select('data');
-  query = workspaceId ? query.eq('workspace_id', workspaceId) : query.eq('user_id', userId);
-  const { data, error } = await query.maybeSingle();
+  if (workspaceId) {
+    const { data, error } = await supabase
+      .from('app_data')
+      .select('data')
+      .eq('workspace_id', workspaceId)
+      .maybeSingle();
+    if (!error && data) return data.data as AppData;
+  }
+
+  const { data, error } = await supabase
+    .from('app_data')
+    .select('data')
+    .eq('user_id', userId)
+    .maybeSingle();
   if (error || !data) return null;
   return data.data as AppData;
 }
