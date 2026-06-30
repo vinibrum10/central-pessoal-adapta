@@ -64,12 +64,12 @@ function KpiCard({
   const accentClass = accentBorder[accent ?? 'none'] ?? '';
 
   return (
-    <div className={`relative overflow-hidden rounded-lg border border-surface-200/80 bg-white/90 px-4 py-3 shadow-sm shadow-surface-200/50 backdrop-blur-sm dark:border-primary-300/15 dark:bg-surface-950/55 dark:shadow-black/25 ${accentClass}`}>
+    <div className={`mobile-card relative overflow-hidden rounded-lg border border-surface-200/80 bg-white/90 px-4 py-3 shadow-sm shadow-surface-200/50 backdrop-blur-sm dark:border-primary-300/15 dark:bg-surface-950/55 dark:shadow-black/25 ${accentClass}`}>
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400 leading-tight truncate">{label}</p>
-          <p className="mt-1 text-2xl font-semibold tracking-tight leading-none text-surface-950 dark:text-white">{value}</p>
-          {sub && <p className="mt-1 text-[10px] text-surface-500 dark:text-surface-400 leading-tight truncate">{sub}</p>}
+          <p className="mobile-clamp-2 text-[10px] font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400 leading-tight">{label}</p>
+          <p className="mt-1 money-responsive font-semibold tracking-tight leading-none text-surface-950 dark:text-white">{value}</p>
+          {sub && <p className="mobile-clamp-2 mt-1 text-[10px] text-surface-500 dark:text-surface-400 leading-tight">{sub}</p>}
         </div>
         {icon && <div className={`hidden sm:flex flex-shrink-0 rounded-lg p-2 ring-1 ${tone}`}>{icon}</div>}
       </div>
@@ -95,7 +95,7 @@ function EficienciaCard({ eficiencia, qtd }: { eficiencia: number; qtd: number }
   const offset = circ * (1 - eficiencia / 100);
 
   return (
-    <div className="relative overflow-hidden rounded-lg border border-surface-200/80 border-l-[3px] border-l-primary-500 bg-white/90 px-4 py-3 shadow-sm shadow-surface-200/50 backdrop-blur-sm dark:border-primary-300/15 dark:border-l-primary-300 dark:bg-surface-950/55 dark:shadow-black/25">
+    <div className="mobile-card relative overflow-hidden rounded-lg border border-surface-200/80 border-l-[3px] border-l-primary-500 bg-white/90 px-4 py-3 shadow-sm shadow-surface-200/50 backdrop-blur-sm dark:border-primary-300/15 dark:border-l-primary-300 dark:bg-surface-950/55 dark:shadow-black/25">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400">Foco do dia</p>
       <div className="flex items-center gap-2 mt-1">
         <div className="relative flex-shrink-0 w-10 h-10 sm:w-14 sm:h-14">
@@ -115,8 +115,8 @@ function EficienciaCard({ eficiencia, qtd }: { eficiencia: number; qtd: number }
           </div>
         </div>
         <div className="min-w-0">
-          <p className="text-sm font-semibold leading-tight text-surface-950 dark:text-white">{label}</p>
-          <p className="text-[10px] text-surface-500 dark:text-surface-400 mt-0.5">{qtd} ativa{qtd !== 1 ? 's' : ''} · ideal ≤3</p>
+          <p className="mobile-clamp-2 text-sm font-semibold leading-tight text-surface-950 dark:text-white">{label}</p>
+          <p className="mobile-clamp-2 text-[10px] text-surface-500 dark:text-surface-400 mt-0.5">{qtd} ativa{qtd !== 1 ? 's' : ''} · ideal ≤3</p>
         </div>
       </div>
     </div>
@@ -262,8 +262,10 @@ export function InicioPage() {
         {/* Grupo 1: Foco e Metas */}
         <div>
           <p className="text-[10px] font-bold uppercase tracking-widest text-surface-400 dark:text-surface-500 mb-2 px-0.5">Foco e Metas</p>
-          <div className="grid grid-cols-3 gap-3">
-            <EficienciaCard eficiencia={resumo.eficienciaFoco} qtd={resumo.metasAtivas} />
+          <div className="grid grid-cols-1 min-[390px]:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="min-[390px]:col-span-2 lg:col-span-1">
+              <EficienciaCard eficiencia={resumo.eficienciaFoco} qtd={resumo.metasAtivas} />
+            </div>
             <KpiCard label="Metas ativas" value={resumo.metasAtivas} sub="Em andamento agora" cor="blue" icon={<Target size={36} />} accent="meta" />
             <KpiCard label="Metas futuras" value={resumo.metasFuturo} sub="Fora do foco atual" cor="purple" icon={<Lightbulb size={36} />} accent="meta" />
           </div>
@@ -272,7 +274,7 @@ export function InicioPage() {
         {/* Grupo 2: Execução */}
         <div>
           <p className="text-[10px] font-bold uppercase tracking-widest text-surface-400 dark:text-surface-500 mb-2 px-0.5">Execução</p>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 min-[390px]:grid-cols-2 lg:grid-cols-3 gap-3">
             <KpiCard label="Ações totais" value={resumo.acoesvinculas} sub="Vinculadas às metas ativas" cor="gray" icon={<ListChecks size={36} />} accent="exec" />
             <KpiCard label="Ações concluídas" value={resumo.acoesConcluidas} sub={resumo.acoesvinculas > 0 ? `${Math.round((resumo.acoesConcluidas / resumo.acoesvinculas) * 100)}% do total` : '—'} cor="green" icon={<CheckCircle2 size={36} />} accent="exec" />
             <KpiCard label="Conclusão das ações" value={`${resumo.atendimentoMedio}%`} sub="Média de progresso" cor={resumo.atendimentoMedio >= 70 ? 'green' : resumo.atendimentoMedio >= 30 ? 'yellow' : 'red'} icon={<TrendingUp size={36} />} accent="exec" />
@@ -282,7 +284,7 @@ export function InicioPage() {
         {/* Grupo 3: Alertas */}
         <div>
           <p className="text-[10px] font-bold uppercase tracking-widest text-surface-400 dark:text-surface-500 mb-2 px-0.5">Alertas</p>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 min-[390px]:grid-cols-2 lg:grid-cols-3 gap-3">
             <KpiCard label="Metas em atenção" value={resumo.metasEmAtencao} sub="Crítica ou sem ações" cor={resumo.metasEmAtencao > 0 ? 'red' : 'green'} icon={<AlertTriangle size={36} />} accent="alerta" />
             <KpiCard label="Tarefas atrasadas" value={tarefasAtrasadas} sub="Prazo já passou" cor={tarefasAtrasadas > 0 ? 'red' : 'green'} icon={<Zap size={36} />} accent="alerta" />
             <KpiCard label="Revisões atrasadas" value={revisoesAtrasadas} sub="Metas sem revisão recente" cor={revisoesAtrasadas > 0 ? 'yellow' : 'green'} icon={<RefreshCw size={36} />} accent="alerta" />
@@ -292,7 +294,7 @@ export function InicioPage() {
         {/* Grupo 4: Apoio */}
         <div>
           <p className="text-[10px] font-bold uppercase tracking-widest text-surface-400 dark:text-surface-500 mb-2 px-0.5">Apoio</p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <KpiCard
               label="Saldo do mês"
               value={formatarDinheiro(saldoMes)}
@@ -301,16 +303,16 @@ export function InicioPage() {
               icon={saldoMes >= 0 ? <TrendingUp size={36} /> : <TrendingDown size={36} />}
               accent="financas"
             />
-            <div className={`relative overflow-hidden rounded-xl bg-gradient-to-br from-slate-700 to-slate-600 px-4 py-3 text-white shadow-md`}>
+            <div className="mobile-card relative overflow-hidden rounded-xl bg-gradient-to-br from-slate-700 to-slate-600 px-4 py-3 text-white shadow-md">
               <p className="text-[10px] font-semibold uppercase tracking-wider opacity-70">Tempo hoje</p>
               {minutosDisponiveis > 0 ? (
                 <>
-                  <p className="mt-1 text-2xl font-extrabold leading-none">{formatarMinutos(minutosDisponiveis)}</p>
-                  <p className="mt-0.5 text-[10px] opacity-55">disponíveis hoje</p>
+                  <p className="mt-1 money-responsive font-extrabold leading-none">{formatarMinutos(minutosDisponiveis)}</p>
+                  <p className="mobile-clamp-2 mt-0.5 text-[10px] opacity-55">disponíveis hoje</p>
                 </>
               ) : (
                 <>
-                  <p className="mt-1 text-base font-bold leading-none opacity-70">Não cadastrado</p>
+                  <p className="mobile-clamp-2 mt-1 text-base font-bold leading-none opacity-70">Não cadastrado</p>
                   <button onClick={() => navigate('/agenda')} className="mt-1 text-[10px] opacity-70 hover:opacity-100 underline">
                     Cadastrar →
                   </button>

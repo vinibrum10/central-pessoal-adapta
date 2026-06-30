@@ -53,7 +53,7 @@ export function Button({
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       className={`
-        inline-flex items-center justify-center whitespace-nowrap font-semibold rounded-lg
+        inline-flex min-w-0 max-w-full items-center justify-center whitespace-normal text-center font-semibold rounded-lg
         transition-all duration-200 focus-visible:outline-none focus-visible:ring-2
         focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-surface-900
         disabled:opacity-50 disabled:cursor-not-allowed

@@ -375,14 +375,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {/* === SIDEBAR MOBILE (overlay) === */}
       {sidebarOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex">
-          <div className="absolute inset-0 bg-surface-950/60 backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
-          <aside className="relative flex h-full w-80 max-w-[86vw] animate-slide-up flex-col border-r border-surface-200 bg-white shadow-2xl dark:border-primary-300/15 dark:bg-[#070706]">
+          <div className="absolute inset-0 bg-surface-950/55" onClick={() => setSidebarOpen(false)} />
+          <aside className="relative flex h-full w-80 max-w-[86vw] motion-safe:animate-slide-up flex-col border-r border-surface-200 bg-white shadow-2xl dark:border-primary-300/15 dark:bg-[#070706]">
             <div className="p-5 border-b border-surface-200 dark:border-primary-300/15 flex items-center justify-between">
-              <div className="flex items-center gap-3">
+              <div className="flex min-w-0 items-center gap-3">
                 <BrandMark compact />
-                <div>
+                <div className="min-w-0">
                   <p className="font-semibold text-sm text-surface-950 dark:text-white tracking-tight">SGP</p>
-                  <p className="text-xs text-surface-400">Sistema de Gestão Pessoal</p>
+                  <p className="mobile-text text-xs text-surface-400">Sistema de Gestão Pessoal</p>
                 </div>
               </div>
               <button onClick={() => setSidebarOpen(false)} className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-white/10">
@@ -403,12 +403,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   end
                   onClick={() => setSidebarOpen(false)}
                   className={({ isActive }) => `
-                    flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
+                    flex min-w-0 items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
                     ${isActive ? 'bg-primary-600 text-white dark:bg-primary-500 dark:text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
                   `}
                 >
-                  <Icon size={18} />
-                  {label}
+                  <Icon size={18} className="flex-shrink-0" />
+                  <span className="mobile-text">{label}</span>
                 </NavLink>
               ))}
 
@@ -421,8 +421,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'
                   }`}
                 >
-                  <Layers size={18} />
-                  <span className="flex-1 text-left">Gestão</span>
+                  <Layers size={18} className="flex-shrink-0" />
+                  <span className="mobile-text flex-1 text-left">Gestão</span>
                   <ChevronDown
                     size={14}
                     className={`transition-transform duration-150 ${gestaoOpen ? 'rotate-180' : ''}`}
@@ -439,12 +439,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
                           to={to}
                           onClick={() => setSidebarOpen(false)}
                           className={`
-                            flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all
+                            flex min-w-0 items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all
                             ${active ? 'bg-primary-600 text-white dark:bg-primary-500 dark:text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
                           `}
                         >
-                          <Icon size={16} />
-                          {label}
+                          <Icon size={16} className="flex-shrink-0" />
+                          <span className="mobile-text">{label}</span>
                         </NavLink>
                       );
                     })}
@@ -458,12 +458,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   to={to}
                   onClick={() => setSidebarOpen(false)}
                   className={({ isActive }) => `
-                    flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
+                    flex min-w-0 items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
                     ${isActive ? 'bg-primary-600 text-white dark:bg-primary-500 dark:text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
                   `}
                 >
-                  <Icon size={18} />
-                  {label}
+                  <Icon size={18} className="flex-shrink-0" />
+                  <span className="mobile-text">{label}</span>
                 </NavLink>
               ))}
 
@@ -476,8 +476,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'
                   }`}
                 >
-                  <BookOpen size={18} />
-                  <span className="flex-1 text-left">Estudo</span>
+                  <BookOpen size={18} className="flex-shrink-0" />
+                  <span className="mobile-text flex-1 text-left">Estudo</span>
                   <ChevronDown
                     size={14}
                     className={`transition-transform duration-150 ${estudoOpen ? 'rotate-180' : ''}`}
@@ -494,12 +494,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
                           to={to}
                           onClick={() => setSidebarOpen(false)}
                           className={`
-                            flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all
+                            flex min-w-0 items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all
                             ${active ? 'bg-primary-600 text-white dark:bg-primary-500 dark:text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
                           `}
                         >
-                          <Icon size={16} />
-                          {label}
+                          <Icon size={16} className="flex-shrink-0" />
+                          <span className="mobile-text">{label}</span>
                         </NavLink>
                       );
                     })}
@@ -513,12 +513,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   to={to}
                   onClick={() => setSidebarOpen(false)}
                   className={({ isActive }) => `
-                    flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
+                    flex min-w-0 items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
                     ${isActive ? 'bg-primary-600 text-white dark:bg-primary-500 dark:text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
                   `}
                 >
-                  <Icon size={18} />
-                  {label}
+                  <Icon size={18} className="flex-shrink-0" />
+                  <span className="mobile-text">{label}</span>
                 </NavLink>
               ))}
 
@@ -531,12 +531,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       to={to}
                       onClick={() => setSidebarOpen(false)}
                       className={({ isActive }) => `
-                        flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
+                        flex min-w-0 items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
                         ${isActive ? 'bg-primary-600 text-white dark:bg-primary-500 dark:text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
                       `}
                     >
-                      <Icon size={18} />
-                      {label}
+                      <Icon size={18} className="flex-shrink-0" />
+                      <span className="mobile-text">{label}</span>
                     </NavLink>
                   ))}
                 </>

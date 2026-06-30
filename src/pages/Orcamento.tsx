@@ -852,17 +852,17 @@ export function OrcamentoPage() {
   }, [formBem, formBemValorStr, editandoId, setData]);
 
   const renderAReceberItem = (item: AReceber) => (
-    <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-surface-200 p-3 dark:border-surface-700">
+    <div key={item.id} className="flex flex-col gap-3 rounded-xl border border-surface-200 p-3 dark:border-surface-700 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
-        <p className="text-sm font-medium text-surface-900 dark:text-white truncate">{item.descricao}</p>
-        <p className="text-xs text-surface-400">
+        <p className="mobile-clamp-2 text-sm font-medium text-surface-900 dark:text-white">{item.descricao}</p>
+        <p className="mobile-text text-xs text-surface-400">
           {item.pessoa} · {item.status}
           {item.tipoRecebimento === 'parcelado' && item.parcelaAtual && item.totalParcelas ? ` · parcela ${item.parcelaAtual}/${item.totalParcelas}` : ''}
           {item.diaPrevisto ? ` · dia ${item.diaPrevisto}` : ''}
         </p>
       </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
-        <span className="text-sm font-semibold text-primary-600 dark:text-primary-400">{formatarDinheiro(item.valor)}</span>
+      <div className="action-row-responsive sm:w-auto sm:flex-nowrap sm:justify-end">
+        <span className="money-responsive-sm font-semibold text-primary-600 dark:text-primary-400">{formatarDinheiro(item.valor)}</span>
         <button onClick={() => {
           const grupo = item.grupoRecebimentoId
             ? (data.aReceber ?? [])
@@ -978,7 +978,7 @@ export function OrcamentoPage() {
               {msgOrcamento}
             </div>
           )}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
               { label: 'Receitas do mês', valor: receitasMes, icon: <TrendingUp size={18} />, cor: 'text-success-600 dark:text-success-400', bg: 'bg-success-50 dark:bg-success-900/20' },
               { label: 'Despesas do mês', valor: despesasMes, icon: <TrendingDown size={18} />, cor: 'text-danger-600 dark:text-danger-400', bg: 'bg-danger-50 dark:bg-danger-900/20' },
@@ -988,8 +988,8 @@ export function OrcamentoPage() {
               <Card key={item.label}>
                 <CardBody className="min-h-[132px] p-4 overflow-hidden">
                   <div className={`w-9 h-9 rounded-lg ${item.bg} ${item.cor} flex items-center justify-center mb-3`}>{item.icon}</div>
-                  <p className={`text-lg sm:text-xl font-bold ${item.cor} truncate`} title={formatarDinheiro(item.valor)}>{formatarDinheiro(item.valor)}</p>
-                  <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5 truncate" title={item.label}>{item.label}</p>
+                  <p className={`money-responsive font-bold ${item.cor}`} title={formatarDinheiro(item.valor)}>{formatarDinheiro(item.valor)}</p>
+                  <p className="mobile-clamp-2 text-xs text-surface-500 dark:text-surface-400 mt-0.5" title={item.label}>{item.label}</p>
                 </CardBody>
               </Card>
             ))}
@@ -997,9 +997,9 @@ export function OrcamentoPage() {
 
           <Card>
             <CardBody>
-              <div className="flex items-center justify-between mb-2">
+              <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-sm font-medium text-surface-700 dark:text-surface-300">Saldo do mês</span>
-                <span className={`text-lg font-bold ${saldoMes >= 0 ? 'text-success-600 dark:text-success-400' : 'text-danger-600 dark:text-danger-400'}`}>
+                <span className={`money-responsive font-bold ${saldoMes >= 0 ? 'text-success-600 dark:text-success-400' : 'text-danger-600 dark:text-danger-400'}`}>
                   {formatarDinheiro(saldoMes)}
                 </span>
               </div>
@@ -1012,18 +1012,18 @@ export function OrcamentoPage() {
 
           <Card>
             <CardBody>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 min-[390px]:grid-cols-3 gap-3">
                 <div>
                   <p className="text-xs text-surface-400">A receber</p>
-                  <p className="text-sm font-bold text-primary-600 dark:text-primary-400">{formatarDinheiro(aReceberMes.totalAReceber)}</p>
+                  <p className="money-responsive-sm font-bold text-primary-600 dark:text-primary-400">{formatarDinheiro(aReceberMes.totalAReceber)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-surface-400">Recebido</p>
-                  <p className="text-sm font-bold text-success-600 dark:text-success-400">{formatarDinheiro(aReceberMes.totalRecebido)}</p>
+                  <p className="money-responsive-sm font-bold text-success-600 dark:text-success-400">{formatarDinheiro(aReceberMes.totalRecebido)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-surface-400">Em aberto</p>
-                  <p className="text-sm font-bold text-warning-600 dark:text-warning-400">{formatarDinheiro(aReceberMes.totalEmAberto)}</p>
+                  <p className="money-responsive-sm font-bold text-warning-600 dark:text-warning-400">{formatarDinheiro(aReceberMes.totalEmAberto)}</p>
                 </div>
               </div>
             </CardBody>
@@ -1032,14 +1032,14 @@ export function OrcamentoPage() {
           <Card>
             <CardHeader title="Contas do mês" icon={<CheckCircle size={18} />} />
             <CardBody>
-              <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="grid grid-cols-1 min-[390px]:grid-cols-2 gap-3 mb-4">
                 <div className="rounded-lg bg-danger-50 dark:bg-danger-900/20 px-3 py-2">
                   <p className="text-xs text-danger-600 dark:text-danger-300">Em aberto</p>
-                  <p className="text-sm font-bold text-danger-700 dark:text-danger-200">{formatarDinheiro(totalEmAbertoMes)}</p>
+                  <p className="money-responsive-sm font-bold text-danger-700 dark:text-danger-200">{formatarDinheiro(totalEmAbertoMes)}</p>
                 </div>
                 <div className="rounded-lg bg-success-50 dark:bg-success-900/20 px-3 py-2">
                   <p className="text-xs text-success-600 dark:text-success-300">Pago</p>
-                  <p className="text-sm font-bold text-success-700 dark:text-success-200">{formatarDinheiro(totalPagoMes)}</p>
+                  <p className="money-responsive-sm font-bold text-success-700 dark:text-success-200">{formatarDinheiro(totalPagoMes)}</p>
                 </div>
               </div>
 
@@ -1059,24 +1059,24 @@ export function OrcamentoPage() {
                       {grupo.itens.length === 0 ? (
                         <p className="text-xs text-surface-400">Nenhum item.</p>
                       ) : grupo.itens.map(item => (
-                        <div key={`${item.tipo}-${item.id}`} className="flex items-center justify-between gap-3 rounded-xl border border-surface-200 p-3 dark:border-surface-700">
+                        <div key={`${item.tipo}-${item.id}`} className="flex flex-col gap-3 rounded-xl border border-surface-200 p-3 dark:border-surface-700 sm:flex-row sm:items-center sm:justify-between">
                           <div className="min-w-0">
-                            <p className="text-sm font-medium text-surface-900 dark:text-white truncate" title={item.descricao}>{item.descricao}</p>
-                            <p className="text-xs text-surface-400 dark:text-surface-500">{item.origemLabel} · {item.tipo}</p>
+                            <p className="mobile-clamp-2 text-sm font-medium text-surface-900 dark:text-white" title={item.descricao}>{item.descricao}</p>
+                            <p className="mobile-text text-xs text-surface-400 dark:text-surface-500">{item.origemLabel} · {item.tipo}</p>
                           </div>
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            <span className={`text-sm font-semibold ${item.pago ? 'text-success-600 dark:text-success-400' : 'text-danger-600 dark:text-danger-400'}`}>{formatarDinheiro(item.valor)}</span>
+                          <div className="action-row-responsive sm:w-auto sm:flex-nowrap sm:justify-end">
+                            <span className={`money-responsive-sm font-semibold ${item.pago ? 'text-success-600 dark:text-success-400' : 'text-danger-600 dark:text-danger-400'}`}>{formatarDinheiro(item.valor)}</span>
                             {item.tipo === 'fatura' && item.cartaoId && item.competencia && (
-                              <Button size="sm" variant="secondary" icon={<Info size={13} />} onClick={() => abrirModalFatura(item.cartaoId!, item.competencia!)}>
+                              <Button size="sm" variant="secondary" className="flex-1 sm:flex-none" icon={<Info size={13} />} onClick={() => abrirModalFatura(item.cartaoId!, item.competencia!)}>
                                 Ajustar
                               </Button>
                             )}
                             {item.pago ? (
-                              <Button size="sm" variant="secondary" icon={<RotateCcw size={13} />} onClick={() => alterarPagamentoMensal(item, false)}>
+                              <Button size="sm" variant="secondary" className="flex-1 sm:flex-none" icon={<RotateCcw size={13} />} onClick={() => alterarPagamentoMensal(item, false)}>
                                 Desfazer
                               </Button>
                             ) : (
-                              <Button size="sm" variant="success" icon={<CheckCircle size={13} />} onClick={() => alterarPagamentoMensal(item, true)}>
+                              <Button size="sm" variant="success" className="flex-1 sm:flex-none" icon={<CheckCircle size={13} />} onClick={() => alterarPagamentoMensal(item, true)}>
                                 Pago
                               </Button>
                             )}
@@ -1134,20 +1134,20 @@ export function OrcamentoPage() {
               ) : (
                 <div className="space-y-2">
                   {receitasFiltradas.map(r => (
-                    <div key={r.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-surface-200 dark:border-surface-700">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-8 h-8 rounded-lg bg-success-50 dark:bg-success-900/20 flex items-center justify-center">
+                    <div key={r.id} className="flex flex-col gap-3 p-3 rounded-xl border border-surface-200 dark:border-surface-700 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="w-8 h-8 flex-shrink-0 rounded-lg bg-success-50 dark:bg-success-900/20 flex items-center justify-center">
                           <TrendingUp size={14} className="text-success-600 dark:text-success-400" />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-sm font-medium text-surface-900 dark:text-white truncate" title={r.descricao}>{r.descricao}</p>
-                          <p className="text-xs text-surface-400 dark:text-surface-500 truncate">
+                          <p className="mobile-clamp-2 text-sm font-medium text-surface-900 dark:text-white" title={r.descricao}>{r.descricao}</p>
+                          <p className="mobile-text text-xs text-surface-400 dark:text-surface-500">
                             Ref.: {MESES[(r.mesReferencia ?? Number(r.data.slice(5, 7))) - 1]} {r.anoReferencia ?? Number(r.data.slice(0, 4))} · {r.categoria}{r.recorrente ? ' · Recorrente' : ''}
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <span className="text-sm font-semibold text-success-600 dark:text-success-400 whitespace-nowrap">{formatarDinheiro(r.valor)}</span>
+                      <div className="action-row-responsive sm:w-auto sm:flex-nowrap sm:justify-end">
+                        <span className="money-responsive-sm font-semibold text-success-600 dark:text-success-400">{formatarDinheiro(r.valor)}</span>
                         <button onClick={() => { setFormReceita({ descricao: r.descricao, valor: r.valor, data: dataCompetencia(r.anoReferencia ?? Number(r.data.slice(0, 4)), r.mesReferencia ?? Number(r.data.slice(5, 7))), mesReferencia: r.mesReferencia ?? Number(r.data.slice(5, 7)), anoReferencia: r.anoReferencia ?? Number(r.data.slice(0, 4)), categoria: r.categoria, recorrente: r.recorrente, recorrenciaId: r.recorrenciaId ?? null, recorrenciaTemTermino: r.recorrenciaTemTermino ?? false, recorrenciaMesTermino: r.recorrenciaMesTermino ?? null, recorrenciaAnoTermino: r.recorrenciaAnoTermino ?? null }); setFormReceitaValorStr(moneyToInputBR(r.valor)); abrirModal('receita', r); }} className="p-1.5 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
                         <button onClick={() => setData(d => ({ ...d, receitas: d.receitas.filter(x => x.id !== r.id) }))} className="p-1.5 rounded text-surface-400 hover:text-danger-600 transition-colors"><Trash2 size={13} /></button>
                       </div>
@@ -1211,19 +1211,19 @@ export function OrcamentoPage() {
                     return (
                     <div
                       key={d.id}
-                      className={`flex items-center justify-between p-3 rounded-xl border ${isCartaoCredito ? 'border-l-4 border-primary-200 bg-primary-50/60 dark:border-primary-800 dark:bg-primary-950/20' : 'border-surface-200 dark:border-surface-700'}`}
+                      className={`flex flex-col gap-3 p-3 rounded-xl border sm:flex-row sm:items-center sm:justify-between ${isCartaoCredito ? 'border-l-4 border-primary-200 bg-primary-50/60 dark:border-primary-800 dark:bg-primary-950/20' : 'border-surface-200 dark:border-surface-700'}`}
                       style={isCartaoCredito ? { borderLeftColor: destaqueCartao } : undefined}
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center ${isCartaoCredito ? 'text-xs font-bold' : d.essencial ? 'bg-surface-100 dark:bg-surface-700' : 'bg-warning-50 dark:bg-warning-900/20'}`}
+                          className={`w-8 h-8 flex-shrink-0 rounded-lg flex items-center justify-center ${isCartaoCredito ? 'text-xs font-bold' : d.essencial ? 'bg-surface-100 dark:bg-surface-700' : 'bg-warning-50 dark:bg-warning-900/20'}`}
                           style={isCartaoCredito ? { backgroundColor: `${destaqueCartao}20`, color: destaqueCartao } : undefined}
                         >
                           {isCartaoCredito ? iconeCartao(cartaoDespesa) : <TrendingDown size={14} className="text-danger-600 dark:text-danger-400" />}
                         </div>
                         <div className="min-w-0">
-                          <p className="text-sm font-medium text-surface-900 dark:text-white truncate" title={d.descricao}>{d.descricao}</p>
-                          <p className="text-xs text-surface-400 dark:text-surface-500">
+                          <p className="mobile-clamp-2 text-sm font-medium text-surface-900 dark:text-white" title={d.descricao}>{d.descricao}</p>
+                          <p className="mobile-text text-xs text-surface-400 dark:text-surface-500">
                             {formatarData(d.data)} · {d.categoria} · {d.formaPagamento}
                             {cartaoDespesa && ` · ${cartaoDespesa.banco ? `${cartaoDespesa.banco} • ` : ''}${cartaoDespesa.nome}`}
                             {!d.essencial && ' · Não essencial'}
@@ -1242,8 +1242,8 @@ export function OrcamentoPage() {
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-danger-600 dark:text-danger-400">{formatarDinheiro(d.valor)}</span>
+                      <div className="action-row-responsive sm:w-auto sm:flex-nowrap sm:justify-end">
+                        <span className="money-responsive-sm font-semibold text-danger-600 dark:text-danger-400">{formatarDinheiro(d.valor)}</span>
                         {canEditExpense(perfil) && (
                           <button onClick={() => {
                             setFormDespesa({ descricao: d.descricao, valor: d.valor, data: d.data, categoria: d.categoria, formaPagamento: d.formaPagamento, recorrente: d.recorrente, essencial: d.essencial });
@@ -1271,20 +1271,20 @@ export function OrcamentoPage() {
                       {despesasFiltradas.length > 0 && <div className="border-t border-surface-100 dark:border-surface-700 my-1" />}
                       <p className="text-xs font-semibold text-surface-400 dark:text-surface-500 uppercase tracking-wide px-1 pt-1">Empréstimos e dívidas (automático)</p>
                       {parcelasDividasNoMes.map(p => (
-                        <div key={p.virtualId} className="flex items-center justify-between p-3 rounded-xl border border-amber-200 dark:border-amber-700/50 bg-amber-50/40 dark:bg-amber-900/10">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                        <div key={p.virtualId} className="flex flex-col gap-3 p-3 rounded-xl border border-amber-200 bg-amber-50/40 dark:border-amber-700/50 dark:bg-amber-900/10 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <div className="w-8 h-8 flex-shrink-0 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
                               <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400" />
                             </div>
-                            <div>
-                              <p className="text-sm font-medium text-surface-900 dark:text-white">{p.nome}</p>
-                              <p className="text-xs text-surface-400 dark:text-surface-500">
+                            <div className="min-w-0">
+                              <p className="mobile-clamp-2 text-sm font-medium text-surface-900 dark:text-white">{p.nome}</p>
+                              <p className="mobile-text text-xs text-surface-400 dark:text-surface-500">
                                 Parcela {p.numeroParcela}/{p.totalParcelas} · Dívidas · Débito
                                 <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-[10px] font-medium">Automático</span>
                               </p>
                             </div>
                           </div>
-                          <span className="text-sm font-semibold text-danger-600 dark:text-danger-400">{formatarDinheiro(p.valorParcela)}</span>
+                          <span className="money-responsive-sm font-semibold text-danger-600 dark:text-danger-400">{formatarDinheiro(p.valorParcela)}</span>
                         </div>
                       ))}
                     </>
@@ -1311,17 +1311,17 @@ export function OrcamentoPage() {
               <Card key={c.id} className="overflow-hidden">
                 <CardBody>
                   <div className="h-1 -mx-5 mb-4" style={{ backgroundColor: destaqueCartao }} />
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-2">
+                  <div className="flex flex-col gap-3 mb-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex min-w-0 items-center gap-2">
                       <div
-                        className="w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold"
+                        className="w-9 h-9 flex-shrink-0 rounded-lg flex items-center justify-center text-xs font-bold"
                         style={{ backgroundColor: `${destaqueCartao}20`, color: destaqueCartao }}
                       >
                         {iconeCartao(c)}
                       </div>
-                      <div>
-                        <p className="font-semibold text-surface-900 dark:text-white text-sm">{c.nome}</p>
-                        <p className="text-xs text-surface-400">{c.banco ? `${c.banco} · ` : ''}Vence dia {c.vencimento}</p>
+                      <div className="min-w-0">
+                        <p className="mobile-clamp-2 font-semibold text-surface-900 dark:text-white text-sm">{c.nome}</p>
+                        <p className="mobile-text text-xs text-surface-400">{c.banco ? `${c.banco} · ` : ''}Vence dia {c.vencimento}</p>
                       </div>
                     </div>
                     <div className="flex gap-1">
@@ -1347,29 +1347,29 @@ export function OrcamentoPage() {
                     const usarLimite = c.limite > 0;
                     return (
                       <div className="space-y-2">
-                        <div className="flex justify-between text-sm">
+                        <div className="flex flex-col gap-1 text-sm min-[390px]:flex-row min-[390px]:justify-between">
                           <span className="text-surface-500">Fatura {MESES[mesFiltro.mes]}</span>
-                          <span className="font-semibold text-danger-600 dark:text-danger-400">{formatarDinheiro(valorEfetivo)}</span>
+                          <span className="money-responsive-sm font-semibold text-danger-600 dark:text-danger-400">{formatarDinheiro(valorEfetivo)}</span>
                         </div>
                         {faturaAtualMes && (
                           <>
-                            <div className="flex justify-between text-xs text-surface-400">
+                            <div className="flex flex-col gap-0.5 text-xs text-surface-400 min-[390px]:flex-row min-[390px]:justify-between">
                               <span>Já detalhado</span>
                               <span>{formatarDinheiro(faturaAtualMes.valorDetalhado)}</span>
                             </div>
                             {faturaAtualMes.valorInformado !== null && faturaAtualMes.diferenca !== 0 && (
-                              <div className={`flex justify-between text-xs ${faturaAtualMes.diferenca > 0 ? 'text-warning-500' : 'text-danger-500'}`}>
+                              <div className={`flex flex-col gap-0.5 text-xs min-[390px]:flex-row min-[390px]:justify-between ${faturaAtualMes.diferenca > 0 ? 'text-warning-500' : 'text-danger-500'}`}>
                                 <span>Diferença</span>
                                 <span>{formatarDinheiro(Math.abs(faturaAtualMes.diferenca))}{faturaAtualMes.diferenca < 0 ? ' (excede!)' : ''}</span>
                               </div>
                             )}
                           </>
                         )}
-                        <div className="flex justify-between text-sm">
+                        <div className="flex flex-col gap-1 text-sm min-[390px]:flex-row min-[390px]:justify-between">
                           <span className="text-surface-500">Limite</span>
-                          <span className="text-surface-700 dark:text-surface-300">{formatarDinheiro(c.limite)}</span>
+                          <span className="money-responsive-sm text-surface-700 dark:text-surface-300">{formatarDinheiro(c.limite)}</span>
                         </div>
-                        <div className="flex justify-between text-xs text-surface-400">
+                        <div className="flex flex-col gap-0.5 text-xs text-surface-400 min-[390px]:flex-row min-[390px]:justify-between">
                           <span>Usado: {formatarDinheiro(limiteUsado)}</span>
                           <span>Disponível: {formatarDinheiro(limiteDisponivel)}</span>
                         </div>
@@ -1423,14 +1423,14 @@ export function OrcamentoPage() {
               return (
                 <Card key={d.id} className={statusD === 'quitada' ? 'opacity-60' : ''}>
                   <CardBody>
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="font-semibold text-surface-900 dark:text-white">{d.nome}</p>
+                    <div className="flex flex-col gap-3 mb-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="mobile-clamp-2 font-semibold text-surface-900 dark:text-white">{d.nome}</p>
                           {statusD === 'quitada' && <span className="text-[10px] px-2 py-0.5 rounded-full bg-success-100 text-success-700 dark:bg-success-900/30 dark:text-success-400 font-medium">Quitada</span>}
                           {statusD === 'pausada' && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 font-medium">Pausada</span>}
                         </div>
-                        <p className="text-xs text-surface-400 dark:text-surface-500">
+                        <p className="mobile-text text-xs text-surface-400 dark:text-surface-500">
                           {parcelasPagasAuto}/{d.totalParcelas} parcelas · {d.taxaJuros > 0 ? `${d.taxaJuros}% a.a.` : 'Sem juros'}
                           {d.dataInicio && ` · Início: ${isoParaDataBR(d.dataInicio)}`}
                         </p>
@@ -1440,12 +1440,12 @@ export function OrcamentoPage() {
                         <button onClick={() => setData(prev => ({ ...prev, dividas: prev.dividas.filter(x => x.id !== d.id) }))} className="p-1 rounded text-surface-400 hover:text-danger-600 transition-colors"><Trash2 size={13} /></button>
                       </div>
                     </div>
-                    <div className="flex justify-between text-sm mb-2">
+                    <div className="flex flex-col gap-1 text-sm mb-2 min-[390px]:flex-row min-[390px]:justify-between">
                       <span className="text-surface-500">Saldo devedor</span>
-                      <span className={`font-bold ${saldo > 0 ? 'text-danger-600 dark:text-danger-400' : 'text-success-600 dark:text-success-400'}`}>{formatarDinheiro(saldo)}</span>
+                      <span className={`money-responsive-sm font-bold ${saldo > 0 ? 'text-danger-600 dark:text-danger-400' : 'text-success-600 dark:text-success-400'}`}>{formatarDinheiro(saldo)}</span>
                     </div>
                     <ProgressBar value={progresso} showLabel color="success" height="md" />
-                    <div className="flex justify-between text-xs text-surface-400 mt-1">
+                    <div className="flex flex-col gap-0.5 text-xs text-surface-400 mt-1 min-[390px]:flex-row min-[390px]:justify-between">
                       <span>Parcela: {formatarDinheiro(d.valorParcela)}/mês</span>
                       {proximo && <span>Próximo vencimento: {proximo}</span>}
                     </div>
@@ -1472,9 +1472,9 @@ export function OrcamentoPage() {
             {data.reservas.map(r => (
               <Card key={r.id}>
                 <CardBody>
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <p className="font-semibold text-surface-900 dark:text-white">{r.nome}</p>
+                  <div className="flex flex-col gap-3 mb-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="mobile-clamp-2 font-semibold text-surface-900 dark:text-white">{r.nome}</p>
                       {r.prazoDesejado && <p className="text-xs text-surface-400">Prazo: {formatarData(r.prazoDesejado)}</p>}
                     </div>
                     <div className="flex gap-1">
@@ -1482,9 +1482,9 @@ export function OrcamentoPage() {
                       <button onClick={() => setData(d => ({ ...d, reservas: d.reservas.filter(x => x.id !== r.id) }))} className="p-1 rounded text-surface-400 hover:text-danger-600 transition-colors"><Trash2 size={13} /></button>
                     </div>
                   </div>
-                  <div className="flex justify-between text-sm mb-2">
+                  <div className="flex flex-col gap-1 text-sm mb-2 min-[390px]:flex-row min-[390px]:justify-between">
                     <span className="text-surface-500">Acumulado</span>
-                    <span className="font-bold text-primary-600 dark:text-primary-400">{formatarDinheiro(r.valorAtual)} / {formatarDinheiro(r.metaReserva)}</span>
+                    <span className="money-responsive-sm font-bold text-primary-600 dark:text-primary-400">{formatarDinheiro(r.valorAtual)} / {formatarDinheiro(r.metaReserva)}</span>
                   </div>
                   <ProgressBar value={r.metaReserva > 0 ? (r.valorAtual / r.metaReserva) * 100 : 0} showLabel color="primary" height="md" />
                 </CardBody>
@@ -1509,19 +1509,19 @@ export function OrcamentoPage() {
             {data.bens.map(b => (
               <Card key={b.id}>
                 <CardBody>
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-surface-100 dark:bg-surface-700 flex items-center justify-center">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="w-10 h-10 flex-shrink-0 rounded-lg bg-surface-100 dark:bg-surface-700 flex items-center justify-center">
                         <Package size={18} className="text-surface-500" />
                       </div>
-                      <div>
-                        <p className="font-semibold text-surface-900 dark:text-white">{b.nome}</p>
-                        <p className="text-xs text-surface-400">{b.tipo} · {b.status}</p>
-                        {b.observacoes && <p className="text-xs text-surface-400 italic mt-0.5">{b.observacoes}</p>}
+                      <div className="min-w-0">
+                        <p className="mobile-clamp-2 font-semibold text-surface-900 dark:text-white">{b.nome}</p>
+                        <p className="mobile-text text-xs text-surface-400">{b.tipo} · {b.status}</p>
+                        {b.observacoes && <p className="mobile-clamp-2 text-xs text-surface-400 italic mt-0.5">{b.observacoes}</p>}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-surface-700 dark:text-surface-300">{formatarDinheiro(b.valorEstimado)}</span>
+                    <div className="action-row-responsive sm:w-auto sm:flex-nowrap sm:justify-end">
+                      <span className="money-responsive-sm font-bold text-surface-700 dark:text-surface-300">{formatarDinheiro(b.valorEstimado)}</span>
                       <button onClick={() => { setFormBem({ nome: b.nome, tipo: b.tipo, valorEstimado: b.valorEstimado, status: b.status, observacoes: b.observacoes }); setFormBemValorStr(moneyToInputBR(b.valorEstimado)); abrirModal('bem', b); }} className="p-1 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
                       <button onClick={() => setData(d => ({ ...d, bens: d.bens.filter(x => x.id !== b.id) }))} className="p-1 rounded text-surface-400 hover:text-danger-600 transition-colors"><Trash2 size={13} /></button>
                     </div>
@@ -1551,17 +1551,17 @@ export function OrcamentoPage() {
               Novo valor a receber
             </Button>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-3">
             <Card>
               <CardBody>
                 <p className="text-xs text-surface-400">A receber</p>
-                <p className="text-lg font-bold text-primary-600 dark:text-primary-400">{formatarDinheiro(aReceberMes.totalAReceber)}</p>
+                <p className="money-responsive font-bold text-primary-600 dark:text-primary-400">{formatarDinheiro(aReceberMes.totalAReceber)}</p>
               </CardBody>
             </Card>
             <Card>
               <CardBody>
                 <p className="text-xs text-surface-400">Recebido</p>
-                <p className="text-lg font-bold text-success-600 dark:text-success-400">{formatarDinheiro(aReceberMes.totalRecebido)}</p>
+                <p className="money-responsive font-bold text-success-600 dark:text-success-400">{formatarDinheiro(aReceberMes.totalRecebido)}</p>
               </CardBody>
             </Card>
           </div>

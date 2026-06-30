@@ -12,6 +12,7 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow-x: hidden;
+    max-width: 100%;
   }
 
   body {
@@ -19,6 +20,7 @@
     margin: 0;
     padding: 0;
     min-width: 320px;
+    max-width: 100%;
     overflow-x: hidden;
     background:
       linear-gradient(90deg, rgba(201, 130, 58, 0.05) 1px, transparent 1px),
@@ -50,6 +52,22 @@
   #root {
     min-height: 100vh;
     isolation: isolate;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  button,
+  a,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+
+  img,
+  video,
+  iframe,
+  canvas,
+  svg {
+    max-width: 100%;
   }
 
   ::selection {
@@ -95,6 +113,52 @@
 
   .page-stack {
     @apply space-y-5 lg:space-y-6;
+  }
+
+  .mobile-safe {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .mobile-card {
+    @apply min-w-0 max-w-full overflow-hidden;
+  }
+
+  .mobile-text {
+    @apply min-w-0 max-w-full;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .mobile-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .money-responsive {
+    @apply min-w-0 max-w-full whitespace-normal break-words leading-tight;
+    font-size: clamp(0.875rem, 4.2vw, 1.25rem);
+  }
+
+  .money-responsive-sm {
+    @apply min-w-0 max-w-full whitespace-normal break-words leading-tight;
+    font-size: clamp(0.8125rem, 3.7vw, 1rem);
+  }
+
+  .action-row-responsive {
+    @apply flex flex-wrap items-center gap-2;
+  }
+
+  .reader-content {
+    @apply min-w-0 max-w-full overflow-x-hidden whitespace-pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .glass-panel {

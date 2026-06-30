@@ -10,10 +10,10 @@ interface ModalProps {
 }
 
 const sizeMap = {
-  sm: 'max-w-sm',
-  md: 'max-w-md',
-  lg: 'max-w-lg',
-  xl: 'max-w-2xl',
+  sm: 'sm:max-w-sm',
+  md: 'sm:max-w-md',
+  lg: 'sm:max-w-lg',
+  xl: 'sm:max-w-2xl',
 };
 
 export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalProps) {
@@ -34,7 +34,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden p-4 animate-fade-in"
       onMouseDown={(e) => {
         mouseDownStartedOnBackdrop.current = e.target === e.currentTarget;
       }}
@@ -45,11 +45,11 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
         mouseDownStartedOnBackdrop.current = false;
       }}
     >
-      <div className="pointer-events-none absolute inset-0 bg-surface-950/70 backdrop-blur-md" />
-      <div className={`relative flex max-h-[90vh] w-full ${sizeMap[size]} animate-scale-in flex-col rounded-lg border border-surface-200 bg-white shadow-2xl shadow-black/20 dark:border-white/10 dark:bg-surface-900`}>
+      <div className="pointer-events-none absolute inset-0 bg-surface-950/70 sm:backdrop-blur-md" />
+      <div className={`relative flex max-h-[90vh] w-[calc(100vw-32px)] max-w-full ${sizeMap[size]} animate-scale-in flex-col overflow-hidden rounded-lg border border-surface-200 bg-white shadow-2xl shadow-black/20 dark:border-white/10 dark:bg-surface-900`}>
         {/* Header */}
-        <div className="flex flex-shrink-0 items-center justify-between border-b border-surface-200 px-5 py-4 dark:border-white/10">
-          <h2 className="text-sm font-semibold text-surface-950 dark:text-white">{title}</h2>
+        <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-surface-200 px-4 py-4 dark:border-white/10 sm:px-5">
+          <h2 className="mobile-text text-sm font-semibold text-surface-950 dark:text-white">{title}</h2>
           <button
             type="button"
             onClick={onClose}
@@ -59,7 +59,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
           </button>
         </div>
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-5">
+        <div className="mobile-safe flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-5">
           {children}
         </div>
       </div>

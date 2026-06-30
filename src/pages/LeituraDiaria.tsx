@@ -758,11 +758,11 @@ export function LeituraDiariaPage() {
         size="xl"
       >
         {leituraAberta && (
-          <div className="space-y-5">
+          <div className="mobile-safe space-y-5">
             <div className="space-y-3">
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
-                  <h3 className="text-lg font-semibold leading-snug text-surface-950 dark:text-white">
+                  <h3 className="mobile-text text-lg font-semibold leading-snug text-surface-950 dark:text-white">
                     {leituraAberta.titulo}
                   </h3>
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-surface-500 dark:text-surface-400">
@@ -782,7 +782,7 @@ export function LeituraDiariaPage() {
                     href={leituraAberta.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-surface-200 px-3 py-2 text-xs font-semibold text-surface-600 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800"
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-surface-200 px-3 py-2 text-xs font-semibold text-surface-600 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800 sm:w-auto sm:flex-shrink-0"
                   >
                     <ExternalLink size={13} />
                     Abrir no Google Drive
@@ -801,9 +801,9 @@ export function LeituraDiariaPage() {
               )}
             </div>
 
-            <div className="rounded-lg border border-surface-200 bg-surface-50 p-4 dark:border-surface-700 dark:bg-surface-800/60">
+            <div className="overflow-x-hidden rounded-lg border border-surface-200 bg-surface-50 p-4 dark:border-surface-700 dark:bg-surface-800/60">
               {leituraAberta.contentText ? (
-                <article className="prose prose-sm max-w-none whitespace-pre-wrap leading-relaxed text-surface-800 dark:prose-invert dark:text-surface-100">
+                <article className="reader-content prose prose-sm max-w-none whitespace-pre-wrap leading-relaxed text-surface-800 dark:prose-invert dark:text-surface-100">
                   {leituraAberta.contentText}
                 </article>
               ) : leituraAberta.mimeType === 'application/pdf' && leituraAberta.url ? (
@@ -811,7 +811,7 @@ export function LeituraDiariaPage() {
                   <iframe
                     title={leituraAberta.titulo}
                     src={leituraAberta.url}
-                    className="h-[60vh] w-full rounded-lg border border-surface-200 bg-white dark:border-surface-700"
+                    className="h-[60vh] w-full max-w-full rounded-lg border border-surface-200 bg-white dark:border-surface-700"
                   />
                   <p className="text-xs text-surface-500 dark:text-surface-400">
                     Se a pré-visualização não carregar, use o botão secundário para abrir no Google Drive.
@@ -834,20 +834,20 @@ export function LeituraDiariaPage() {
 
             <div className="flex flex-wrap gap-2">
               {leituraAberta.status !== 'lido' && leituraAberta.status !== 'arquivado' && (
-                <Button size="sm" variant="success" icon={<CheckCircle size={14} />} onClick={() => marcarLido(leituraAberta.id)}>
+                <Button size="sm" variant="success" className="flex-1 sm:flex-none" icon={<CheckCircle size={14} />} onClick={() => marcarLido(leituraAberta.id)}>
                   Marcar como lido
                 </Button>
               )}
               {leituraAberta.prioridade !== 'importante' && leituraAberta.status !== 'arquivado' && (
-                <Button size="sm" variant="secondary" icon={<Star size={14} />} onClick={() => marcarImportante(leituraAberta.id)}>
+                <Button size="sm" variant="secondary" className="flex-1 sm:flex-none" icon={<Star size={14} />} onClick={() => marcarImportante(leituraAberta.id)}>
                   Importante
                 </Button>
               )}
-              <Button size="sm" variant="secondary" icon={<Plus size={14} />} onClick={() => abrirModalTarefa(leituraAberta)}>
+              <Button size="sm" variant="secondary" className="flex-1 sm:flex-none" icon={<Plus size={14} />} onClick={() => abrirModalTarefa(leituraAberta)}>
                 Transformar em tarefa
               </Button>
               {leituraAberta.status !== 'arquivado' && (
-                <Button size="sm" variant="secondary" icon={<Archive size={14} />} onClick={() => arquivar(leituraAberta.id)}>
+                <Button size="sm" variant="secondary" className="flex-1 sm:flex-none" icon={<Archive size={14} />} onClick={() => arquivar(leituraAberta.id)}>
                   Arquivar
                 </Button>
               )}
