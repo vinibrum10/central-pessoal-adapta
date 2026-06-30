@@ -1529,9 +1529,16 @@ function getVideoIdFromYouTubeUrl(url?: string): string {
 
 function getLocalFallbackVideos(allVideos: DailyEnglishVideo[], nivel: NivelFiltro, duracao: DuracaoFiltro): VideoResult[] {
   const maxSec = DURACAO_MAX_SECONDS[duracao];
-  return allVideos
-    .filter(v => NIVEL_CEFR[nivel].includes(v.cefrLevel) && v.durationSeconds <= maxSec)
-    .map(toVideoResult);
+  const matchingLevel = allVideos.filter(v => NIVEL_CEFR[nivel].includes(v.cefrLevel) && v.durationSeconds <= maxSec);
+  if (matchingLevel.length > 0) return matchingLevel.map(toVideoResult);
+
+  // O dataset local é pequeno e pode não ter nenhum vídeo no nível exato
+  // pedido (ex.: "Avançado"/C1-C2). Sem isso, se a API do YouTube também
+  // falhar/não estiver configurada, o app fica sem nenhum vídeo disponível
+  // ("Não encontrei um vídeo novo agora" para sempre). Como último recurso,
+  // relaxa o filtro de nível e usa qualquer vídeo local dentro da duração.
+  console.warn('[Inglês Diário] Nenhum vídeo local no nível', nivel, '- usando fallback de qualquer nível dentro da duração.');
+  return allVideos.filter(v => v.durationSeconds <= maxSec).map(toVideoResult);
 }
 
 function videoResultToDailyVideo(video: VideoResult, nivel: NivelFiltro, allVideos: DailyEnglishVideo[]): DailyEnglishVideo {
