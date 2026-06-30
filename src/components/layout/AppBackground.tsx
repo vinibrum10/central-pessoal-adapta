@@ -26,11 +26,11 @@ export function AppBackground() {
 
       {/* 2) grade sutil em toda a área */}
       <div
-        className="absolute inset-0 opacity-[0.05]"
+        className="absolute inset-0 opacity-[0.10]"
         style={{
           backgroundImage:
-            'linear-gradient(90deg, rgba(217,158,94,0.8) 1px, transparent 1px),' +
-            'linear-gradient(0deg, rgba(217,158,94,0.8) 1px, transparent 1px)',
+            'linear-gradient(90deg, rgba(217,158,94,0.9) 1px, transparent 1px),' +
+            'linear-gradient(0deg, rgba(217,158,94,0.9) 1px, transparent 1px)',
           backgroundSize: '46px 46px, 46px 46px',
         }}
       />
@@ -50,55 +50,55 @@ export function AppBackground() {
         </defs>
 
         {/* ---- HUD circular grande, lado direito, cortado pela borda ---- */}
-        <g id="hud-direito" stroke="#d9a35e" strokeWidth="1">
-          <circle cx="1560" cy="380" r="260" opacity="0.10" />
-          <circle cx="1560" cy="380" r="225" opacity="0.16" strokeDasharray="6 10" />
-          <circle cx="1560" cy="380" r="165" opacity="0.22" />
-          <circle cx="1560" cy="380" r="110" opacity="0.28" strokeDasharray="2 6" />
-          <circle cx="1560" cy="380" r="60" opacity="0.30" />
+        <g id="hud-direito" stroke="#e2ad6e" strokeWidth="1.4">
+          <circle cx="1560" cy="380" r="260" opacity="0.28" />
+          <circle cx="1560" cy="380" r="225" opacity="0.36" strokeDasharray="6 10" />
+          <circle cx="1560" cy="380" r="165" opacity="0.44" />
+          <circle cx="1560" cy="380" r="110" opacity="0.50" strokeDasharray="2 6" />
+          <circle cx="1560" cy="380" r="60" opacity="0.55" />
 
           {/* arcos incompletos (radar) */}
-          <path d="M 1300 250 A 260 260 0 0 1 1560 120" opacity="0.20" />
-          <path d="M 1560 640 A 260 260 0 0 1 1810 470" opacity="0.18" />
-          <path d="M 1320 470 A 225 225 0 0 0 1450 600" opacity="0.20" />
+          <path d="M 1300 250 A 260 260 0 0 1 1560 120" opacity="0.40" strokeWidth="2" />
+          <path d="M 1560 640 A 260 260 0 0 1 1810 470" opacity="0.36" strokeWidth="2" />
+          <path d="M 1320 470 A 225 225 0 0 0 1450 600" opacity="0.40" strokeWidth="2" />
 
           {/* linhas radiantes finas */}
-          <line x1="1560" y1="380" x2="1230" y2="200" opacity="0.14" />
-          <line x1="1560" y1="380" x2="1290" y2="600" opacity="0.12" />
-          <line x1="1560" y1="380" x2="1700" y2="120" opacity="0.14" />
-          <line x1="1560" y1="380" x2="1430" y2="700" opacity="0.10" />
+          <line x1="1560" y1="380" x2="1230" y2="200" opacity="0.28" />
+          <line x1="1560" y1="380" x2="1290" y2="600" opacity="0.24" />
+          <line x1="1560" y1="380" x2="1700" y2="120" opacity="0.28" />
+          <line x1="1560" y1="380" x2="1430" y2="700" opacity="0.22" />
 
           {/* ticks tipo radar no anel externo */}
           {Array.from({ length: 16 }).map((_, i) => {
             const angle = (i / 16) * Math.PI * 2;
             const innerR = 260;
-            const outerR = 272;
+            const outerR = 274;
             const x1 = 1560 + Math.cos(angle) * innerR;
             const y1 = 380 + Math.sin(angle) * innerR;
             const x2 = 1560 + Math.cos(angle) * outerR;
             const y2 = 380 + Math.sin(angle) * outerR;
-            return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} opacity="0.16" />;
+            return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} opacity="0.32" strokeWidth="1.6" />;
           })}
 
           {/* nós luminosos (glow simples: círculo grande translúcido + ponto sólido) */}
-          <circle cx="1560" cy="120" r="10" fill="#e9b074" opacity="0.10" />
-          <circle cx="1560" cy="120" r="3" fill="#f3c79a" opacity="0.7" />
-          <circle cx="1320" cy="470" r="8" fill="#e9b074" opacity="0.10" />
-          <circle cx="1320" cy="470" r="2.5" fill="#f3c79a" opacity="0.6" />
-          <circle cx="1700" cy="120" r="7" fill="#7fa8d9" opacity="0.10" />
-          <circle cx="1700" cy="120" r="2" fill="#bcd6f5" opacity="0.5" />
+          <circle cx="1560" cy="120" r="13" fill="#f0bb86" opacity="0.22" stroke="none" />
+          <circle cx="1560" cy="120" r="3.5" fill="#fbe0bb" opacity="0.9" stroke="none" />
+          <circle cx="1320" cy="470" r="11" fill="#f0bb86" opacity="0.20" stroke="none" />
+          <circle cx="1320" cy="470" r="3" fill="#fbe0bb" opacity="0.85" stroke="none" />
+          <circle cx="1700" cy="120" r="9" fill="#9bc1ec" opacity="0.20" stroke="none" />
+          <circle cx="1700" cy="120" r="2.4" fill="#cfe2f8" opacity="0.75" stroke="none" />
         </g>
 
-        {/* ---- circuitos técnicos, lado esquerdo ---- */}
-        <g id="circuitos-esquerda" stroke="url(#copperStroke)" strokeWidth="1.1" strokeLinecap="round">
-          <path d="M -20 130 L 90 130 L 90 190 L 200 190 L 200 150 L 260 150" opacity="0.45" />
-          <path d="M -20 260 L 60 260 L 60 330 L 150 330" opacity="0.35" />
-          <path d="M -20 520 L 100 520 L 100 470 L 180 470 L 180 410" opacity="0.4" />
-          <path d="M -20 650 L 70 650 L 70 720 L 190 720 L 190 760" opacity="0.32" />
-          <path d="M -20 820 L 110 820 L 110 770" opacity="0.3" />
+        {/* ---- circuitos técnicos, lado esquerdo (deslocados p/ fora da sidebar) ---- */}
+        <g id="circuitos-esquerda" transform="translate(150 0)" stroke="url(#copperStroke)" strokeWidth="1.6" strokeLinecap="round">
+          <path d="M -20 130 L 90 130 L 90 190 L 200 190 L 200 150 L 260 150" opacity="0.70" />
+          <path d="M -20 260 L 60 260 L 60 330 L 150 330" opacity="0.55" />
+          <path d="M -20 520 L 100 520 L 100 470 L 180 470 L 180 410" opacity="0.62" />
+          <path d="M -20 650 L 70 650 L 70 720 L 190 720 L 190 760" opacity="0.50" />
+          <path d="M -20 820 L 110 820 L 110 770" opacity="0.46" />
 
           {/* pequeno HUD circular no meio-esquerda */}
-          <g id="hud-esquerda-pequeno" opacity="0.5">
+          <g id="hud-esquerda-pequeno" opacity="0.75" strokeWidth="1.4">
             <circle cx="150" cy="470" r="46" />
             <circle cx="150" cy="470" r="30" strokeDasharray="3 5" />
             <line x1="150" y1="424" x2="150" y2="402" />
@@ -108,29 +108,29 @@ export function AppBackground() {
           </g>
 
           {/* nós luminosos nas interseções */}
-          <circle cx="200" cy="190" r="7" fill="#e9b074" opacity="0.12" stroke="none" />
-          <circle cx="200" cy="190" r="2.4" fill="#f3c79a" opacity="0.65" stroke="none" />
-          <circle cx="100" cy="520" r="7" fill="#e9b074" opacity="0.12" stroke="none" />
-          <circle cx="100" cy="520" r="2.4" fill="#f3c79a" opacity="0.6" stroke="none" />
-          <circle cx="190" cy="760" r="6" fill="#e9b074" opacity="0.1" stroke="none" />
-          <circle cx="190" cy="760" r="2" fill="#f3c79a" opacity="0.5" stroke="none" />
+          <circle cx="200" cy="190" r="9" fill="#f0bb86" opacity="0.22" stroke="none" />
+          <circle cx="200" cy="190" r="3" fill="#fbe0bb" opacity="0.85" stroke="none" />
+          <circle cx="100" cy="520" r="9" fill="#f0bb86" opacity="0.22" stroke="none" />
+          <circle cx="100" cy="520" r="3" fill="#fbe0bb" opacity="0.8" stroke="none" />
+          <circle cx="190" cy="760" r="8" fill="#f0bb86" opacity="0.20" stroke="none" />
+          <circle cx="190" cy="760" r="2.6" fill="#fbe0bb" opacity="0.7" stroke="none" />
         </g>
 
         {/* ---- traços diagonais suaves, para profundidade ---- */}
-        <line x1="-40" y1="40" x2="520" y2="380" stroke="#d9a35e" strokeWidth="1" opacity="0.05" />
-        <line x1="900" y1="900" x2="1500" y2="560" stroke="#6f93c2" strokeWidth="1" opacity="0.05" />
+        <line x1="-40" y1="40" x2="520" y2="380" stroke="#d9a35e" strokeWidth="1.2" opacity="0.10" />
+        <line x1="900" y1="900" x2="1500" y2="560" stroke="#6f93c2" strokeWidth="1.2" opacity="0.10" />
       </svg>
 
       {/* 4) glows pontuais (cobre à esquerda, cobre+azul à direita) — blur em CSS, barato */}
-      <div className="absolute -left-24 top-16 h-72 w-72 rounded-full bg-primary-500/14 blur-[110px]" />
-      <div className="absolute -right-20 top-1/4 h-[26rem] w-[26rem] rounded-full bg-primary-500/16 blur-[140px]" />
-      <div className="absolute -bottom-24 -right-10 h-72 w-72 rounded-full bg-blue-500/10 blur-[120px]" />
+      <div className="absolute left-12 top-16 h-72 w-72 rounded-full bg-primary-500/25 blur-[110px]" />
+      <div className="absolute -right-20 top-1/4 h-[28rem] w-[28rem] rounded-full bg-primary-500/30 blur-[140px]" />
+      <div className="absolute -bottom-24 -right-10 h-72 w-72 rounded-full bg-blue-500/18 blur-[120px]" />
 
       {/* 5) linha horizontal luminosa próxima ao topo */}
-      <div className="absolute inset-x-[6%] top-[64px] h-px bg-gradient-to-r from-transparent via-primary-300/50 to-transparent" />
+      <div className="absolute inset-x-[6%] top-[64px] h-px bg-gradient-to-r from-transparent via-primary-300/70 to-transparent" />
 
-      {/* 6) vinheta — mantém o centro limpo para leitura do conteúdo */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_62%_55%_at_46%_46%,transparent_0%,rgba(2,2,2,0.45)_100%)]" />
+      {/* 6) vinheta leve — só no centro exato, sem escurecer as laterais onde ficam o HUD/circuitos */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_45%_40%_at_50%_42%,rgba(2,2,2,0.35)_0%,transparent_100%)]" />
     </div>
   );
 }
