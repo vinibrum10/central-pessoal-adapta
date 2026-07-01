@@ -50,6 +50,11 @@ export interface ShadowingPractice {
   sentences: ShadowingSentence[];
 }
 
+export interface EnglishUiState {
+  showFutureCards: boolean;
+  showKnownCards: boolean;
+}
+
 export interface VocabularyCard {
   id: string;
   word: string;
@@ -67,7 +72,9 @@ export interface EnglishDataV2 {
   listeningVideo: ListeningVideo | null;
   videoQuiz: VideoQuiz | null;
   shadowingPractice: ShadowingPractice;
+  shadowingSentenceSets: Record<string, ShadowingSentence[]>;
   vocabularyCards: VocabularyCard[];
+  ui: EnglishUiState;
 }
 
 const DEFAULT_SHADOWING_SENTENCES: ShadowingSentence[] = [
@@ -87,32 +94,68 @@ export const DEFAULT_SHADOWING: ShadowingPractice = {
   sentences: DEFAULT_SHADOWING_SENTENCES,
 };
 
+export const DEFAULT_SHADOWING_KEY = `playlist:${DEFAULT_SHADOWING.playlistId}`;
+
 const DEFAULT_DATA: EnglishDataV2 = {
   selectedListeningLevel: 'advanced',
   listeningVideo: null,
   videoQuiz: null,
   shadowingPractice: DEFAULT_SHADOWING,
+  shadowingSentenceSets: {
+    [DEFAULT_SHADOWING_KEY]: DEFAULT_SHADOWING_SENTENCES.map(s => ({ ...s })),
+  },
   vocabularyCards: [],
+  ui: {
+    showFutureCards: false,
+    showKnownCards: false,
+  },
 };
+
+function cloneDefaultShadowing(): ShadowingPractice {
+  return { ...DEFAULT_SHADOWING, sentences: DEFAULT_SHADOWING_SENTENCES.map(s => ({ ...s })) };
+}
+
+export function getShadowingSourceKey(practice: Pick<ShadowingPractice, 'type' | 'playlistId' | 'youtubeVideoId'>): string {
+  if (practice.type === 'playlist' && practice.playlistId) return `playlist:${practice.playlistId}`;
+  if (practice.type === 'video' && practice.youtubeVideoId) return `video:${practice.youtubeVideoId}`;
+  return DEFAULT_SHADOWING_KEY;
+}
 
 export function loadEnglishData(): EnglishDataV2 {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { ...DEFAULT_DATA, shadowingPractice: { ...DEFAULT_SHADOWING, sentences: DEFAULT_SHADOWING_SENTENCES.map(s => ({ ...s })) } };
+    if (!raw) return { ...DEFAULT_DATA, shadowingPractice: cloneDefaultShadowing() };
     const parsed = JSON.parse(raw) as Partial<EnglishDataV2>;
     const today = new Date().toISOString().slice(0, 10);
+    const parsedPractice = parsed.shadowingPractice ?? cloneDefaultShadowing();
+    const shadowingKey = getShadowingSourceKey(parsedPractice);
+    const shadowingSentenceSets = {
+      [DEFAULT_SHADOWING_KEY]: DEFAULT_SHADOWING_SENTENCES.map(s => ({ ...s })),
+      ...(parsed.shadowingSentenceSets ?? {}),
+      [shadowingKey]: parsed.shadowingSentenceSets?.[shadowingKey] ?? parsedPractice.sentences ?? DEFAULT_SHADOWING_SENTENCES.map(s => ({ ...s })),
+    };
+    const shadowingPractice = {
+      ...parsedPractice,
+      sentences: shadowingSentenceSets[shadowingKey],
+    };
+
     return {
       selectedListeningLevel: parsed.selectedListeningLevel ?? 'advanced',
       listeningVideo: parsed.listeningVideo ?? null,
       videoQuiz: parsed.videoQuiz ?? null,
-      shadowingPractice: parsed.shadowingPractice ?? { ...DEFAULT_SHADOWING, sentences: DEFAULT_SHADOWING_SENTENCES.map(s => ({ ...s })) },
+      shadowingPractice,
+      shadowingSentenceSets,
       vocabularyCards: (parsed.vocabularyCards ?? []).map(card => ({
         ...card,
         nextReviewAt: card.nextReviewAt ?? today,
       })),
+      ui: {
+        showFutureCards: parsed.ui?.showFutureCards ?? false,
+        showKnownCards: parsed.ui?.showKnownCards ?? false,
+      },
     };
   } catch {
-    return { ...DEFAULT_DATA, shadowingPractice: { ...DEFAULT_SHADOWING, sentences: DEFAULT_SHADOWING_SENTENCES.map(s => ({ ...s })) } };
+    return { ...DEFAULT_DATA, shadowingPractice: cloneDefaultShadowing() };
   }
 }
 

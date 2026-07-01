@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { BookOpen, ExternalLink, Mic, Plus, RotateCcw, Trash2, Video } from 'lucide-react';
+import { BookOpen, ExternalLink, Mic, Pencil, Plus, RotateCcw, Save, Trash2, Video, X } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Card, CardBody, CardHeader } from '../components/Card';
 import { Badge } from '../components/Badge';
@@ -10,6 +10,7 @@ import {
   type VideoQuiz,
   type VocabularyCard,
   DEFAULT_SHADOWING,
+  getShadowingSourceKey,
   loadEnglishData,
   saveEnglishData,
 } from '../services/english/englishStorage';
@@ -78,6 +79,32 @@ function formatReviewDate(value: string): string {
   return new Date(`${value}T00:00:00`).toLocaleDateString('pt-BR');
 }
 
+function withYouTubePlayerApi(url: string): string {
+  const [base, query = ''] = url.split('?');
+  const params = new URLSearchParams(query);
+  params.set('enablejsapi', '1');
+  params.set('origin', window.location.origin);
+  return `${base}?${params.toString()}`;
+}
+
+declare global {
+  interface Window {
+    YT?: {
+      Player: new (
+        element: HTMLIFrameElement,
+        options: {
+          events?: {
+            onReady?: (event: { target: { getDuration: () => number } }) => void;
+            onStateChange?: (event: { target: { getDuration: () => number } }) => void;
+          };
+        },
+      ) => { destroy: () => void };
+      PlayerState?: Record<string, number>;
+    };
+    onYouTubeIframeAPIReady?: () => void;
+  }
+}
+
 // ============================================================
 // MAIN PAGE
 // ============================================================
@@ -92,6 +119,9 @@ export function InglesPage() {
   const [queryIndex, setQueryIndex] = useState(0);
   const [manualListeningLink, setManualListeningLink] = useState('');
   const [manualLinkError, setManualLinkError] = useState('');
+  const [manualDurationStatus, setManualDurationStatus] = useState<'idle' | 'detecting' | 'detected' | 'failed'>('idle');
+  const listeningIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const detectedDurationRef = useRef<string | null>(null);
 
   // ETAPA 2 — Questionário
   const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
@@ -101,6 +131,11 @@ export function InglesPage() {
   // ETAPA 3 — Shadowing
   const [shadowingLinkInput, setShadowingLinkInput] = useState('');
   const [shadowingLinkError, setShadowingLinkError] = useState('');
+  const [newShadowingSentence, setNewShadowingSentence] = useState('');
+  const [newShadowingTranslation, setNewShadowingTranslation] = useState('');
+  const [editingSentenceId, setEditingSentenceId] = useState<string | null>(null);
+  const [editingSentenceText, setEditingSentenceText] = useState('');
+  const [editingSentenceTranslation, setEditingSentenceTranslation] = useState('');
 
   // ETAPA 4 — Cards
   const [cardWord, setCardWord] = useState('');
@@ -138,6 +173,85 @@ export function InglesPage() {
     setQuizSubmitted(false);
     setQuizScore(null);
   }, [data.listeningVideo?.youtubeVideoId, data.videoQuiz?.completedAt, data.videoQuiz?.youtubeVideoId]);
+
+  useEffect(() => {
+    const video = data.listeningVideo;
+    const iframe = listeningIframeRef.current;
+    if (!video || video.source !== 'manual_link' || !iframe) {
+      setManualDurationStatus('idle');
+      detectedDurationRef.current = null;
+      return;
+    }
+
+    const detectionKey = `${video.youtubeVideoId}:${video.durationSeconds}`;
+    if (detectedDurationRef.current === detectionKey && video.durationSeconds > 0) return;
+
+    let cancelled = false;
+    let player: { destroy: () => void } | null = null;
+    let failTimer: number | undefined;
+    setManualDurationStatus('detecting');
+
+    const applyDuration = (rawDuration: number) => {
+      const duration = Math.round(rawDuration);
+      if (cancelled || !Number.isFinite(duration) || duration <= 0) return false;
+      detectedDurationRef.current = `${video.youtubeVideoId}:${duration}`;
+      setManualDurationStatus('detected');
+      setData(prev => {
+        if (prev.listeningVideo?.youtubeVideoId !== video.youtubeVideoId || prev.listeningVideo.source !== 'manual_link') return prev;
+        if (prev.listeningVideo.durationSeconds === duration) return prev;
+        return {
+          ...prev,
+          listeningVideo: {
+            ...prev.listeningVideo,
+            durationSeconds: duration,
+          },
+        };
+      });
+      return true;
+    };
+
+    const initializePlayer = () => {
+      if (cancelled || !window.YT?.Player || !listeningIframeRef.current) return;
+      player = new window.YT.Player(listeningIframeRef.current, {
+        events: {
+          onReady: event => {
+            window.setTimeout(() => {
+              applyDuration(event.target.getDuration());
+            }, 500);
+          },
+          onStateChange: event => {
+            applyDuration(event.target.getDuration());
+          },
+        },
+      });
+      failTimer = window.setTimeout(() => {
+        if (!cancelled && dataRef.current.listeningVideo?.youtubeVideoId === video.youtubeVideoId && dataRef.current.listeningVideo.durationSeconds <= 0) {
+          setManualDurationStatus('failed');
+        }
+      }, 8000);
+    };
+
+    if (window.YT?.Player) {
+      initializePlayer();
+    } else {
+      const previousReady = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => {
+        previousReady?.();
+        initializePlayer();
+      };
+      if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
+        const script = document.createElement('script');
+        script.src = 'https://www.youtube.com/iframe_api';
+        document.body.appendChild(script);
+      }
+    }
+
+    return () => {
+      cancelled = true;
+      if (failTimer) window.clearTimeout(failTimer);
+      player?.destroy();
+    };
+  }, [data.listeningVideo?.youtubeVideoId, data.listeningVideo?.source]);
 
   // ── ETAPA 1: Listening ─────────────────────────────────────
   function handleLevelChange(level: ListeningLevel) {
@@ -194,6 +308,7 @@ export function InglesPage() {
 
     const video = buildManualListeningVideo(videoId, dataRef.current.selectedListeningLevel);
     setData(prev => ({ ...prev, listeningVideo: video, videoQuiz: null }));
+    setManualDurationStatus('detecting');
     setManualListeningLink('');
     setManualLinkError('');
     setVideoError('');
@@ -263,6 +378,38 @@ export function InglesPage() {
   }
 
   // ── ETAPA 3: Shadowing ──────────────────────────────────────
+  function updateShadowingSentences(updater: (sentences: typeof data.shadowingPractice.sentences) => typeof data.shadowingPractice.sentences) {
+    setData(prev => {
+      const key = getShadowingSourceKey(prev.shadowingPractice);
+      const nextSentences = updater(prev.shadowingPractice.sentences);
+      return {
+        ...prev,
+        shadowingPractice: {
+          ...prev.shadowingPractice,
+          sentences: nextSentences,
+        },
+        shadowingSentenceSets: {
+          ...prev.shadowingSentenceSets,
+          [key]: nextSentences,
+        },
+      };
+    });
+  }
+
+  function chooseSentencesForShadowingSource(sourceKey: string) {
+    const currentSentences = dataRef.current.shadowingPractice.sentences;
+    const savedSentences = dataRef.current.shadowingSentenceSets[sourceKey];
+    const choice = window.prompt(
+      'Deseja manter as frases atuais ou criar uma lista nova para este vídeo?\n1 - Manter frases atuais\n2 - Usar lista salva desta fonte, se existir\n3 - Criar lista nova vazia\n4 - Restaurar frases padrão',
+      savedSentences ? '2' : '1',
+    );
+
+    if (choice === '3') return [];
+    if (choice === '4') return DEFAULT_SHADOWING.sentences.map(s => ({ ...s, repetitionsDone: 0 }));
+    if (choice === '2' && savedSentences) return savedSentences;
+    return currentSentences;
+  }
+
   function handleLoadShadowingLink() {
     const parsed = parseShadowingLink(shadowingLinkInput);
     if (!parsed) {
@@ -270,8 +417,17 @@ export function InglesPage() {
       return;
     }
     setShadowingLinkError('');
-    const newPractice = buildShadowingFromLink(parsed, data.shadowingPractice.sentences);
-    setData(prev => ({ ...prev, shadowingPractice: newPractice }));
+    const sourceKey = parsed.type === 'playlist' ? `playlist:${parsed.playlistId}` : `video:${parsed.videoId}`;
+    const selectedSentences = chooseSentencesForShadowingSource(sourceKey);
+    const newPractice = buildShadowingFromLink(parsed, selectedSentences);
+    setData(prev => ({
+      ...prev,
+      shadowingPractice: newPractice,
+      shadowingSentenceSets: {
+        ...prev.shadowingSentenceSets,
+        [sourceKey]: selectedSentences,
+      },
+    }));
     setShadowingLinkInput('');
   }
 
@@ -282,50 +438,79 @@ export function InglesPage() {
         ...DEFAULT_SHADOWING,
         sentences: prev.shadowingPractice.sentences,
       },
+      shadowingSentenceSets: {
+        ...prev.shadowingSentenceSets,
+        [getShadowingSourceKey(DEFAULT_SHADOWING)]: prev.shadowingPractice.sentences,
+      },
     }));
     setShadowingLinkInput('');
     setShadowingLinkError('');
   }
 
   function handleRestoreDefaultShadowingSentences() {
-    const hasProgress = dataRef.current.shadowingPractice.sentences.some(s => s.repetitionsDone > 0);
-    if (hasProgress && !window.confirm('Deseja também restaurar as frases padrão e zerar repetições?')) {
+    if (!window.confirm('Deseja também restaurar as frases padrão e zerar repetições?')) {
       return;
     }
 
-    setData(prev => ({
-      ...prev,
-      shadowingPractice: {
-        ...prev.shadowingPractice,
-        sentences: DEFAULT_SHADOWING.sentences.map(s => ({ ...s, repetitionsDone: 0 })),
-      },
-    }));
+    updateShadowingSentences(() => DEFAULT_SHADOWING.sentences.map(s => ({ ...s, repetitionsDone: 0 })));
     setShadowingLinkInput('');
     setShadowingLinkError('');
   }
 
   function handleRepetitionIncrement(sentenceId: string) {
-    setData(prev => ({
-      ...prev,
-      shadowingPractice: {
-        ...prev.shadowingPractice,
-        sentences: prev.shadowingPractice.sentences.map(s =>
-          s.id === sentenceId ? { ...s, repetitionsDone: Math.min(s.repetitionsDone + 1, s.repetitionsTarget) } : s,
-        ),
-      },
-    }));
+    updateShadowingSentences(sentences => sentences.map(s =>
+      s.id === sentenceId ? { ...s, repetitionsDone: Math.min(s.repetitionsDone + 1, s.repetitionsTarget) } : s,
+    ));
   }
 
   function handleRepetitionReset(sentenceId: string) {
-    setData(prev => ({
-      ...prev,
-      shadowingPractice: {
-        ...prev.shadowingPractice,
-        sentences: prev.shadowingPractice.sentences.map(s =>
-          s.id === sentenceId ? { ...s, repetitionsDone: 0 } : s,
-        ),
+    updateShadowingSentences(sentences => sentences.map(s =>
+      s.id === sentenceId ? { ...s, repetitionsDone: 0 } : s,
+    ));
+  }
+
+  function handleAddShadowingSentence() {
+    if (!newShadowingSentence.trim() || !newShadowingTranslation.trim()) return;
+    updateShadowingSentences(sentences => [
+      ...sentences,
+      {
+        id: genId(),
+        text: newShadowingSentence.trim(),
+        translation: newShadowingTranslation.trim(),
+        repetitionsTarget: 5,
+        repetitionsDone: 0,
       },
-    }));
+    ]);
+    setNewShadowingSentence('');
+    setNewShadowingTranslation('');
+  }
+
+  function handleStartEditSentence(sentenceId: string, text: string, translation: string) {
+    setEditingSentenceId(sentenceId);
+    setEditingSentenceText(text);
+    setEditingSentenceTranslation(translation);
+  }
+
+  function handleSaveSentenceEdit() {
+    if (!editingSentenceId || !editingSentenceText.trim() || !editingSentenceTranslation.trim()) return;
+    updateShadowingSentences(sentences => sentences.map(s =>
+      s.id === editingSentenceId
+        ? { ...s, text: editingSentenceText.trim(), translation: editingSentenceTranslation.trim() }
+        : s,
+    ));
+    setEditingSentenceId(null);
+    setEditingSentenceText('');
+    setEditingSentenceTranslation('');
+  }
+
+  function handleCancelSentenceEdit() {
+    setEditingSentenceId(null);
+    setEditingSentenceText('');
+    setEditingSentenceTranslation('');
+  }
+
+  function handleDeleteShadowingSentence(sentenceId: string) {
+    updateShadowingSentences(sentences => sentences.filter(s => s.id !== sentenceId));
   }
 
   // ── ETAPA 4: Cards ──────────────────────────────────────────
@@ -360,8 +545,18 @@ export function InglesPage() {
     setData(prev => ({ ...prev, vocabularyCards: prev.vocabularyCards.filter(c => c.id !== id) }));
   }
 
+  function handleToggleCardSection(section: 'showFutureCards' | 'showKnownCards') {
+    setData(prev => ({
+      ...prev,
+      ui: {
+        ...prev.ui,
+        [section]: !prev.ui[section],
+      },
+    }));
+  }
+
   // ── Derived ────────────────────────────────────────────────
-  const { selectedListeningLevel, listeningVideo, videoQuiz, shadowingPractice, vocabularyCards } = data;
+  const { selectedListeningLevel, listeningVideo, videoQuiz, shadowingPractice, vocabularyCards, ui } = data;
   const answeredCount = Object.keys(quizAnswers).length;
   const totalQuestions = videoQuiz?.questions.length ?? 0;
   const allAnswered = answeredCount === totalQuestions && totalQuestions > 0;
@@ -525,8 +720,9 @@ export function InglesPage() {
               {/* Player */}
               <div className="aspect-video w-full overflow-hidden rounded-lg bg-black shadow-sm">
                 <iframe
+                  ref={listeningIframeRef}
                   key={listeningVideo.youtubeVideoId}
-                  src={listeningVideo.embedUrl}
+                  src={listeningVideo.source === 'manual_link' ? withYouTubePlayerApi(listeningVideo.embedUrl) : listeningVideo.embedUrl}
                   className="h-full w-full"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
@@ -541,6 +737,21 @@ export function InglesPage() {
                     <div className="rounded-lg border border-warning-200 bg-warning-50/60 px-4 py-3 text-sm text-warning-700 dark:border-warning-900/40 dark:bg-warning-900/10 dark:text-warning-300">
                       Vídeo carregado manualmente. Confirme se ele tem até 10 minutos.
                     </div>
+                    {manualDurationStatus === 'detected' && (
+                      <div className="rounded-lg border border-success-200 bg-success-50/60 px-4 py-3 text-sm text-success-700 dark:border-success-900/40 dark:bg-success-900/10 dark:text-success-300">
+                        Duração detectada automaticamente pelo player.
+                      </div>
+                    )}
+                    {manualDurationStatus === 'failed' && (
+                      <div className="rounded-lg border border-warning-200 bg-warning-50/60 px-4 py-3 text-sm text-warning-700 dark:border-warning-900/40 dark:bg-warning-900/10 dark:text-warning-300">
+                        Não foi possível detectar a duração. Preencha manualmente.
+                      </div>
+                    )}
+                    {listeningVideo.durationSeconds > 600 && (
+                      <div className="rounded-lg border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700 dark:border-danger-900/40 dark:bg-danger-900/20 dark:text-danger-300">
+                        Este vídeo tem mais de 10 minutos. Escolha um vídeo mais curto para Listening.
+                      </div>
+                    )}
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                       <input
                         value={listeningVideo.title}
@@ -763,41 +974,119 @@ export function InglesPage() {
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
               Frases para repetir
             </p>
+            <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
+              <input
+                value={newShadowingSentence}
+                onChange={e => setNewShadowingSentence(e.target.value)}
+                placeholder="Nova frase em inglês"
+                className="rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+              />
+              <input
+                value={newShadowingTranslation}
+                onChange={e => setNewShadowingTranslation(e.target.value)}
+                placeholder="Tradução"
+                className="rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+              />
+              <Button
+                size="sm"
+                icon={<Plus size={14} />}
+                disabled={!newShadowingSentence.trim() || !newShadowingTranslation.trim()}
+                onClick={handleAddShadowingSentence}
+              >
+                Adicionar frase
+              </Button>
+            </div>
             <div className="space-y-2">
-              {shadowingPractice.sentences.map(sentence => (
-                <div
-                  key={sentence.id}
-                  className="rounded-lg border border-surface-200 p-3 dark:border-surface-700"
-                >
-                  <p className="text-sm font-medium text-surface-900 dark:text-white">{sentence.text}</p>
-                  <p className="mt-0.5 text-xs text-surface-400 dark:text-surface-500">{sentence.translation}</p>
-                  <div className="mt-2 flex items-center gap-3">
-                    <div className="flex h-2 flex-1 overflow-hidden rounded-full bg-surface-200 dark:bg-surface-700">
-                      <div
-                        className="h-full rounded-full bg-primary-500 transition-all"
-                        style={{ width: `${(sentence.repetitionsDone / sentence.repetitionsTarget) * 100}%` }}
-                      />
+              {shadowingPractice.sentences.length === 0 ? (
+                <p className="text-sm text-surface-400 dark:text-surface-500">
+                  Nenhuma frase nesta lista. Adicione frases para praticar este vídeo ou playlist.
+                </p>
+              ) : shadowingPractice.sentences.map(sentence => (
+                  <div
+                    key={sentence.id}
+                    className="rounded-lg border border-surface-200 p-3 dark:border-surface-700"
+                  >
+                    {editingSentenceId === sentence.id ? (
+                      <div className="space-y-2">
+                        <input
+                          value={editingSentenceText}
+                          onChange={e => setEditingSentenceText(e.target.value)}
+                          className="w-full rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+                        />
+                        <input
+                          value={editingSentenceTranslation}
+                          onChange={e => setEditingSentenceTranslation(e.target.value)}
+                          className="w-full rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={handleSaveSentenceEdit}
+                            disabled={!editingSentenceText.trim() || !editingSentenceTranslation.trim()}
+                            className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <Save size={13} />
+                            Salvar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleCancelSentenceEdit}
+                            className="inline-flex items-center gap-1 rounded-lg border border-surface-200 px-2.5 py-1 text-xs font-medium text-surface-600 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-700"
+                          >
+                            <X size={13} />
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm font-medium text-surface-900 dark:text-white">{sentence.text}</p>
+                        <p className="mt-0.5 text-xs text-surface-400 dark:text-surface-500">{sentence.translation}</p>
+                      </>
+                    )}
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                      <div className="flex h-2 min-w-32 flex-1 overflow-hidden rounded-full bg-surface-200 dark:bg-surface-700">
+                        <div
+                          className="h-full rounded-full bg-primary-500 transition-all"
+                          style={{ width: `${(sentence.repetitionsDone / sentence.repetitionsTarget) * 100}%` }}
+                        />
+                      </div>
+                      <span className="shrink-0 text-xs text-surface-500 dark:text-surface-400">
+                        {sentence.repetitionsDone}/{sentence.repetitionsTarget}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleRepetitionIncrement(sentence.id)}
+                        disabled={sentence.repetitionsDone >= sentence.repetitionsTarget}
+                        className="rounded-lg bg-primary-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-40 transition-all"
+                      >
+                        +1
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleStartEditSentence(sentence.id, sentence.text, sentence.translation)}
+                        className="inline-flex items-center gap-1 text-xs text-surface-400 hover:text-surface-600 dark:hover:text-surface-200 transition-colors"
+                      >
+                        <Pencil size={13} />
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRepetitionReset(sentence.id)}
+                        className="text-xs text-surface-400 hover:text-surface-600 dark:hover:text-surface-200 transition-colors"
+                      >
+                        Resetar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteShadowingSentence(sentence.id)}
+                        className="inline-flex items-center gap-1 text-xs text-surface-400 hover:text-danger-600 transition-colors"
+                      >
+                        <Trash2 size={13} />
+                        Excluir
+                      </button>
                     </div>
-                    <span className="shrink-0 text-xs text-surface-500 dark:text-surface-400">
-                      {sentence.repetitionsDone}/{sentence.repetitionsTarget}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleRepetitionIncrement(sentence.id)}
-                      disabled={sentence.repetitionsDone >= sentence.repetitionsTarget}
-                      className="rounded-lg bg-primary-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-40 transition-all"
-                    >
-                      +1
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleRepetitionReset(sentence.id)}
-                      className="text-xs text-surface-400 hover:text-surface-600 dark:hover:text-surface-200 transition-colors"
-                    >
-                      Resetar
-                    </button>
                   </div>
-                </div>
               ))}
             </div>
           </div>
@@ -858,16 +1147,26 @@ export function InglesPage() {
                 {renderVocabularyCards(cardsDueToday)}
               </section>
               <section className="space-y-2">
-                <h3 className="text-sm font-semibold text-surface-900 dark:text-white">
-                  Cards futuros ({futureCards.length})
-                </h3>
-                {renderVocabularyCards(futureCards)}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-surface-900 dark:text-white">
+                    Cards futuros ({futureCards.length})
+                  </h3>
+                  <Button size="sm" variant="secondary" onClick={() => handleToggleCardSection('showFutureCards')}>
+                    {ui.showFutureCards ? 'Ocultar' : 'Mostrar'}
+                  </Button>
+                </div>
+                {ui.showFutureCards && renderVocabularyCards(futureCards)}
               </section>
               <section className="space-y-2">
-                <h3 className="text-sm font-semibold text-surface-900 dark:text-white">
-                  Cards dominados ({knownCards.length})
-                </h3>
-                {renderVocabularyCards(knownCards)}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-surface-900 dark:text-white">
+                    Cards dominados ({knownCards.length})
+                  </h3>
+                  <Button size="sm" variant="secondary" onClick={() => handleToggleCardSection('showKnownCards')}>
+                    {ui.showKnownCards ? 'Ocultar' : 'Mostrar'}
+                  </Button>
+                </div>
+                {ui.showKnownCards && renderVocabularyCards(knownCards)}
               </section>
             </div>
           )}
