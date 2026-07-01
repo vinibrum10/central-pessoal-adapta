@@ -41,6 +41,7 @@ import {
   marcarRecebimentoComoRecebido,
   verificarPendenciasMesAnterior,
   ajustarFaturaCartao,
+  removerDespesa,
   type ItemPagar,
 } from '../utils/orcamento';
 
@@ -767,20 +768,23 @@ export function OrcamentoPage() {
       const depAtual = d.despesas.find(dep => dep.id === editandoId);
       if (!depAtual || !depAtual.grupoParcelamentoId) return d;
       const parcelaAtual = depAtual.parcelaAtual ?? 0;
+      const despesasAtualizadas = d.despesas.map(dep => {
+        if (dep.grupoParcelamentoId !== depAtual.grupoParcelamentoId) return dep;
+        if ((dep.parcelaAtual ?? 0) < parcelaAtual) return dep; // anteriores: não muda
+        // Esta e futuras: atualiza valor, categoria, essencial (mantém descrição com número da parcela)
+        // formDespesaValorStr já contém o valor da parcela (não o total), não dividir novamente
+        return {
+          ...dep,
+          valor: parseBRLMoney(formDespesaValorStr),
+          categoria: formDespesa.categoria,
+          essencial: formDespesa.essencial,
+        };
+      });
+      const faturasAtualizadas = (d.faturas ?? []).map(f => recalcularFatura(f, despesasAtualizadas));
       return {
         ...d,
-        despesas: d.despesas.map(dep => {
-          if (dep.grupoParcelamentoId !== depAtual.grupoParcelamentoId) return dep;
-          if ((dep.parcelaAtual ?? 0) < parcelaAtual) return dep; // anteriores: não muda
-          // Esta e futuras: atualiza valor, categoria, essencial (mantém descrição com número da parcela)
-          // formDespesaValorStr já contém o valor da parcela (não o total), não dividir novamente
-          return {
-            ...dep,
-            valor: parseBRLMoney(formDespesaValorStr),
-            categoria: formDespesa.categoria,
-            essencial: formDespesa.essencial,
-          };
-        }),
+        despesas: despesasAtualizadas,
+        faturas: faturasAtualizadas,
       };
     });
     setModal(null);
@@ -1260,7 +1264,7 @@ export function OrcamentoPage() {
                           }} className="p-1.5 rounded text-surface-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
                         )}
                         {canDeleteExpense(perfil) && (
-                          <button onClick={() => setData(prev => ({ ...prev, despesas: prev.despesas.filter(x => x.id !== d.id) }))} className="p-1.5 rounded text-surface-400 hover:text-danger-600 transition-colors"><Trash2 size={13} /></button>
+                          <button onClick={() => setData(prev => removerDespesa(prev, d.id))} className="p-1.5 rounded text-surface-400 hover:text-danger-600 transition-colors"><Trash2 size={13} /></button>
                         )}
                       </div>
                     </div>

@@ -252,6 +252,14 @@ export function calcularFaturaCartaoMes(
     .reduce((s, d) => s + d.valor, 0);
 }
 
+// Remove uma despesa e recalcula todas as faturas a partir das despesas restantes,
+// evitando que valorDetalhado/diferenca/valorEfetivo fiquem presos ao estado anterior à exclusão.
+export function removerDespesa(data: AppData, despesaId: string): AppData {
+  const despesasAtualizadas = data.despesas.filter(d => d.id !== despesaId);
+  const faturasAtualizadas = (data.faturas ?? []).map(f => recalcularFatura(f, despesasAtualizadas));
+  return { ...data, despesas: despesasAtualizadas, faturas: faturasAtualizadas };
+}
+
 export function calcularAReceberMes(mes: number, ano: number, data: AppData) {
   // Regra de competência: pendentes e recebidos aparecem no mês/ano previsto do recebimento.
   // A dataRecebimento registra quando entrou, mas não muda a competência original do item.
