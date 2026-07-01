@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { useState, useEffect, startTransition, type ReactNode } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Target, ListChecks, Clock,
   Wallet, Settings, Menu, X, Moon, Sun, BookOpen, LogOut,
@@ -56,6 +56,54 @@ const adminNavItems = [
   { to: '/usuarios', label: 'Usuários', icon: Users },
 ];
 
+// Substitui o <NavLink> do react-router-dom: a navegação em si é disparada
+// dentro de startTransition, para que o React 18 trate a troca de página como
+// uma atualização de baixa prioridade e interrompível. Sem isso, o clique em
+// um item pesado (ex.: "Hoje") bloqueia a thread principal de forma síncrona
+// até a nova página terminar de renderizar — no celular isso trava o toque
+// por até ~1-2s. onBeforeNavigate roda de forma síncrona, fora da transition,
+// para dar feedback imediato (ex.: fechar o menu mobile) antes do trabalho pesado.
+function AppNavLink({
+  to,
+  end = false,
+  className,
+  children,
+  onBeforeNavigate,
+  title,
+}: {
+  to: string;
+  end?: boolean;
+  className: string | ((props: { isActive: boolean }) => string);
+  children: ReactNode;
+  onBeforeNavigate?: () => void;
+  title?: string;
+}) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isActive = end
+    ? location.pathname === to
+    : location.pathname === to || location.pathname.startsWith(`${to}/`);
+  const resolvedClassName = typeof className === 'function' ? className({ isActive }) : className;
+
+  return (
+    <a
+      href={to}
+      title={title}
+      className={resolvedClassName}
+      onClick={(event) => {
+        if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        onBeforeNavigate?.();
+        startTransition(() => {
+          navigate(to);
+        });
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<boolean>(() => {
@@ -92,6 +140,31 @@ export function Layout({ children }: { children: React.ReactNode }) {
     if (estudoNavItems.some(isNavItemActive)) {
       setEstudoOpen(true);
     }
+  }, [location.pathname]);
+
+  // TEMP PERF INSTRUMENTATION (dev-only, remove after diagnosing mobile nav delay):
+  // marks the time from the physical tap (pointerdown) to the next painted
+  // frame after a route change commits, so we can see exactly how long a
+  // click-to-visible-navigation takes.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const handler = () => { (window as unknown as { __navClickStart?: number }).__navClickStart = performance.now(); };
+    document.addEventListener('pointerdown', handler, true);
+    return () => document.removeEventListener('pointerdown', handler, true);
+  }, []);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const win = window as unknown as { __navClickStart?: number };
+    const start = win.__navClickStart;
+    if (start == null) return;
+    win.__navClickStart = undefined;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        // eslint-disable-next-line no-console
+        console.log(`[perf] tap -> "${location.pathname}" painted in ${(performance.now() - start).toFixed(1)}ms`);
+      });
+    });
   }, [location.pathname]);
 
   const currentPage = navItems.find(n =>
@@ -150,7 +223,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
           {topNavItems.map(({ to, label, icon: Icon }) => (
-            <NavLink
+            <AppNavLink
               key={to}
               to={to}
               end
@@ -167,7 +240,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             >
               <Icon size={18} className="flex-shrink-0" />
               {!collapsed && label}
-            </NavLink>
+            </AppNavLink>
           ))}
 
           {collapsed ? (
@@ -205,7 +278,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     const { to, label, icon: Icon } = item;
                     const active = isNavItemActive(item);
                     return (
-                      <NavLink
+                      <AppNavLink
                         key={to}
                         to={to}
                         className={`
@@ -219,7 +292,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       >
                         <Icon size={16} className="flex-shrink-0" />
                         {label}
-                      </NavLink>
+                      </AppNavLink>
                     );
                   })}
                 </div>
@@ -228,7 +301,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           )}
 
           {mainNavItems.map(({ to, label, icon: Icon }) => (
-            <NavLink
+            <AppNavLink
               key={to}
               to={to}
               title={collapsed ? label : undefined}
@@ -244,7 +317,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             >
               <Icon size={18} className="flex-shrink-0" />
               {!collapsed && label}
-            </NavLink>
+            </AppNavLink>
           ))}
 
           {collapsed ? (
@@ -282,7 +355,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     const { to, label, icon: Icon } = item;
                     const active = isNavItemActive(item);
                     return (
-                      <NavLink
+                      <AppNavLink
                         key={to}
                         to={to}
                         className={`
@@ -296,7 +369,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       >
                         <Icon size={16} className="flex-shrink-0" />
                         {label}
-                      </NavLink>
+                      </AppNavLink>
                     );
                   })}
                 </div>
@@ -305,7 +378,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           )}
 
           {bottomNavItems.map(({ to, label, icon: Icon }) => (
-            <NavLink
+            <AppNavLink
               key={to}
               to={to}
               title={collapsed ? label : undefined}
@@ -321,14 +394,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
             >
               <Icon size={18} className="flex-shrink-0" />
               {!collapsed && label}
-            </NavLink>
+            </AppNavLink>
           ))}
 
           {role === 'admin' && (
             <>
               {!collapsed && <p className="text-[10px] uppercase tracking-widest text-surface-400 dark:text-surface-600 px-3 pt-3 pb-1">Admin</p>}
               {adminNavItems.map(({ to, label, icon: Icon }) => (
-                <NavLink
+                <AppNavLink
                   key={to}
                   to={to}
                   title={collapsed ? label : undefined}
@@ -344,7 +417,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 >
                   <Icon size={18} className="flex-shrink-0" />
                   {!collapsed && label}
-                </NavLink>
+                </AppNavLink>
               ))}
             </>
           )}
@@ -397,11 +470,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
             )}
             <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
               {topNavItems.map(({ to, label, icon: Icon }) => (
-                <NavLink
+                <AppNavLink
                   key={to}
                   to={to}
                   end
-                  onClick={() => setSidebarOpen(false)}
+                  onBeforeNavigate={() => setSidebarOpen(false)}
                   className={({ isActive }) => `
                     flex min-w-0 items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
                     ${isActive ? 'bg-primary-600 text-white dark:bg-primary-500 dark:text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
@@ -409,7 +482,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 >
                   <Icon size={18} className="flex-shrink-0" />
                   <span className="mobile-text">{label}</span>
-                </NavLink>
+                </AppNavLink>
               ))}
 
               <div>
@@ -434,10 +507,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       const { to, label, icon: Icon } = item;
                       const active = isNavItemActive(item);
                       return (
-                        <NavLink
+                        <AppNavLink
                           key={to}
                           to={to}
-                          onClick={() => setSidebarOpen(false)}
+                          onBeforeNavigate={() => setSidebarOpen(false)}
                           className={`
                             flex min-w-0 items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all
                             ${active ? 'bg-primary-600 text-white dark:bg-primary-500 dark:text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
@@ -445,7 +518,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                         >
                           <Icon size={16} className="flex-shrink-0" />
                           <span className="mobile-text">{label}</span>
-                        </NavLink>
+                        </AppNavLink>
                       );
                     })}
                   </div>
@@ -453,10 +526,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </div>
 
               {mainNavItems.map(({ to, label, icon: Icon }) => (
-                <NavLink
+                <AppNavLink
                   key={to}
                   to={to}
-                  onClick={() => setSidebarOpen(false)}
+                  onBeforeNavigate={() => setSidebarOpen(false)}
                   className={({ isActive }) => `
                     flex min-w-0 items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
                     ${isActive ? 'bg-primary-600 text-white dark:bg-primary-500 dark:text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
@@ -464,7 +537,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 >
                   <Icon size={18} className="flex-shrink-0" />
                   <span className="mobile-text">{label}</span>
-                </NavLink>
+                </AppNavLink>
               ))}
 
               <div>
@@ -489,10 +562,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       const { to, label, icon: Icon } = item;
                       const active = isNavItemActive(item);
                       return (
-                        <NavLink
+                        <AppNavLink
                           key={to}
                           to={to}
-                          onClick={() => setSidebarOpen(false)}
+                          onBeforeNavigate={() => setSidebarOpen(false)}
                           className={`
                             flex min-w-0 items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all
                             ${active ? 'bg-primary-600 text-white dark:bg-primary-500 dark:text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
@@ -500,7 +573,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                         >
                           <Icon size={16} className="flex-shrink-0" />
                           <span className="mobile-text">{label}</span>
-                        </NavLink>
+                        </AppNavLink>
                       );
                     })}
                   </div>
@@ -508,10 +581,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </div>
 
               {bottomNavItems.map(({ to, label, icon: Icon }) => (
-                <NavLink
+                <AppNavLink
                   key={to}
                   to={to}
-                  onClick={() => setSidebarOpen(false)}
+                  onBeforeNavigate={() => setSidebarOpen(false)}
                   className={({ isActive }) => `
                     flex min-w-0 items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
                     ${isActive ? 'bg-primary-600 text-white dark:bg-primary-500 dark:text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
@@ -519,17 +592,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 >
                   <Icon size={18} className="flex-shrink-0" />
                   <span className="mobile-text">{label}</span>
-                </NavLink>
+                </AppNavLink>
               ))}
 
               {role === 'admin' && (
                 <>
                   <p className="text-[10px] uppercase tracking-widest text-surface-400 dark:text-surface-600 px-3 pt-3 pb-1">Admin</p>
                   {adminNavItems.map(({ to, label, icon: Icon }) => (
-                    <NavLink
+                    <AppNavLink
                       key={to}
                       to={to}
-                      onClick={() => setSidebarOpen(false)}
+                      onBeforeNavigate={() => setSidebarOpen(false)}
                       className={({ isActive }) => `
                         flex min-w-0 items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
                         ${isActive ? 'bg-primary-600 text-white dark:bg-primary-500 dark:text-white' : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-white/10'}
@@ -537,7 +610,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     >
                       <Icon size={18} className="flex-shrink-0" />
                       <span className="mobile-text">{label}</span>
-                    </NavLink>
+                    </AppNavLink>
                   ))}
                 </>
               )}
@@ -605,7 +678,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <span className="text-[9px] font-medium leading-tight text-center">Gestão</span>
           </button>
           {mainNavItems.map(({ to, label, icon: Icon }) => (
-            <NavLink
+            <AppNavLink
               key={to}
               to={to}
               className={({ isActive }) => `
@@ -615,7 +688,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             >
               <Icon size={18} />
               <span className="text-[9px] font-medium leading-tight text-center">{label.split(' ')[0]}</span>
-            </NavLink>
+            </AppNavLink>
           ))}
           <button
             type="button"
@@ -629,7 +702,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <span className="text-[9px] font-medium leading-tight text-center">Estudo</span>
           </button>
           {bottomNavItems.map(({ to, label, icon: Icon }) => (
-            <NavLink
+            <AppNavLink
               key={to}
               to={to}
               className={({ isActive }) => `
@@ -639,7 +712,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             >
               <Icon size={18} />
               <span className="text-[9px] font-medium leading-tight text-center">{label.split(' ')[0]}</span>
-            </NavLink>
+            </AppNavLink>
           ))}
         </nav>
       </div>
