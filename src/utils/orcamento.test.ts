@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import type { AppData, Cartao, Despesa } from '../types';
+import type { AppData, Cartao, Despesa, FaturaCartao } from '../types';
 import { obterOuCriarFatura, recalcularFatura } from './faturaCartao';
-import { calcularTotaisDespesasMes, gerarItensPagarMes, removerDespesa } from './orcamento';
+import { calcularTotaisDespesasMes, gerarItensPagarMes, removerDespesa, recalcularTodasAsFaturas } from './orcamento';
 
 // Julho/2026 = mes 6 (0-indexed), ano 2026
 const MES = 6;
@@ -143,5 +143,101 @@ describe('bug: exclusão de despesa de cartão deixa total da fatura desatualiza
     const dataAposReload = JSON.parse(JSON.stringify(dataAposExclusao)) as AppData;
     expect(totalFaturaC6(dataAposReload)).toBeCloseTo(totalFaturaAntes, 2);
     expect(dataAposReload.despesas.find(d => d.id === novaDespesa.id)).toBeUndefined();
+  });
+});
+
+describe('correção adicional: normalização centralizada de faturas antigas (recalcularTodasAsFaturas)', () => {
+  it('Teste 1 — fatura congelada antiga: corrige valorDetalhado/diferenca sem apagar valorInformado', () => {
+    const dataBase = criarAppDataBase(); // despesas atuais do C6 somam R$ 7.650,00
+    const faturaC6Original = dataBase.faturas.find(f => f.cartaoId === 'cartao-c6')!;
+
+    // Simula uma fatura que ficou "congelada" com valorDetalhado de uma despesa já excluída
+    // (o R$10 do bug relatado), como se tivesse sido salva antes da correção de removerDespesa.
+    const faturaCongelada: FaturaCartao = {
+      ...faturaC6Original,
+      valorInformado: 8000, // valor informado manualmente pelo usuário, deve ser preservado
+      valorDetalhado: 7660, // congelado/errado (despesas atuais somam 7650)
+      diferenca: 8000 - 7660, // também desatualizado
+      valorEfetivo: 8000,
+    };
+    const dataComFaturaCongelada: AppData = {
+      ...dataBase,
+      faturas: [faturaCongelada],
+    };
+
+    const dataNormalizada = recalcularTodasAsFaturas(dataComFaturaCongelada);
+    const faturaCorrigida = dataNormalizada.faturas.find(f => f.id === faturaCongelada.id)!;
+
+    expect(faturaCorrigida.valorDetalhado).toBeCloseTo(7650, 2);
+    expect(faturaCorrigida.valorInformado).toBe(8000); // preservado
+    expect(faturaCorrigida.diferenca).toBeCloseTo(8000 - 7650, 2); // recalculada com base no detalhado correto
+    expect(faturaCorrigida.valorEfetivo).toBe(8000); // valorInformado continua prevalecendo
+  });
+
+  it('Teste 2 — reload: valor errado não volta após serializar/desserializar o localStorage', () => {
+    const dataBase = criarAppDataBase();
+    const faturaC6Original = dataBase.faturas.find(f => f.cartaoId === 'cartao-c6')!;
+    const faturaCongelada: FaturaCartao = {
+      ...faturaC6Original,
+      valorDetalhado: 7660,
+      diferenca: 0,
+      valorEfetivo: 7660,
+    };
+    const dataComFaturaCongelada: AppData = { ...dataBase, faturas: [faturaCongelada] };
+
+    // Simula o que acontece ao carregar do localStorage (migrarDados/setData sempre
+    // passam os dados por recalcularTodasAsFaturas antes de expor ao app).
+    const dataSerializada = JSON.parse(JSON.stringify(dataComFaturaCongelada)) as AppData;
+    const dataAoCarregar = recalcularTodasAsFaturas(dataSerializada);
+
+    expect(dataAoCarregar.faturas.find(f => f.id === faturaCongelada.id)!.valorDetalhado).toBeCloseTo(7650, 2);
+
+    // Um segundo reload (idempotência) não deve reintroduzir o valor antigo nem recriar faturas
+    const dataSegundoReload = recalcularTodasAsFaturas(JSON.parse(JSON.stringify(dataAoCarregar)) as AppData);
+    expect(dataSegundoReload.faturas).toHaveLength(1);
+    expect(dataSegundoReload.faturas[0].valorDetalhado).toBeCloseTo(7650, 2);
+  });
+
+  it('Teste 3 — não apaga campos manuais da fatura (observações, status, valorInformado, statusPagamentos)', () => {
+    const dataBase = criarAppDataBase();
+    const faturaC6Original = dataBase.faturas.find(f => f.cartaoId === 'cartao-c6')!;
+    const faturaComDadosManuais: FaturaCartao = {
+      ...faturaC6Original,
+      valorInformado: 7700,
+      observacoes: 'Fatura conferida manualmente com o extrato do banco',
+      status: 'paga',
+      valorDetalhado: 7660, // congelado, deve ser corrigido
+    };
+    const dataComDadosManuais: AppData = {
+      ...dataBase,
+      faturas: [faturaComDadosManuais],
+      statusPagamentos: [
+        {
+          id: 'status-1',
+          itemId: faturaComDadosManuais.id,
+          tipo: 'fatura',
+          mes: MES,
+          ano: ANO,
+          pago: true,
+          dataPagamento: '2026-07-10',
+          dataCriacao: '2026-07-10',
+        },
+      ],
+    };
+
+    const dataNormalizada = recalcularTodasAsFaturas(dataComDadosManuais);
+    const faturaCorrigida = dataNormalizada.faturas.find(f => f.id === faturaComDadosManuais.id)!;
+
+    // Campos manuais preservados
+    expect(faturaCorrigida.observacoes).toBe('Fatura conferida manualmente com o extrato do banco');
+    expect(faturaCorrigida.status).toBe('paga');
+    expect(faturaCorrigida.valorInformado).toBe(7700);
+    expect(faturaCorrigida.cartaoId).toBe(faturaComDadosManuais.cartaoId);
+    expect(faturaCorrigida.competencia).toBe(faturaComDadosManuais.competencia);
+    expect(faturaCorrigida.dataCriacao).toBe(faturaComDadosManuais.dataCriacao);
+    // Status de pagamento (registro separado) não é tocado pela normalização de faturas
+    expect(dataNormalizada.statusPagamentos).toEqual(dataComDadosManuais.statusPagamentos);
+    // Só o campo calculado é corrigido
+    expect(faturaCorrigida.valorDetalhado).toBeCloseTo(7650, 2);
   });
 });

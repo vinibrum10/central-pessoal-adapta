@@ -252,12 +252,35 @@ export function calcularFaturaCartaoMes(
     .reduce((s, d) => s + d.valor, 0);
 }
 
+// Fonte única de verdade para os totais de fatura: recalcula valorDetalhado/diferenca/valorEfetivo
+// de TODAS as faturas em data.faturas a partir das despesas atuais (data.despesas), usando o
+// vínculo despesa.faturaId já mantido pelo sistema (equivalente a "despesas do mesmo cartão/mês").
+// Preserva id, cartaoId, competencia, mes, ano, valorInformado, observacoes, status e dataCriacao —
+// só os três campos calculados (+ dataAtualizacao, apenas quando algo realmente mudou) são tocados.
+// Chamar sempre que despesas ou faturas mudarem: cria/edita/exclui despesa, edita parcelas futuras,
+// informa fatura manualmente, ou ao carregar/migrar dados — nunca confiar em valorDetalhado salvo.
+export function recalcularTodasAsFaturas(data: AppData): AppData {
+  const faturas = data.faturas ?? [];
+  if (faturas.length === 0) return data;
+  let mudou = false;
+  const faturasAtualizadas = faturas.map(f => {
+    const recalculada = recalcularFatura(f, data.despesas);
+    const semAlteracao =
+      recalculada.valorDetalhado === f.valorDetalhado &&
+      recalculada.diferenca === f.diferenca &&
+      recalculada.valorEfetivo === f.valorEfetivo;
+    if (semAlteracao) return f;
+    mudou = true;
+    return recalculada;
+  });
+  return mudou ? { ...data, faturas: faturasAtualizadas } : data;
+}
+
 // Remove uma despesa e recalcula todas as faturas a partir das despesas restantes,
 // evitando que valorDetalhado/diferenca/valorEfetivo fiquem presos ao estado anterior à exclusão.
 export function removerDespesa(data: AppData, despesaId: string): AppData {
   const despesasAtualizadas = data.despesas.filter(d => d.id !== despesaId);
-  const faturasAtualizadas = (data.faturas ?? []).map(f => recalcularFatura(f, despesasAtualizadas));
-  return { ...data, despesas: despesasAtualizadas, faturas: faturasAtualizadas };
+  return recalcularTodasAsFaturas({ ...data, despesas: despesasAtualizadas });
 }
 
 export function calcularAReceberMes(mes: number, ano: number, data: AppData) {
@@ -367,10 +390,19 @@ export function ajustarFaturaCartao(
     ajusteCriadoOuAtualizado = true;
   }
 
-  const faturaAtualizada = recalcularFatura({ ...fatura, valorInformado: valorReal > 0 ? valorReal : null, observacoes: observacoes || undefined }, despesas);
-  faturasAtual = faturasAtual.map(f => f.id === faturaAtualizada.id ? faturaAtualizada : f);
+  // Grava o valor informado/observações manualmente na fatura alvo...
+  faturasAtual = faturasAtual.map(f =>
+    f.id === fatura.id
+      ? { ...f, valorInformado: valorReal > 0 ? valorReal : null, observacoes: observacoes || undefined }
+      : f
+  );
+  // ...e recalcula TODAS as faturas a partir das despesas atuais, garantindo que nenhuma
+  // (inclusive faturas de outros cartões/meses) fique com total desatualizado.
+  const dataNormalizada = recalcularTodasAsFaturas({ ...data, despesas, faturas: faturasAtual });
+  const faturaAtualizada = dataNormalizada.faturas.find(f => f.id === fatura.id)!;
+
   return {
-    data: { ...data, despesas, faturas: faturasAtual },
+    data: dataNormalizada,
     fatura: faturaAtualizada,
     diferenca,
     ajusteCriadoOuAtualizado,

@@ -4,6 +4,7 @@ import { calcularClassificacaoPrazo, processarRotinas } from '../utils';
 import { dadosDemonstracaoInicial } from '../data/dadosDemonstracao';
 import { useAuth } from '../contexts/AuthContext';
 import { loadAppData, saveAppData } from '../services/appDataRepository';
+import { recalcularTodasAsFaturas } from '../utils/orcamento';
 
 const STORAGE_KEY = 'adapta-central-pessoal-v1';
 
@@ -386,7 +387,7 @@ function migrarDados(raw: Record<string, unknown>): AppData {
   const metasRaw = Array.isArray(raw.metas) ? (raw.metas as Record<string, unknown>[]) : [];
   const tarefasRaw = Array.isArray(raw.tarefas) ? (raw.tarefas as Record<string, unknown>[]) : [];
 
-  return {
+  const dados: AppData = {
     metas: metasRaw.length > 0 ? migrarMetas(metasRaw) : base.metas,
     tarefas: tarefasRaw.length > 0 ? migrarTarefas(tarefasRaw) : base.tarefas,
     blocosTempo: Array.isArray(raw.blocosTempo) ? (raw.blocosTempo as AppData['blocosTempo']) : base.blocosTempo,
@@ -424,6 +425,11 @@ function migrarDados(raw: Record<string, unknown>): AppData {
       ? (raw.sugestoes as SugestaoCalendario[])
       : [],
   };
+
+  // Garante que nenhuma fatura antiga (de antes da correção do bug de exclusão de despesa)
+  // fique com valorDetalhado/diferenca/valorEfetivo congelado — recalcula tudo a partir
+  // das despesas atuais sempre que os dados são carregados/migrados.
+  return recalcularTodasAsFaturas(dados);
 }
 
 function migrarStoredAppData(stored: string): AppData {
@@ -590,7 +596,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const setData = useCallback((value: AppData | ((prev: AppData) => AppData)) => {
     setDataState(prev => {
-      const next = value instanceof Function ? value(prev) : value;
+      const raw = value instanceof Function ? value(prev) : value;
+      // Rede de segurança final: garante que toda gravação persista faturas já
+      // recalculadas a partir das despesas atuais, mesmo que algum ponto de mutação
+      // futuro esqueça de recalcular manualmente.
+      const next = recalcularTodasAsFaturas(raw);
       try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* ignore */ }
       return next;
     });

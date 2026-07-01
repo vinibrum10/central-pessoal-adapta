@@ -19,7 +19,6 @@ import type {
 import {
   obterCompetenciaFatura,
   obterOuCriarFatura,
-  recalcularFatura,
   calcularValorEfetivo,
 } from '../utils/faturaCartao';
 import { Card, CardHeader, CardBody } from '../components/Card';
@@ -42,6 +41,7 @@ import {
   verificarPendenciasMesAnterior,
   ajustarFaturaCartao,
   removerDespesa,
+  recalcularTodasAsFaturas,
   type ItemPagar,
 } from '../utils/orcamento';
 
@@ -378,10 +378,7 @@ export function OrcamentoPage() {
         };
         novasDespesas = [...d.despesas, novaDespesa];
       }
-      const faturasAtual = (d.faturas ?? []).map(f =>
-        f.id === fatura.id ? recalcularFatura(f, novasDespesas) : f
-      );
-      return { ...d, despesas: novasDespesas, faturas: faturasAtual };
+      return recalcularTodasAsFaturas({ ...d, despesas: novasDespesas });
     });
   }, [setData]);
 
@@ -639,9 +636,8 @@ export function OrcamentoPage() {
 
         // Recalcular todas as faturas afetadas
         const todasDespesas = [...d.despesas, ...novasDespesas];
-        faturasAtual = faturasAtual.map(f => recalcularFatura(f, todasDespesas));
 
-        return { ...d, despesas: todasDespesas, faturas: faturasAtual };
+        return recalcularTodasAsFaturas({ ...d, despesas: todasDespesas, faturas: faturasAtual });
       });
     } else if (!editandoId && formDespesaComValor.recorrente) {
       // Gera despesa do mês atual + próximos 11 meses (total 12)
@@ -684,8 +680,7 @@ export function OrcamentoPage() {
           }
         }
         const todasDespesas = [...d.despesas, ...novasDespesas];
-        faturasAtual = faturasAtual.map(f => recalcularFatura(f, todasDespesas));
-        return { ...d, despesas: todasDespesas, faturas: faturasAtual };
+        return recalcularTodasAsFaturas({ ...d, despesas: todasDespesas, faturas: faturasAtual });
       });
     } else {
       setData(d => {
@@ -704,8 +699,7 @@ export function OrcamentoPage() {
               ? { ...dep, ...formDespesaComValor, cartaoId: cartaoSelecionadoId || depAtual?.cartaoId, faturaId: faturaIdEditado, grupoParcelamentoId: depAtual?.grupoParcelamentoId, parcelaAtual: depAtual?.parcelaAtual, quantidadeParcelas: depAtual?.quantidadeParcelas }
               : dep
           );
-          const faturasRecalculadas = faturasAtual.map(f => recalcularFatura(f, despesasAtual));
-          return { ...d, despesas: despesasAtual, faturas: faturasRecalculadas };
+          return recalcularTodasAsFaturas({ ...d, despesas: despesasAtual, faturas: faturasAtual });
         }
         // Nova despesa à vista com cartão
         const cartaoId = isCartao && cartaoSelecionadoId ? cartaoSelecionadoId : undefined;
@@ -729,9 +723,8 @@ export function OrcamentoPage() {
         };
 
         const todasDespesas = [...d.despesas, novaDespesa];
-        faturasAtual = faturasAtual.map(f => recalcularFatura(f, todasDespesas));
 
-        return { ...d, despesas: todasDespesas, faturas: faturasAtual };
+        return recalcularTodasAsFaturas({ ...d, despesas: todasDespesas, faturas: faturasAtual });
       });
     }
     setModal(null);
@@ -780,12 +773,7 @@ export function OrcamentoPage() {
           essencial: formDespesa.essencial,
         };
       });
-      const faturasAtualizadas = (d.faturas ?? []).map(f => recalcularFatura(f, despesasAtualizadas));
-      return {
-        ...d,
-        despesas: despesasAtualizadas,
-        faturas: faturasAtualizadas,
-      };
+      return recalcularTodasAsFaturas({ ...d, despesas: despesasAtualizadas });
     });
     setModal(null);
     setEditandoId(null);
