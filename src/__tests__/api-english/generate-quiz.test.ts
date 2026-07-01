@@ -8,7 +8,7 @@ vi.mock('@google/genai', () => ({
   }),
 }));
 
-import handler from './generate-quiz';
+import handler from '../../../api/english/generate-quiz';
 
 interface FakeResponse {
   statusCode: number;

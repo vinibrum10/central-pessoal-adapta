@@ -8,7 +8,7 @@ vi.mock('@google/genai', () => ({
   }),
 }));
 
-import handler from './translate';
+import handler from '../../../api/english/translate';
 
 interface FakeResponse {
   statusCode: number;
