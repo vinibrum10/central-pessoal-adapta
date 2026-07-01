@@ -78,6 +78,14 @@ describe('POST /api/english/generate-shadowing-phrases', () => {
     expect(generateContentMock).not.toHaveBeenCalled();
   });
 
+  it('aceita um videoId sozinho (sem título/descrição/transcript) como contexto válido — bug de vídeo colado manualmente', async () => {
+    generateContentMock.mockResolvedValue({ text: validPhrasesJson() });
+    const res = makeRes();
+    await handler({ method: 'POST', body: { videoId: 'abc12345678' } }, res);
+    expect(res.statusCode).toBe(200);
+    expect(generateContentMock).toHaveBeenCalled();
+  });
+
   it('usa gemini-2.5-flash por padrão quando GEMINI_MODEL não está definida', async () => {
     generateContentMock.mockResolvedValue({ text: validPhrasesJson() });
     const res = makeRes();

@@ -81,6 +81,7 @@ export async function fetchVideoTranscriptBestEffort(videoId: string): Promise<s
 }
 
 async function callGenerateEndpoint(payload: {
+  videoId?: string;
   videoTitle?: string;
   videoDescription?: string;
   transcriptExcerpt?: string;
@@ -136,22 +137,46 @@ export interface ShadowingVideoContext {
   videoDescription?: string;
 }
 
+export const NO_CONTEXT_ERROR = 'Carregue um vídeo de shadowing ou informe um tema para gerar frases.';
+
 /**
  * Ação explícita "Gerar frases com IA" — usada quando o usuário clica no
- * botão. Propaga o erro real em caso de falha (não substitui por fallback
- * silenciosamente): o usuário pediu IA de forma explícita e precisa saber
- * se ela não respondeu.
+ * botão. Aceita duas origens: o vídeo de shadowing atualmente carregado
+ * (por `videoId`, mesmo sem título/descrição — ex.: link colado manualmente)
+ * ou um tema digitado à mão. O tema, quando preenchido, tem prioridade sobre
+ * o vídeo carregado. Propaga o erro real em caso de falha (não substitui por
+ * fallback silenciosamente): o usuário pediu IA de forma explícita e precisa
+ * saber se ela não respondeu.
  */
 export async function generateAiShadowingPhrases(
   context: ShadowingVideoContext & { theme?: string; count?: number },
 ): Promise<ShadowingPhrase[]> {
+  const theme = context.theme?.trim();
+  const hasVideo = Boolean(context.videoId);
+
+  if (!theme && !hasVideo) {
+    throw new Error(NO_CONTEXT_ERROR);
+  }
+
+  // Tema manual tem prioridade explícita sobre o vídeo carregado.
+  const useTheme = Boolean(theme);
+
+  let transcriptExcerpt: string | undefined;
+  if (!useTheme && context.videoId) {
+    transcriptExcerpt = (await fetchVideoTranscriptBestEffort(context.videoId)) ?? undefined;
+  }
+
   const result = await callGenerateEndpoint({
-    videoTitle: context.videoTitle,
-    videoDescription: context.videoDescription,
-    theme: context.theme,
+    videoId: useTheme ? undefined : context.videoId,
+    videoTitle: useTheme ? undefined : context.videoTitle,
+    videoDescription: useTheme ? undefined : context.videoDescription,
+    transcriptExcerpt: useTheme ? undefined : transcriptExcerpt,
+    theme: useTheme ? theme : undefined,
     count: context.count ?? 5,
   });
-  return toShadowingPhrases(result.phrases, 'aiGenerated', context.videoId, context.videoTitle);
+
+  const sourceTag: ShadowingPhraseSource = useTheme ? 'aiGeneratedFromTheme' : 'aiGeneratedFromVideo';
+  return toShadowingPhrases(result.phrases, sourceTag, context.videoId, context.videoTitle);
 }
 
 /**
@@ -169,6 +194,7 @@ export async function generateShadowingPhrasesForVideo(
 
   try {
     const result = await callGenerateEndpoint({
+      videoId: context.videoId,
       videoTitle: context.videoTitle,
       videoDescription: context.videoDescription,
       transcriptExcerpt: transcriptExcerpt ?? undefined,

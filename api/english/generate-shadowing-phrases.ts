@@ -169,13 +169,17 @@ export default async function handler(req: ServerRequest, res: ServerResponse) {
     return;
   }
 
+  const videoId = trimString(body.videoId, 20);
   const videoTitle = trimString(body.videoTitle, 240);
   const transcriptExcerpt = trimString(body.transcriptExcerpt, MAX_TEXT_LENGTH);
   const videoDescription = trimString(body.videoDescription, MAX_TEXT_LENGTH);
   const theme = trimString(body.theme, MAX_THEME_LENGTH);
   const count = clampCount(body.count);
 
-  if (!videoTitle && !theme && !transcriptExcerpt && !videoDescription) {
+  // Um vídeo carregado conta como contexto válido mesmo sem título/descrição
+  // (ex.: link colado manualmente, sem metadados da YouTube API) — só recusamos
+  // quando não há vídeo E não há tema nenhum.
+  if (!videoTitle && !theme && !transcriptExcerpt && !videoDescription && !videoId) {
     json(res, 400, { success: false, error: 'Informe ao menos um vídeo ou um tema para gerar as frases.' });
     return;
   }

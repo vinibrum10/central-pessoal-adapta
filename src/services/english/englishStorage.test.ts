@@ -5,10 +5,12 @@ import {
   getDueTodayCards,
   getFutureCards,
   getMasteredCards,
+  getShadowingSourceKey,
   getTodayISO,
   incrementPhraseRepetition,
   loadEnglishData,
   markPhraseCompleted,
+  mergeShadowingPhrasesWithoutDuplicates,
   resetPhraseRepetition,
   saveEnglishData,
   type ShadowingPhrase,
@@ -275,5 +277,72 @@ describe('origem das frases de shadowing salvas como card', () => {
     expect(card.translation).toBe(aiPhrase.translation);
     expect(card.videoId).toBe('abc123');
     expect(card.status).toBe('learning');
+  });
+});
+
+describe('mergeShadowingPhrasesWithoutDuplicates (frases geradas com IA não apagam nem duplicam as existentes)', () => {
+  it('anexa frases novas ao final, preservando as existentes', () => {
+    const existing = [makePhrase({ id: 'p1', text: 'Could you say that again?' })];
+    const incoming = [makePhrase({ id: 'p2', text: 'I really appreciate your help.' })];
+    const merged = mergeShadowingPhrasesWithoutDuplicates(existing, incoming);
+    expect(merged.map(p => p.id)).toEqual(['p1', 'p2']);
+  });
+
+  it('ignora frases com texto idêntico (case/espaços insensível) e mantém a existente', () => {
+    const existing = [makePhrase({ id: 'p1', text: 'Could you say that again?' })];
+    const incoming = [
+      makePhrase({ id: 'p2', text: '  could YOU say that again?  ' }), // duplicata do p1
+      makePhrase({ id: 'p3', text: 'A brand new phrase.' }),
+    ];
+    const merged = mergeShadowingPhrasesWithoutDuplicates(existing, incoming);
+    expect(merged).toHaveLength(2);
+    expect(merged.map(p => p.id)).toEqual(['p1', 'p3']);
+  });
+
+  it('gerar frases duas vezes com o mesmo conteúdo não duplica nada na segunda vez', () => {
+    const firstBatch = [makePhrase({ id: 'p1', text: 'Could you say that again?' })];
+    const secondBatch = [makePhrase({ id: 'p2', text: 'Could you say that again?' })];
+    let phrases = mergeShadowingPhrasesWithoutDuplicates([], firstBatch);
+    phrases = mergeShadowingPhrasesWithoutDuplicates(phrases, secondBatch);
+    expect(phrases).toHaveLength(1);
+    expect(phrases[0].id).toBe('p1');
+  });
+});
+
+describe('persistência das frases de shadowing geradas com IA', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('frases geradas com IA sobrevivem a um reload (localStorage)', () => {
+    const initial = loadEnglishData();
+    const generated = makePhrase({
+      id: 'ai-1',
+      text: 'Could you say that again?',
+      translation: 'Você pode repetir isso?',
+      source: 'aiGeneratedFromVideo',
+      videoId: 'abc12345678',
+      videoTitle: 'Daily routines',
+    });
+
+    const sourceKey = getShadowingSourceKey(initial.shadowingPractice);
+    const nextSentences = mergeShadowingPhrasesWithoutDuplicates(initial.shadowingPractice.sentences, [generated]);
+    saveEnglishData({
+      ...initial,
+      shadowingPractice: { ...initial.shadowingPractice, sentences: nextSentences },
+      shadowingSentenceSets: { ...initial.shadowingSentenceSets, [sourceKey]: nextSentences },
+      shadowingPhraseSets: {
+        ...initial.shadowingPhraseSets,
+        [sourceKey]: { ...initial.shadowingPhraseSets[sourceKey], phrases: nextSentences },
+      },
+    });
+
+    const reloaded = loadEnglishData();
+    const found = reloaded.shadowingPractice.sentences.find(p => p.id === 'ai-1');
+    expect(found).toBeTruthy();
+    expect(found?.source).toBe('aiGeneratedFromVideo');
+    expect(found?.videoId).toBe('abc12345678');
+    expect(found?.repetitionsDone).toBe(0);
+    expect(found?.repetitionsTarget).toBe(5);
   });
 });

@@ -64,7 +64,16 @@ export interface VideoQuiz {
 // ============================================================
 // SHADOWING — frases vêm do vídeo (transcript/descrição), de IA ou manuais.
 // ============================================================
-export type ShadowingPhraseSource = 'videoTranscript' | 'videoMetadata' | 'aiGenerated' | 'manual' | 'fallback';
+export type ShadowingPhraseSource =
+  | 'videoTranscript'
+  | 'videoMetadata'
+  | 'aiGenerated'
+  /** Geradas pelo botão "Gerar frases com IA" usando o vídeo atualmente carregado. */
+  | 'aiGeneratedFromVideo'
+  /** Geradas pelo botão "Gerar frases com IA" usando um tema digitado manualmente. */
+  | 'aiGeneratedFromTheme'
+  | 'manual'
+  | 'fallback';
 
 export interface ShadowingPhrase {
   id: string;
@@ -85,6 +94,8 @@ export interface ShadowingPractice {
   youtubeVideoId?: string;
   playlistId?: string;
   title?: string;
+  /** Descrição real do vídeo (via YouTube Data API), quando disponível — usada como contexto para gerar frases com IA. */
+  description?: string;
   watchUrl: string;
   embedUrl: string;
   source: 'default_playlist' | 'manual_link' | 'youtube_api';
@@ -236,6 +247,27 @@ export function createCardFromShadowingPhrase(phrase: ShadowingPhrase, id: strin
     difficultCount: 0,
     status: 'learning',
   };
+}
+
+function normalizePhraseText(text: string): string {
+  return text.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * Anexa `incoming` a `existing` sem apagar nada e sem duplicar frases
+ * idênticas (mesmo texto, ignorando maiúsculas/espaços). Em caso de
+ * duplicata, a frase já existente é mantida — a nova é descartada.
+ */
+export function mergeShadowingPhrasesWithoutDuplicates(existing: ShadowingPhrase[], incoming: ShadowingPhrase[]): ShadowingPhrase[] {
+  const existingTexts = new Set(existing.map(p => normalizePhraseText(p.text)));
+  const deduped: ShadowingPhrase[] = [];
+  for (const phrase of incoming) {
+    const normalized = normalizePhraseText(phrase.text);
+    if (existingTexts.has(normalized)) continue;
+    existingTexts.add(normalized);
+    deduped.push(phrase);
+  }
+  return [...existing, ...deduped];
 }
 
 /** Migra frases de shadowing de formatos antigos (repetitions/targetRepetitions, sem `source`/`completed`) sem perder nada. */

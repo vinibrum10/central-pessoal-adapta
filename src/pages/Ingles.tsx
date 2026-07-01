@@ -19,6 +19,7 @@ import {
   resetPhraseRepetition,
   markPhraseCompleted,
   createCardFromShadowingPhrase,
+  mergeShadowingPhrasesWithoutDuplicates,
   loadEnglishData,
   saveEnglishData,
   getTodayISO,
@@ -84,6 +85,8 @@ const PHRASE_SOURCE_LABEL: Record<ShadowingPhraseSource, string> = {
   videoTranscript: 'Vídeo (transcrição)',
   videoMetadata: 'Vídeo (descrição)',
   aiGenerated: 'IA',
+  aiGeneratedFromVideo: 'IA (vídeo atual)',
+  aiGeneratedFromTheme: 'IA (tema)',
   manual: 'Manual',
   fallback: 'Padrão',
 };
@@ -569,6 +572,7 @@ export function InglesPage() {
         type: 'video' as const,
         youtubeVideoId: video.youtubeVideoId,
         title: video.title,
+        description: video.description,
         watchUrl: video.watchUrl,
         embedUrl: video.embedUrl,
         source: 'youtube_api' as const,
@@ -657,10 +661,12 @@ export function InglesPage() {
       const newPhrases = await generateAiShadowingPhrases({
         videoId: practice.youtubeVideoId,
         videoTitle: practice.title,
+        videoDescription: practice.description,
         theme: shadowingThemeInput.trim() || undefined,
         count: 5,
       });
-      updateShadowingSentences(sentences => [...sentences, ...newPhrases]);
+      // Anexa ao final sem apagar as frases existentes, ignorando duplicatas exatas.
+      updateShadowingSentences(sentences => mergeShadowingPhrasesWithoutDuplicates(sentences, newPhrases));
     } catch (err) {
       console.error('[Inglês Diário] Falha ao gerar frases de shadowing com IA', err);
       setShadowingAiGenError(err instanceof Error ? err.message : 'Não foi possível gerar frases com IA agora.');
@@ -824,6 +830,8 @@ export function InglesPage() {
   const shadowingSentences = shadowingPractice.sentences;
   const allShadowingPhrasesCompleted = shadowingSentences.length > 0 && shadowingSentences.every(s => s.completed);
   const shadowingRepetitionsCompletedTotal = shadowingSentences.reduce((sum, s) => sum + s.repetitionsDone, 0);
+  // Um vídeo "carregado" conta mesmo sem título (ex.: link colado manualmente) — o que importa é ter um ID.
+  const hasShadowingVideoContext = Boolean(shadowingPractice.youtubeVideoId) || Boolean(shadowingPractice.title);
 
   function renderVocabularyCardRow(card: VocabularyCard, options: { showNextReview?: boolean; showMasteredAt?: boolean } = {}) {
     return (
@@ -1306,11 +1314,16 @@ export function InglesPage() {
             <p className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
               Gerar frases aleatórias com IA
             </p>
+            <p className="text-xs text-surface-500 dark:text-surface-400">
+              {hasShadowingVideoContext
+                ? `Gerar com base no vídeo atual${shadowingPractice.title ? ` ("${shadowingPractice.title}")` : ''}. Ou informe um tema abaixo para gerar frases sobre outro assunto — o tema, se preenchido, tem prioridade sobre o vídeo.`
+                : 'Nenhum vídeo de shadowing carregado. Informe um tema abaixo para gerar frases.'}
+            </p>
             <div className="flex flex-col gap-2 sm:flex-row">
               <input
                 value={shadowingThemeInput}
                 onChange={e => setShadowingThemeInput(e.target.value)}
-                placeholder={shadowingPractice.title ? `Tema (padrão: "${shadowingPractice.title}")` : 'Tema (ex.: viagens, trabalho, comida)'}
+                placeholder={hasShadowingVideoContext ? 'Tema opcional (tem prioridade sobre o vídeo)' : 'Tema (ex.: viagens, trabalho, comida)'}
                 className="min-w-0 flex-1 rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
               />
               <Button size="sm" icon={<Sparkles size={14} />} loading={shadowingAiGenLoading} onClick={handleGenerateShadowingPhrasesWithAi}>
