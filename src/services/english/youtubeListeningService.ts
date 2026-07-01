@@ -2,12 +2,27 @@
 // backend/serverless para proteger a quota da API Key e aplicar cache.
 
 import type { ListeningVideo } from './englishStorage';
+import { getRecentlyUsedVideoIds, pickLeastRecentlyUsed, type VideoHistoryPurpose } from './videoHistoryService';
 
-const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY as string | undefined;
+// Lida sob demanda (não capturada num const no topo do módulo) para que
+// testes possam stubar import.meta.env.VITE_YOUTUBE_API_KEY dinamicamente.
+function getYouTubeApiKey(): string | undefined {
+  return import.meta.env.VITE_YOUTUBE_API_KEY as string | undefined;
+}
+
 const SEARCH_API = 'https://www.googleapis.com/youtube/v3/search';
 const VIDEOS_API = 'https://www.googleapis.com/youtube/v3/videos';
-const MAX_DURATION_SECONDS = 600;
+
+// Limite da busca automática via API para Listening — vídeos acima disso são
+// rejeitados na busca (nunca chegam a ser oferecidos ao usuário).
+export const MAX_LISTENING_SEARCH_DURATION_SECONDS = 1800;
+// Limite da busca automática via API para Shadowing.
 const MAX_SHADOWING_DURATION_SECONDS = 900;
+// Vídeos colados manualmente (link do usuário) NUNCA são bloqueados por
+// duração — este valor só decide quando mostrar um aviso amigável e não
+// bloqueante na tela (ver src/pages/Ingles.tsx).
+export const MANUAL_VIDEO_LONG_WARNING_SECONDS = 1800;
+
 const QUOTA_ERROR_MESSAGE = 'Limite diário da YouTube API atingido. Use um link manual de vídeo ou tente novamente amanhã.';
 
 export type ListeningLevel = 'basic' | 'intermediate' | 'advanced' | 'fluent';
@@ -50,7 +65,7 @@ const SHADOWING_SOURCES: PrioritizedSource[] = [
 ];
 
 export function isYouTubeConfigured(): boolean {
-  return Boolean(YOUTUBE_API_KEY?.trim());
+  return Boolean(getYouTubeApiKey()?.trim());
 }
 
 export function extractYouTubeVideoId(input: string): string | null {
@@ -118,7 +133,7 @@ async function fetchCandidateIds(query: string, excludeVideoId?: string): Promis
     safeSearch: 'strict',
     videoEmbeddable: 'true',
     videoSyndicated: 'true',
-    key: YOUTUBE_API_KEY!,
+    key: getYouTubeApiKey()!,
   });
 
   const searchRes = await fetch(`${SEARCH_API}?${searchParams}`);
@@ -145,7 +160,7 @@ async function fetchVideoDetails(ids: string[]) {
   const detailsParams = new URLSearchParams({
     part: 'contentDetails,snippet,status,statistics',
     id: ids.join(','),
-    key: YOUTUBE_API_KEY!,
+    key: getYouTubeApiKey()!,
   });
 
   const detailsRes = await fetch(`${VIDEOS_API}?${detailsParams}`);
@@ -229,8 +244,15 @@ async function searchPrioritizedVideo(
   sources: PrioritizedSource[],
   levelQueries: Record<ListeningLevel, string>,
   maxDurationSeconds: number,
+  purpose: VideoHistoryPurpose,
 ): Promise<ListeningVideo | null> {
   if (!isYouTubeConfigured()) return null;
+
+  // Evita repetir vídeos usados nos últimos 30 dias. Se todo vídeo válido
+  // encontrado já tiver sido usado recentemente, cai no fallback: reutiliza
+  // o menos usado recentemente em vez de não entregar nada.
+  const recentlyUsed = getRecentlyUsedVideoIds(purpose);
+  const recentButValidCandidates: ListeningVideo[] = [];
 
   for (const source of sources) {
     const query = `${source.queryBoost ?? source.label} ${levelQueries[level]}`;
@@ -240,11 +262,13 @@ async function searchPrioritizedVideo(
     const details = await fetchVideoDetails(ids);
     for (const item of details) {
       const video = buildValidVideo(item, level, maxDurationSeconds, source);
-      if (video) return video;
+      if (!video) continue;
+      if (!recentlyUsed.has(video.youtubeVideoId)) return video;
+      recentButValidCandidates.push(video);
     }
   }
 
-  return null;
+  return pickLeastRecentlyUsed(recentButValidCandidates, purpose);
 }
 
 export async function searchListeningVideo(
@@ -252,7 +276,7 @@ export async function searchListeningVideo(
   excludeVideoId?: string,
   queryIndex = 0,
 ): Promise<ListeningVideo | null> {
-  return searchPrioritizedVideo(level, excludeVideoId, queryIndex, LISTENING_SOURCES, LISTENING_LEVEL_QUERIES, MAX_DURATION_SECONDS);
+  return searchPrioritizedVideo(level, excludeVideoId, queryIndex, LISTENING_SOURCES, LISTENING_LEVEL_QUERIES, MAX_LISTENING_SEARCH_DURATION_SECONDS, 'listening');
 }
 
 export async function searchShadowingVideo(
@@ -260,5 +284,5 @@ export async function searchShadowingVideo(
   excludeVideoId?: string,
   queryIndex = 0,
 ): Promise<ListeningVideo | null> {
-  return searchPrioritizedVideo(level, excludeVideoId, queryIndex, SHADOWING_SOURCES, SHADOWING_LEVEL_QUERIES, MAX_SHADOWING_DURATION_SECONDS);
+  return searchPrioritizedVideo(level, excludeVideoId, queryIndex, SHADOWING_SOURCES, SHADOWING_LEVEL_QUERIES, MAX_SHADOWING_DURATION_SECONDS, 'shadowing');
 }

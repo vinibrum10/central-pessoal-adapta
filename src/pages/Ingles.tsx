@@ -21,10 +21,16 @@ import {
   searchShadowingVideo,
   extractYouTubeVideoId,
   buildManualListeningVideo,
+  MANUAL_VIDEO_LONG_WARNING_SECONDS,
   type ListeningLevel,
 } from '../services/english/youtubeListeningService';
 import { generateAiQuiz, generateFallbackQuiz } from '../services/english/videoQuizService';
 import { parseShadowingLink, buildShadowingFromLink } from '../services/english/shadowingService';
+import {
+  recordVideoUsage,
+  updateVideoHistoryDuration,
+  type VideoHistorySource,
+} from '../services/english/videoHistoryService';
 import { translateWithAi, type AiTranslateResult, type TranslateFocus } from '../services/english/aiTranslationService';
 import { calculateNextCardReview, type ReviewGrade } from '../services/english/spacedRepetition';
 
@@ -85,6 +91,12 @@ function formatReviewDate(value: string): string {
   return new Date(`${value}T00:00:00`).toLocaleDateString('pt-BR');
 }
 
+function formatHistoryNotice(previousLastUsedAt: string | undefined): string {
+  if (!previousLastUsedAt) return 'Você já usou este vídeo antes.';
+  const date = new Date(previousLastUsedAt).toLocaleDateString('pt-BR');
+  return `Você já usou este vídeo antes em ${date}.`;
+}
+
 function withYouTubePlayerApi(url: string): string {
   const [base, query = ''] = url.split('?');
   const params = new URLSearchParams(query);
@@ -128,6 +140,7 @@ export function InglesPage() {
   const [manualDurationStatus, setManualDurationStatus] = useState<'idle' | 'detecting' | 'detected' | 'failed'>('idle');
   const listeningIframeRef = useRef<HTMLIFrameElement | null>(null);
   const detectedDurationRef = useRef<string | null>(null);
+  const [listeningHistoryNotice, setListeningHistoryNotice] = useState<string | null>(null);
 
   // ETAPA 2 — Questionário
   const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
@@ -148,6 +161,7 @@ export function InglesPage() {
   const [editingSentenceTranslation, setEditingSentenceTranslation] = useState('');
   const [translatingShadowingSentence, setTranslatingShadowingSentence] = useState(false);
   const [shadowingAiError, setShadowingAiError] = useState('');
+  const [shadowingHistoryNotice, setShadowingHistoryNotice] = useState<string | null>(null);
 
   // ETAPA 4 — Cards
   const [cardWord, setCardWord] = useState('');
@@ -223,6 +237,7 @@ export function InglesPage() {
           },
         };
       });
+      updateVideoHistoryDuration(video.youtubeVideoId, 'listening', duration);
       return true;
     };
 
@@ -276,6 +291,19 @@ export function InglesPage() {
     setQueryIndex(0);
   }
 
+  function recordListeningVideoUsage(video: ListeningVideo, source: VideoHistorySource) {
+    const result = recordVideoUsage({
+      videoId: video.youtubeVideoId,
+      url: video.watchUrl,
+      title: video.title,
+      channelTitle: video.channelTitle,
+      durationSeconds: video.durationSeconds,
+      source,
+      purpose: 'listening',
+    });
+    setListeningHistoryNotice(result.alreadyUsedBefore ? formatHistoryNotice(result.previousLastUsedAt) : null);
+  }
+
   async function handleSearchVideo() {
     setLoadingVideo(true);
     setVideoError('');
@@ -306,6 +334,7 @@ export function InglesPage() {
         setData(prev => ({ ...prev, listeningVideo: video!, videoQuiz: null }));
         setManualListeningLink('');
         setManualLinkError('');
+        recordListeningVideoUsage(video, 'youtubeApiSearch');
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao buscar vídeo no YouTube.';
@@ -328,6 +357,7 @@ export function InglesPage() {
     setManualListeningLink('');
     setManualLinkError('');
     setVideoError('');
+    recordListeningVideoUsage(video, 'manualLink');
   }
 
   function handleListeningMetaChange(field: 'title' | 'channelTitle' | 'durationSeconds', value: string) {
@@ -483,6 +513,22 @@ export function InglesPage() {
     }));
   }
 
+  function recordShadowingVideoUsage(
+    video: { videoId: string; url: string; title?: string; channelTitle?: string; durationSeconds?: number },
+    source: VideoHistorySource,
+  ) {
+    const result = recordVideoUsage({
+      videoId: video.videoId,
+      url: video.url,
+      title: video.title ?? '',
+      channelTitle: video.channelTitle ?? '',
+      durationSeconds: video.durationSeconds ?? 0,
+      source,
+      purpose: 'shadowing',
+    });
+    setShadowingHistoryNotice(result.alreadyUsedBefore ? formatHistoryNotice(result.previousLastUsedAt) : null);
+  }
+
   function handleLoadShadowingLink() {
     const parsed = parseShadowingLink(shadowingLinkInput);
     if (!parsed) {
@@ -495,6 +541,11 @@ export function InglesPage() {
     const newPractice = buildShadowingFromLink(parsed, selectedSentences);
     persistShadowingPractice(newPractice, selectedSentences);
     setShadowingLinkInput('');
+    if (parsed.type === 'video') {
+      recordShadowingVideoUsage({ videoId: parsed.videoId, url: newPractice.watchUrl }, 'manualLink');
+    } else {
+      setShadowingHistoryNotice(null);
+    }
   }
 
   function handleShadowingLevelChange(level: ListeningLevel) {
@@ -542,6 +593,10 @@ export function InglesPage() {
       };
       const selectedSentences = chooseSentencesForShadowingSource(getShadowingSourceKey(practice));
       persistShadowingPractice(practice, selectedSentences);
+      recordShadowingVideoUsage(
+        { videoId: video.youtubeVideoId, url: video.watchUrl, title: video.title, channelTitle: video.channelTitle, durationSeconds: video.durationSeconds },
+        'youtubeApiSearch',
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao buscar vídeo de shadowing no YouTube.';
       setShadowingLinkError(msg);
@@ -554,6 +609,7 @@ export function InglesPage() {
     persistShadowingPractice({ ...DEFAULT_SHADOWING, sentences: dataRef.current.shadowingPractice.sentences }, dataRef.current.shadowingPractice.sentences);
     setShadowingLinkInput('');
     setShadowingLinkError('');
+    setShadowingHistoryNotice(null);
   }
 
   function handleRestoreDefaultShadowingSentences() {
@@ -860,7 +916,7 @@ export function InglesPage() {
       <Card>
         <CardHeader
           title="1. Listening"
-          subtitle="Vídeo curto em inglês americano — até 10 minutos."
+          subtitle="Vídeo em inglês americano — link manual sem limite; busca automática até 30 min."
           icon={<Video size={18} />}
           action={
             listeningVideo ? (
@@ -907,6 +963,12 @@ export function InglesPage() {
           {videoError && (
             <div className="rounded-lg border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700 dark:border-danger-900/40 dark:bg-danger-900/20 dark:text-danger-300">
               {videoError}
+            </div>
+          )}
+
+          {listeningHistoryNotice && (
+            <div className="rounded-lg border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-600 dark:border-surface-700 dark:bg-surface-800/60 dark:text-surface-300">
+              {listeningHistoryNotice}
             </div>
           )}
 
@@ -959,8 +1021,8 @@ export function InglesPage() {
               <div>
                 {listeningVideo.source === 'manual_link' ? (
                   <div className="space-y-3">
-                    <div className="rounded-lg border border-warning-200 bg-warning-50/60 px-4 py-3 text-sm text-warning-700 dark:border-warning-900/40 dark:bg-warning-900/10 dark:text-warning-300">
-                      Vídeo carregado manualmente. Confirme se ele tem até 10 minutos.
+                    <div className="rounded-lg border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-600 dark:border-surface-700 dark:bg-surface-800/60 dark:text-surface-300">
+                      Vídeo carregado manualmente.
                     </div>
                     {manualDurationStatus === 'detected' && (
                       <div className="rounded-lg border border-success-200 bg-success-50/60 px-4 py-3 text-sm text-success-700 dark:border-success-900/40 dark:bg-success-900/10 dark:text-success-300">
@@ -972,9 +1034,9 @@ export function InglesPage() {
                         Não foi possível detectar a duração. Preencha manualmente.
                       </div>
                     )}
-                    {listeningVideo.durationSeconds > 600 && (
-                      <div className="rounded-lg border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700 dark:border-danger-900/40 dark:bg-danger-900/20 dark:text-danger-300">
-                        Este vídeo tem mais de 10 minutos. Escolha um vídeo mais curto para Listening.
+                    {listeningVideo.durationSeconds > MANUAL_VIDEO_LONG_WARNING_SECONDS && (
+                      <div className="rounded-lg border border-warning-200 bg-warning-50/60 px-4 py-3 text-sm text-warning-700 dark:border-warning-900/40 dark:bg-warning-900/10 dark:text-warning-300">
+                        Este vídeo tem mais de 30 minutos. Para estudo diário, talvez seja melhor estudar por trechos.
                       </div>
                     )}
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -1013,8 +1075,10 @@ export function InglesPage() {
                   {listeningVideo.qualityScore !== undefined && (
                     <Badge variant="default">{`Qualidade: ${listeningVideo.qualityScore}/100`}</Badge>
                   )}
-                  {listeningVideo.source === 'manual_link' && (
+                  {listeningVideo.source === 'manual_link' ? (
                     <Badge variant="warning">Link manual</Badge>
+                  ) : (
+                    <Badge variant="default">Busca automática</Badge>
                   )}
                 </div>
                 <p className="mt-1 text-sm text-surface-500 dark:text-surface-400">{listeningVideo.channelTitle}</p>
@@ -1223,6 +1287,10 @@ export function InglesPage() {
 
           {shadowingLinkError && (
             <p className="text-sm text-danger-600 dark:text-danger-400">{shadowingLinkError}</p>
+          )}
+
+          {shadowingHistoryNotice && (
+            <p className="text-sm text-surface-500 dark:text-surface-400">{shadowingHistoryNotice}</p>
           )}
 
           {shadowingPractice.source === 'default_playlist' ? (
