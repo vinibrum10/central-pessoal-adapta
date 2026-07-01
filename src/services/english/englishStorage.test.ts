@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createCardFromShadowingPhrase,
+  deriveCurrentShadowingVideo,
   getCardHistory,
   getDueTodayCards,
   getFutureCards,
@@ -14,8 +15,20 @@ import {
   resetPhraseRepetition,
   saveEnglishData,
   type ShadowingPhrase,
+  type ShadowingPractice,
   type VocabularyCard,
 } from './englishStorage';
+
+function makePractice(overrides: Partial<ShadowingPractice> = {}): ShadowingPractice {
+  return {
+    type: 'playlist',
+    watchUrl: 'https://youtube.com/playlist?list=PLxxx',
+    embedUrl: 'https://www.youtube.com/embed/videoseries?list=PLxxx',
+    source: 'default_playlist',
+    sentences: [],
+    ...overrides,
+  };
+}
 
 function makePhrase(overrides: Partial<ShadowingPhrase> = {}): ShadowingPhrase {
   return {
@@ -344,5 +357,88 @@ describe('persistência das frases de shadowing geradas com IA', () => {
     expect(found?.videoId).toBe('abc12345678');
     expect(found?.repetitionsDone).toBe(0);
     expect(found?.repetitionsTarget).toBe(5);
+  });
+});
+
+describe('deriveCurrentShadowingVideo (estado único do vídeo atual do shadowing)', () => {
+  it('link manual: videoId e videoUrl ficam preenchidos assim que o vídeo é carregado', () => {
+    const practice = makePractice({
+      type: 'video',
+      youtubeVideoId: 'abc12345678',
+      watchUrl: 'https://www.youtube.com/watch?v=abc12345678',
+      embedUrl: 'https://www.youtube.com/embed/abc12345678',
+      source: 'manual_link',
+      // Link colado manualmente não tem título/descrição — mesmo assim deve reconhecer o vídeo.
+    });
+
+    const current = deriveCurrentShadowingVideo(practice);
+    expect(current).not.toBeNull();
+    expect(current?.videoId).toBe('abc12345678');
+    expect(current?.videoUrl).toBe('https://www.youtube.com/watch?v=abc12345678');
+    expect(current?.loadedFrom).toBe('manualLink');
+  });
+
+  it('busca de vídeo: reconhece o vídeo encontrado pela YouTube API, com título e descrição', () => {
+    const practice = makePractice({
+      type: 'video',
+      youtubeVideoId: 'xyz98765432',
+      title: 'Daily routines in American English',
+      description: 'A video about daily routines.',
+      watchUrl: 'https://www.youtube.com/watch?v=xyz98765432',
+      embedUrl: 'https://www.youtube.com/embed/xyz98765432',
+      source: 'youtube_api',
+    });
+
+    const current = deriveCurrentShadowingVideo(practice);
+    expect(current?.videoId).toBe('xyz98765432');
+    expect(current?.title).toBe('Daily routines in American English');
+    expect(current?.description).toBe('A video about daily routines.');
+    expect(current?.loadedFrom).toBe('search');
+    expect(current?.thumbnailUrl).toContain('xyz98765432');
+  });
+
+  it('trocar para um vídeo novo (nova busca) atualiza o mesmo estado derivado — não fica preso ao vídeo antigo', () => {
+    const first = deriveCurrentShadowingVideo(makePractice({ type: 'video', youtubeVideoId: 'first111111', watchUrl: 'https://www.youtube.com/watch?v=first111111', embedUrl: '', source: 'youtube_api' }));
+    const second = deriveCurrentShadowingVideo(makePractice({ type: 'video', youtubeVideoId: 'second22222', watchUrl: 'https://www.youtube.com/watch?v=second22222', embedUrl: '', source: 'youtube_api' }));
+    expect(first?.videoId).toBe('first111111');
+    expect(second?.videoId).toBe('second22222');
+  });
+
+  it('retorna null quando a prática atual é uma playlist (sem um único vídeo)', () => {
+    const current = deriveCurrentShadowingVideo(makePractice({ type: 'playlist', playlistId: 'PLxxx' }));
+    expect(current).toBeNull();
+  });
+
+  it('retorna null no estado inicial (nada carregado ainda)', () => {
+    const current = deriveCurrentShadowingVideo(makePractice());
+    expect(current).toBeNull();
+  });
+});
+
+describe('persistência de frases com theme/videoUrl (novos campos)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('frase gerada por tema manual preserva o campo `theme` após reload', () => {
+    const initial = loadEnglishData();
+    const generated = makePhrase({
+      id: 'theme-1',
+      source: 'aiGeneratedFromTheme',
+      theme: 'job interview',
+      videoId: undefined,
+    });
+    const sourceKey = getShadowingSourceKey(initial.shadowingPractice);
+    saveEnglishData({
+      ...initial,
+      shadowingPractice: { ...initial.shadowingPractice, sentences: [generated] },
+      shadowingSentenceSets: { ...initial.shadowingSentenceSets, [sourceKey]: [generated] },
+      shadowingPhraseSets: { ...initial.shadowingPhraseSets, [sourceKey]: { ...initial.shadowingPhraseSets[sourceKey], phrases: [generated] } },
+    });
+
+    const reloaded = loadEnglishData();
+    const found = reloaded.shadowingPractice.sentences.find(p => p.id === 'theme-1');
+    expect(found?.theme).toBe('job interview');
+    expect(found?.source).toBe('aiGeneratedFromTheme');
   });
 });

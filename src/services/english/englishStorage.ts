@@ -81,7 +81,10 @@ export interface ShadowingPhrase {
   translation: string;
   source: ShadowingPhraseSource;
   videoId?: string;
+  videoUrl?: string;
   videoTitle?: string;
+  /** Tema usado para gerar a frase, quando a origem foi um tema manual (não um vídeo). */
+  theme?: string;
   repetitionsDone: number;
   repetitionsTarget: number;
   completed: boolean;
@@ -100,6 +103,38 @@ export interface ShadowingPractice {
   embedUrl: string;
   source: 'default_playlist' | 'manual_link' | 'youtube_api';
   sentences: ShadowingPhrase[];
+  /** Quando este vídeo/playlist foi carregado — usado só para exibição, não afeta persistência de cards. */
+  loadedAt?: string;
+}
+
+/**
+ * Estado único do vídeo de shadowing atualmente carregado, derivado sempre a
+ * partir de `ShadowingPractice` (nunca guardado separadamente) — isso
+ * garante que o player e o gerador de frases NUNCA fiquem dessincronizados.
+ * É `null` quando a prática atual é uma playlist (sem um único vídeo) ou
+ * quando nada foi carregado ainda.
+ */
+export interface CurrentShadowingVideo {
+  videoId: string;
+  videoUrl: string;
+  title?: string;
+  description?: string;
+  thumbnailUrl: string;
+  loadedFrom: 'manualLink' | 'search';
+  loadedAt?: string;
+}
+
+export function deriveCurrentShadowingVideo(practice: ShadowingPractice): CurrentShadowingVideo | null {
+  if (practice.type !== 'video' || !practice.youtubeVideoId) return null;
+  return {
+    videoId: practice.youtubeVideoId,
+    videoUrl: practice.watchUrl,
+    title: practice.title,
+    description: practice.description,
+    thumbnailUrl: `https://i.ytimg.com/vi/${practice.youtubeVideoId}/hqdefault.jpg`,
+    loadedFrom: practice.source === 'youtube_api' ? 'search' : 'manualLink',
+    loadedAt: practice.loadedAt,
+  };
 }
 
 export interface ShadowingPhraseSet {
@@ -283,7 +318,9 @@ function normalizeSentence(
     translation: raw.translation ?? '',
     source: raw.source ?? 'manual',
     videoId: raw.videoId,
+    videoUrl: raw.videoUrl,
     videoTitle: raw.videoTitle,
+    theme: raw.theme,
     repetitionsDone,
     repetitionsTarget,
     completed: raw.completed ?? repetitionsDone >= repetitionsTarget,

@@ -1,12 +1,14 @@
-// Origem das frases de shadowing, em ordem de preferência:
+// Origem das frases de shadowing, em ordem de preferência (quando a origem é "vídeo"):
 //   1. Transcript/legenda real do vídeo (melhor esforço — depende de o vídeo
 //      ter legendas públicas e do navegador conseguir buscá-las; em muitos
 //      casos o YouTube bloqueia essa busca por CORS a partir do navegador,
 //      então esta etapa falha silenciosamente e cai para a próxima).
 //   2. Título + descrição reais do vídeo (via YouTube Data API).
-//   3. Gemini gerando frases novas a partir do tema/título.
-//   4. Fallback local fixo, só se as 3 anteriores falharem — nunca some a
-//      seção, mas deixa a origem clara como "fallback".
+//   3. Gemini gerando frases novas a partir do título, se não houver mais nada.
+// Quando a origem é "tema manual", o Gemini gera frases direto a partir do
+// tema digitado. Um fallback local fixo cobre o caso raro de a IA falhar
+// durante o preenchimento automático de um vídeo novo (nunca deixa a seção
+// vazia, mas deixa a origem clara como "fallback").
 //
 // A chave GEMINI_API_KEY nunca é lida aqui — só no backend
 // (api/english/generate-shadowing-phrases.ts).
@@ -30,6 +32,9 @@ interface ErrorResponse {
 
 const GENERIC_ERROR = 'Não foi possível gerar frases de shadowing com a IA agora. Tente novamente em instantes.';
 const MAX_TRANSCRIPT_EXCERPT = 8000;
+
+export const NO_VIDEO_ERROR = 'Carregue um vídeo de shadowing para gerar frases com base nele.';
+export const NO_THEME_ERROR = 'Informe um tema para gerar frases.';
 
 function isSeed(value: unknown): value is ShadowingPhraseSeed {
   const seed = value as Partial<ShadowingPhraseSeed> | null;
@@ -112,8 +117,7 @@ async function callGenerateEndpoint(payload: {
 function toShadowingPhrases(
   seeds: ShadowingPhraseSeed[],
   source: ShadowingPhraseSource,
-  videoId: string | undefined,
-  videoTitle: string | undefined,
+  extra: { videoId?: string; videoUrl?: string; videoTitle?: string; theme?: string },
 ): ShadowingPhrase[] {
   const now = new Date().toISOString();
   return seeds.map((seed, index) => ({
@@ -121,8 +125,10 @@ function toShadowingPhrases(
     text: seed.text,
     translation: seed.translation,
     source,
-    videoId,
-    videoTitle,
+    videoId: extra.videoId,
+    videoUrl: extra.videoUrl,
+    videoTitle: extra.videoTitle,
+    theme: extra.theme,
     repetitionsDone: 0,
     repetitionsTarget: 5,
     completed: false,
@@ -133,79 +139,94 @@ function toShadowingPhrases(
 
 export interface ShadowingVideoContext {
   videoId?: string;
+  videoUrl?: string;
   videoTitle?: string;
   videoDescription?: string;
 }
 
-export const NO_CONTEXT_ERROR = 'Carregue um vídeo de shadowing ou informe um tema para gerar frases.';
-
 /**
- * Ação explícita "Gerar frases com IA" — usada quando o usuário clica no
- * botão. Aceita duas origens: o vídeo de shadowing atualmente carregado
- * (por `videoId`, mesmo sem título/descrição — ex.: link colado manualmente)
- * ou um tema digitado à mão. O tema, quando preenchido, tem prioridade sobre
- * o vídeo carregado. Propaga o erro real em caso de falha (não substitui por
- * fallback silenciosamente): o usuário pediu IA de forma explícita e precisa
- * saber se ela não respondeu.
+ * Ação explícita do botão "Gerar com vídeo atual" — usa sempre o vídeo de
+ * shadowing atualmente carregado (por `videoId`, mesmo sem título/descrição
+ * — ex.: link colado manualmente), nunca um tema. Propaga o erro real em
+ * caso de falha (não substitui por fallback silenciosamente): o usuário
+ * pediu IA de forma explícita e precisa saber se ela não respondeu.
  */
-export async function generateAiShadowingPhrases(
-  context: ShadowingVideoContext & { theme?: string; count?: number },
+export async function generateAiShadowingPhrasesFromVideo(
+  context: ShadowingVideoContext,
+  count = 5,
 ): Promise<ShadowingPhrase[]> {
-  const theme = context.theme?.trim();
-  const hasVideo = Boolean(context.videoId);
-
-  if (!theme && !hasVideo) {
-    throw new Error(NO_CONTEXT_ERROR);
+  if (!context.videoId) {
+    throw new Error(NO_VIDEO_ERROR);
   }
 
-  // Tema manual tem prioridade explícita sobre o vídeo carregado.
-  const useTheme = Boolean(theme);
-
-  let transcriptExcerpt: string | undefined;
-  if (!useTheme && context.videoId) {
-    transcriptExcerpt = (await fetchVideoTranscriptBestEffort(context.videoId)) ?? undefined;
-  }
+  const transcriptExcerpt = (await fetchVideoTranscriptBestEffort(context.videoId)) ?? undefined;
 
   const result = await callGenerateEndpoint({
-    videoId: useTheme ? undefined : context.videoId,
-    videoTitle: useTheme ? undefined : context.videoTitle,
-    videoDescription: useTheme ? undefined : context.videoDescription,
-    transcriptExcerpt: useTheme ? undefined : transcriptExcerpt,
-    theme: useTheme ? theme : undefined,
-    count: context.count ?? 5,
+    videoId: context.videoId,
+    videoTitle: context.videoTitle,
+    videoDescription: context.videoDescription,
+    transcriptExcerpt,
+    count,
   });
 
-  const sourceTag: ShadowingPhraseSource = useTheme ? 'aiGeneratedFromTheme' : 'aiGeneratedFromVideo';
-  return toShadowingPhrases(result.phrases, sourceTag, context.videoId, context.videoTitle);
+  return toShadowingPhrases(result.phrases, 'aiGeneratedFromVideo', {
+    videoId: context.videoId,
+    videoUrl: context.videoUrl,
+    videoTitle: context.videoTitle,
+  });
+}
+
+/**
+ * Ação explícita do botão "Usar tema manual" — usa sempre o tema digitado,
+ * nunca o vídeo carregado (mesmo que haja um). Isso deixa 100% claro qual
+ * fonte foi usada: a escolha é do usuário, não uma prioridade implícita.
+ */
+export async function generateAiShadowingPhrasesFromTheme(theme: string, count = 5): Promise<ShadowingPhrase[]> {
+  const trimmedTheme = theme.trim();
+  if (!trimmedTheme) {
+    throw new Error(NO_THEME_ERROR);
+  }
+
+  const result = await callGenerateEndpoint({ theme: trimmedTheme, count });
+
+  return toShadowingPhrases(result.phrases, 'aiGeneratedFromTheme', { theme: trimmedTheme });
 }
 
 /**
  * Preenche automaticamente as frases de um vídeo novo de shadowing, tentando
  * nesta ordem: transcript real -> descrição real do vídeo -> IA a partir do
- * tema -> fallback local fixo. Diferente de `generateAiShadowingPhrases`,
- * esta função NUNCA lança exceção e NUNCA deixa a seção vazia — é uma ação
- * automática de fundo, não um clique explícito em "gerar com IA".
+ * título -> fallback local fixo. Diferente das funções acima, esta NUNCA
+ * lança exceção e NUNCA deixa a seção vazia — é uma ação automática de
+ * fundo (dispara sozinha ao carregar um vídeo novo), não um clique
+ * explícito em "gerar com IA".
  */
 export async function generateShadowingPhrasesForVideo(
   context: ShadowingVideoContext,
   count = 5,
 ): Promise<ShadowingPhrase[]> {
-  const transcriptExcerpt = context.videoId ? await fetchVideoTranscriptBestEffort(context.videoId) : null;
+  if (!context.videoId) return getDefaultShadowingPhrases();
+
+  const transcriptExcerpt = (await fetchVideoTranscriptBestEffort(context.videoId)) ?? undefined;
 
   try {
     const result = await callGenerateEndpoint({
       videoId: context.videoId,
       videoTitle: context.videoTitle,
       videoDescription: context.videoDescription,
-      transcriptExcerpt: transcriptExcerpt ?? undefined,
+      transcriptExcerpt,
       count,
     });
-    return toShadowingPhrases(result.phrases, result.source, context.videoId, context.videoTitle);
+    return toShadowingPhrases(result.phrases, result.source, {
+      videoId: context.videoId,
+      videoUrl: context.videoUrl,
+      videoTitle: context.videoTitle,
+    });
   } catch (error) {
     console.warn('[Shadowing] IA indisponível para gerar frases automaticamente — usando frases padrão (fallback).', error);
     return getDefaultShadowingPhrases().map(phrase => ({
       ...phrase,
       videoId: context.videoId,
+      videoUrl: context.videoUrl,
       videoTitle: context.videoTitle,
     }));
   }

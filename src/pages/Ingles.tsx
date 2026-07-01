@@ -27,6 +27,7 @@ import {
   getFutureCards,
   getMasteredCards,
   getCardHistory,
+  deriveCurrentShadowingVideo,
 } from '../services/english/englishStorage';
 import {
   isYouTubeConfigured,
@@ -40,7 +41,7 @@ import { generateAiQuiz, generateFallbackQuiz } from '../services/english/videoQ
 import { parseShadowingLink, buildShadowingFromLink } from '../services/english/shadowingService';
 import { translateWithAi, type AiTranslateResult, type TranslateFocus } from '../services/english/aiTranslationService';
 import { applyCardReview, type ReviewGrade } from '../services/english/spacedRepetition';
-import { generateAiShadowingPhrases, generateShadowingPhrasesForVideo } from '../services/english/shadowingPhraseService';
+import { generateAiShadowingPhrasesFromTheme, generateAiShadowingPhrasesFromVideo, generateShadowingPhrasesForVideo } from '../services/english/shadowingPhraseService';
 
 // ============================================================
 // HELPERS
@@ -168,8 +169,9 @@ export function InglesPage() {
   const [shadowingAiError, setShadowingAiError] = useState('');
   const [shadowingAutoFillLoading, setShadowingAutoFillLoading] = useState(false);
   const [shadowingThemeInput, setShadowingThemeInput] = useState('');
-  const [shadowingAiGenLoading, setShadowingAiGenLoading] = useState(false);
+  const [shadowingAiGenLoading, setShadowingAiGenLoading] = useState<'video' | 'theme' | null>(null);
   const [shadowingAiGenError, setShadowingAiGenError] = useState('');
+  const [shadowingAiGenSuccess, setShadowingAiGenSuccess] = useState('');
   const [savedPhraseIds, setSavedPhraseIds] = useState<Set<string>>(new Set());
 
   // ETAPA 4 — Cards (flashcards)
@@ -491,6 +493,7 @@ export function InglesPage() {
       shadowingPractice: {
         ...practice,
         sentences,
+        loadedAt: practice.loadedAt ?? new Date().toISOString(),
       },
       shadowingSentenceSets: {
         ...prev.shadowingSentenceSets,
@@ -508,7 +511,7 @@ export function InglesPage() {
   }
 
   /** Preenche automaticamente frases vindas do vídeo (ou IA/fallback) quando a lista de um vídeo novo está vazia. */
-  async function autoFillShadowingIfEmpty(context: { videoId?: string; videoTitle?: string; videoDescription?: string }) {
+  async function autoFillShadowingIfEmpty(context: { videoId?: string; videoUrl?: string; videoTitle?: string; videoDescription?: string }) {
     if (dataRef.current.shadowingPractice.sentences.length > 0) return;
     setShadowingAutoFillLoading(true);
     try {
@@ -531,7 +534,9 @@ export function InglesPage() {
     const newPractice = buildShadowingFromLink(parsed, selectedSentences);
     persistShadowingPractice(newPractice, selectedSentences);
     setShadowingLinkInput('');
-    void autoFillShadowingIfEmpty({ videoId: parsed.type === 'video' ? parsed.videoId : undefined });
+    void autoFillShadowingIfEmpty(
+      parsed.type === 'video' ? { videoId: parsed.videoId, videoUrl: newPractice.watchUrl } : {},
+    );
   }
 
   function handleShadowingLevelChange(level: ListeningLevel) {
@@ -580,7 +585,7 @@ export function InglesPage() {
       };
       const selectedSentences = chooseSentencesForShadowingSource(getShadowingSourceKey(practice));
       persistShadowingPractice(practice, selectedSentences);
-      void autoFillShadowingIfEmpty({ videoId: video.youtubeVideoId, videoTitle: video.title, videoDescription: video.description });
+      void autoFillShadowingIfEmpty({ videoId: video.youtubeVideoId, videoUrl: video.watchUrl, videoTitle: video.title, videoDescription: video.description });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao buscar vídeo de shadowing no YouTube.';
       setShadowingLinkError(msg);
@@ -653,25 +658,57 @@ export function InglesPage() {
     }
   }
 
-  async function handleGenerateShadowingPhrasesWithAi() {
+  /** Insere as frases geradas ao final da lista (sem apagar nem duplicar) e mostra a mensagem de sucesso. */
+  function insertGeneratedPhrases(newPhrases: ShadowingPhrase[]) {
+    let addedCount = 0;
+    updateShadowingSentences(sentences => {
+      const merged = mergeShadowingPhrasesWithoutDuplicates(sentences, newPhrases);
+      addedCount = merged.length - sentences.length;
+      return merged;
+    });
+    setShadowingAiGenSuccess(
+      addedCount > 0
+        ? `${addedCount} frase(s) adicionada(s) para repetir.`
+        : 'Nenhuma frase nova — todas já existiam na lista.',
+    );
+  }
+
+  async function handleGenerateShadowingPhrasesFromVideo() {
+    const video = deriveCurrentShadowingVideo(dataRef.current.shadowingPractice);
+    if (!video) return; // botão fica desabilitado neste caso; checagem extra por segurança.
     setShadowingAiGenError('');
-    setShadowingAiGenLoading(true);
+    setShadowingAiGenSuccess('');
+    setShadowingAiGenLoading('video');
     try {
-      const practice = dataRef.current.shadowingPractice;
-      const newPhrases = await generateAiShadowingPhrases({
-        videoId: practice.youtubeVideoId,
-        videoTitle: practice.title,
-        videoDescription: practice.description,
-        theme: shadowingThemeInput.trim() || undefined,
-        count: 5,
+      const newPhrases = await generateAiShadowingPhrasesFromVideo({
+        videoId: video.videoId,
+        videoUrl: video.videoUrl,
+        videoTitle: video.title,
+        videoDescription: video.description,
       });
-      // Anexa ao final sem apagar as frases existentes, ignorando duplicatas exatas.
-      updateShadowingSentences(sentences => mergeShadowingPhrasesWithoutDuplicates(sentences, newPhrases));
+      insertGeneratedPhrases(newPhrases);
     } catch (err) {
-      console.error('[Inglês Diário] Falha ao gerar frases de shadowing com IA', err);
+      // Erro da IA nunca apaga frases existentes, o vídeo atual ou o tema digitado.
+      console.error('[Inglês Diário] Falha ao gerar frases de shadowing com IA (vídeo atual)', err);
       setShadowingAiGenError(err instanceof Error ? err.message : 'Não foi possível gerar frases com IA agora.');
     } finally {
-      setShadowingAiGenLoading(false);
+      setShadowingAiGenLoading(null);
+    }
+  }
+
+  async function handleGenerateShadowingPhrasesFromTheme() {
+    if (!shadowingThemeInput.trim()) return; // botão fica desabilitado neste caso; checagem extra por segurança.
+    setShadowingAiGenError('');
+    setShadowingAiGenSuccess('');
+    setShadowingAiGenLoading('theme');
+    try {
+      const newPhrases = await generateAiShadowingPhrasesFromTheme(shadowingThemeInput);
+      insertGeneratedPhrases(newPhrases);
+    } catch (err) {
+      console.error('[Inglês Diário] Falha ao gerar frases de shadowing com IA (tema manual)', err);
+      setShadowingAiGenError(err instanceof Error ? err.message : 'Não foi possível gerar frases com IA agora.');
+    } finally {
+      setShadowingAiGenLoading(null);
     }
   }
 
@@ -830,8 +867,11 @@ export function InglesPage() {
   const shadowingSentences = shadowingPractice.sentences;
   const allShadowingPhrasesCompleted = shadowingSentences.length > 0 && shadowingSentences.every(s => s.completed);
   const shadowingRepetitionsCompletedTotal = shadowingSentences.reduce((sum, s) => sum + s.repetitionsDone, 0);
-  // Um vídeo "carregado" conta mesmo sem título (ex.: link colado manualmente) — o que importa é ter um ID.
-  const hasShadowingVideoContext = Boolean(shadowingPractice.youtubeVideoId) || Boolean(shadowingPractice.title);
+  // Estado único do vídeo atual do shadowing — sempre derivado de shadowingPractice,
+  // nunca guardado à parte, para o player e o gerador de frases nunca ficarem
+  // dessincronizados (era exatamente isso que causava "vídeo carregou no player
+  // mas a IA não reconhece o vídeo").
+  const currentShadowingVideo = deriveCurrentShadowingVideo(shadowingPractice);
 
   function renderVocabularyCardRow(card: VocabularyCard, options: { showNextReview?: boolean; showMasteredAt?: boolean } = {}) {
     return (
@@ -1310,28 +1350,62 @@ export function InglesPage() {
           )}
 
           {/* Gerar frases com IA */}
-          <div className="space-y-2 rounded-lg border border-surface-200 p-3 dark:border-surface-700">
+          <div className="space-y-3 rounded-lg border border-surface-200 p-3 dark:border-surface-700">
             <p className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
               Gerar frases aleatórias com IA
             </p>
-            <p className="text-xs text-surface-500 dark:text-surface-400">
-              {hasShadowingVideoContext
-                ? `Gerar com base no vídeo atual${shadowingPractice.title ? ` ("${shadowingPractice.title}")` : ''}. Ou informe um tema abaixo para gerar frases sobre outro assunto — o tema, se preenchido, tem prioridade sobre o vídeo.`
-                : 'Nenhum vídeo de shadowing carregado. Informe um tema abaixo para gerar frases.'}
-            </p>
+
+            {currentShadowingVideo ? (
+              <div className="rounded-lg border border-primary-200 bg-primary-50/40 px-3 py-2 text-sm dark:border-primary-900/40 dark:bg-primary-900/10">
+                <p className="font-medium text-surface-900 dark:text-white">
+                  Vídeo atual do shadowing: {currentShadowingVideo.title ?? currentShadowingVideo.videoId}
+                </p>
+                <p className="mt-0.5 text-xs text-surface-500 dark:text-surface-400">
+                  Você pode gerar frases com base neste vídeo ou inserir um tema manual.
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-surface-500 dark:text-surface-400">
+                Nenhum vídeo de shadowing carregado. Carregue um vídeo ou informe um tema.
+              </p>
+            )}
+
             <div className="flex flex-col gap-2 sm:flex-row">
               <input
                 value={shadowingThemeInput}
                 onChange={e => setShadowingThemeInput(e.target.value)}
-                placeholder={hasShadowingVideoContext ? 'Tema opcional (tem prioridade sobre o vídeo)' : 'Tema (ex.: viagens, trabalho, comida)'}
+                placeholder="Ex.: job interview, travel, restaurant, safety meeting"
                 className="min-w-0 flex-1 rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
               />
-              <Button size="sm" icon={<Sparkles size={14} />} loading={shadowingAiGenLoading} onClick={handleGenerateShadowingPhrasesWithAi}>
-                Gerar frases com IA
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                icon={<Sparkles size={14} />}
+                loading={shadowingAiGenLoading === 'video'}
+                disabled={!currentShadowingVideo || shadowingAiGenLoading !== null}
+                onClick={handleGenerateShadowingPhrasesFromVideo}
+              >
+                Gerar com vídeo atual
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={<Sparkles size={14} />}
+                loading={shadowingAiGenLoading === 'theme'}
+                disabled={!shadowingThemeInput.trim() || shadowingAiGenLoading !== null}
+                onClick={handleGenerateShadowingPhrasesFromTheme}
+              >
+                Usar tema manual
               </Button>
             </div>
+
             {shadowingAiGenError && (
               <p className="text-sm text-danger-600 dark:text-danger-400">{shadowingAiGenError}</p>
+            )}
+            {shadowingAiGenSuccess && (
+              <p className="text-sm text-success-600 dark:text-success-400">{shadowingAiGenSuccess}</p>
             )}
           </div>
 
