@@ -5,11 +5,13 @@ interface CardProps {
   className?: string;
   onClick?: () => void;
   hover?: boolean;
+  id?: string;
 }
 
-export function Card({ children, className = '', onClick, hover = false }: CardProps) {
+export function Card({ children, className = '', onClick, hover = false, id }: CardProps) {
   return (
     <div
+      id={id}
       onClick={onClick}
       className={`
         rounded-lg border border-surface-200/80 bg-white/90 shadow-sm shadow-surface-200/50

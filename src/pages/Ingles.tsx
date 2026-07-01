@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { BookOpen, ExternalLink, Mic, Pencil, Plus, RotateCcw, Save, Trash2, Video, X } from 'lucide-react';
+import { BookOpen, ExternalLink, Languages, Mic, Pencil, Plus, RotateCcw, Save, Sparkles, Trash2, Video, X } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Card, CardBody, CardHeader } from '../components/Card';
 import { Badge } from '../components/Badge';
@@ -23,8 +23,10 @@ import {
   buildManualListeningVideo,
   type ListeningLevel,
 } from '../services/english/youtubeListeningService';
-import { generateFallbackQuiz } from '../services/english/videoQuizService';
+import { generateAiQuiz, generateFallbackQuiz } from '../services/english/videoQuizService';
 import { parseShadowingLink, buildShadowingFromLink } from '../services/english/shadowingService';
+import { translateWithAi, type AiTranslateResult, type TranslateFocus } from '../services/english/aiTranslationService';
+import { calculateNextCardReview, type ReviewGrade } from '../services/english/spacedRepetition';
 
 // ============================================================
 // HELPERS
@@ -60,21 +62,23 @@ const STATUS_VARIANT: Record<VocabularyCard['reviewStatus'], 'default' | 'primar
   known: 'success',
 };
 
-const REVIEW_ACTIONS = [
-  { label: 'Errei', status: 'learning', days: 1 },
-  { label: 'Difícil', status: 'learning', days: 3 },
-  { label: 'Bom', status: 'review', days: 7 },
-  { label: 'Fácil', status: 'known', days: 30 },
-] as const;
+const REVIEW_ACTIONS: Array<{ label: string; grade: ReviewGrade }> = [
+  { label: 'Errei', grade: 'again' },
+  { label: 'Difícil', grade: 'hard' },
+  { label: 'Bom', grade: 'good' },
+  { label: 'Fácil', grade: 'easy' },
+];
+
+const DIFFICULTY_LABEL: Record<NonNullable<VocabularyCard['difficulty']>, string> = {
+  easy: 'Fácil',
+  medium: 'Médio',
+  hard: 'Difícil',
+};
+
+const CARDS_DUE_SECTION_ID = 'ingles-cards-revisao';
 
 function toDateOnly(date: Date): string {
   return date.toISOString().slice(0, 10);
-}
-
-function addDays(days: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  return toDateOnly(date);
 }
 
 function formatReviewDate(value: string): string {
@@ -129,6 +133,8 @@ export function InglesPage() {
   const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [quizScore, setQuizScore] = useState<{ correct: number; total: number } | null>(null);
+  const [aiQuizLoading, setAiQuizLoading] = useState(false);
+  const [aiQuizError, setAiQuizError] = useState('');
 
   // ETAPA 3 — Shadowing
   const [loadingShadowingVideo, setLoadingShadowingVideo] = useState(false);
@@ -140,11 +146,17 @@ export function InglesPage() {
   const [editingSentenceId, setEditingSentenceId] = useState<string | null>(null);
   const [editingSentenceText, setEditingSentenceText] = useState('');
   const [editingSentenceTranslation, setEditingSentenceTranslation] = useState('');
+  const [translatingShadowingSentence, setTranslatingShadowingSentence] = useState(false);
+  const [shadowingAiError, setShadowingAiError] = useState('');
 
   // ETAPA 4 — Cards
   const [cardWord, setCardWord] = useState('');
   const [cardMeaning, setCardMeaning] = useState('');
   const [cardExample, setCardExample] = useState('');
+  const [cardExampleTranslation, setCardExampleTranslation] = useState('');
+  const [aiCardResult, setAiCardResult] = useState<AiTranslateResult | null>(null);
+  const [aiCardLoading, setAiCardLoading] = useState<TranslateFocus | null>(null);
+  const [aiCardError, setAiCardError] = useState('');
 
   // ── Persist helper ─────────────────────────────────────────
   function setData(updater: (prev: EnglishDataV2) => EnglishDataV2) {
@@ -332,9 +344,29 @@ export function InglesPage() {
   }
 
   // ── ETAPA 2: Questionário ───────────────────────────────────
-  function handleGenerateQuiz() {
+  async function handleGenerateQuiz() {
+    const video = data.listeningVideo;
+    if (!video) return;
+    setAiQuizError('');
+    setAiQuizLoading(true);
+    try {
+      const quiz = await generateAiQuiz(video);
+      setData(prev => ({ ...prev, videoQuiz: quiz }));
+      setQuizAnswers({});
+      setQuizSubmitted(false);
+      setQuizScore(null);
+    } catch (err) {
+      console.error('[Inglês Diário] Falha ao gerar quiz com IA', err);
+      setAiQuizError(err instanceof Error ? err.message : 'Não foi possível gerar o questionário com IA agora.');
+    } finally {
+      setAiQuizLoading(false);
+    }
+  }
+
+  function handleGenerateFallbackQuiz() {
     const videoId = data.listeningVideo?.youtubeVideoId;
     if (!videoId) return;
+    setAiQuizError('');
     const quiz = generateFallbackQuiz(videoId);
     setData(prev => ({ ...prev, videoQuiz: quiz }));
     setQuizAnswers({});
@@ -371,14 +403,16 @@ export function InglesPage() {
     setData(prev => ({ ...prev, videoQuiz: updatedQuiz }));
   }
 
-  function handleRetryQuiz() {
+  async function handleRetryQuiz() {
     setQuizAnswers({});
     setQuizSubmitted(false);
     setQuizScore(null);
-    if (data.listeningVideo) {
-      const newQuiz = generateFallbackQuiz(data.listeningVideo.youtubeVideoId);
-      setData(prev => ({ ...prev, videoQuiz: newQuiz }));
+    if (!data.listeningVideo) return;
+    if (data.videoQuiz?.source === 'fallback') {
+      handleGenerateFallbackQuiz();
+      return;
     }
+    await handleGenerateQuiz();
   }
 
   // ── ETAPA 3: Shadowing ──────────────────────────────────────
@@ -562,6 +596,42 @@ export function InglesPage() {
     setNewShadowingTranslation('');
   }
 
+  async function handleTranslateShadowingSentence() {
+    const text = newShadowingSentence.trim();
+    if (!text) return;
+    setShadowingAiError('');
+    setTranslatingShadowingSentence(true);
+    try {
+      const result = await translateWithAi({ text, context: 'shadowing', focus: 'translate' });
+      setNewShadowingTranslation(result.translation);
+    } catch (err) {
+      console.error('[Inglês Diário] Falha ao traduzir frase de shadowing com IA', err);
+      setShadowingAiError(err instanceof Error ? err.message : 'Não foi possível traduzir com IA agora.');
+    } finally {
+      setTranslatingShadowingSentence(false);
+    }
+  }
+
+  function handleSaveShadowingSentenceAsCard(sentence: { text: string; translation: string }) {
+    if (!sentence.text.trim() || !sentence.translation.trim()) return;
+    const card: VocabularyCard = {
+      id: genId(),
+      word: sentence.text.trim(),
+      meaning: sentence.translation.trim(),
+      example: sentence.text.trim(),
+      exampleTranslation: sentence.translation.trim(),
+      source: 'shadowing',
+      reviewStatus: 'new',
+      difficulty: 'medium',
+      createdAt: new Date().toISOString(),
+      nextReviewAt: toDateOnly(new Date()),
+      repetitions: 0,
+      correctCount: 0,
+      incorrectCount: 0,
+    };
+    setData(prev => ({ ...prev, vocabularyCards: [card, ...prev.vocabularyCards] }));
+  }
+
   function handleStartEditSentence(sentenceId: string, text: string, translation: string) {
     setEditingSentenceId(sentenceId);
     setEditingSentenceText(text);
@@ -598,23 +668,80 @@ export function InglesPage() {
       word: cardWord.trim(),
       meaning: cardMeaning.trim(),
       example: cardExample.trim() || undefined,
-      source: 'manual',
+      exampleTranslation: cardExampleTranslation.trim() || undefined,
+      source: aiCardResult ? 'ai' : 'manual',
       reviewStatus: 'new',
+      difficulty: 'medium',
       createdAt: new Date().toISOString(),
       nextReviewAt: toDateOnly(new Date()),
+      repetitions: 0,
+      correctCount: 0,
+      incorrectCount: 0,
     };
     setData(prev => ({ ...prev, vocabularyCards: [card, ...prev.vocabularyCards] }));
     setCardWord('');
     setCardMeaning('');
     setCardExample('');
+    setCardExampleTranslation('');
+    setAiCardResult(null);
+    setAiCardError('');
   }
 
-  function handleCardReview(id: string, status: VocabularyCard['reviewStatus'], days: number) {
+  async function handleAiCardAction(focus: TranslateFocus) {
+    const text = cardWord.trim();
+    if (!text) return;
+    setAiCardError('');
+    setAiCardLoading(focus);
+    try {
+      const result = await translateWithAi({ text, context: 'vocabulary', focus });
+      setAiCardResult(result);
+      setCardMeaning(result.translation);
+      if (result.examples[0]) {
+        setCardExample(result.examples[0].english);
+        setCardExampleTranslation(result.examples[0].portuguese);
+      }
+    } catch (err) {
+      console.error('[Inglês Diário] Falha ao consultar IA para tradução de vocabulário', err);
+      setAiCardError(err instanceof Error ? err.message : 'Não foi possível consultar a IA agora.');
+    } finally {
+      setAiCardLoading(null);
+    }
+  }
+
+  function handleAddVocabularyItemAsCard(item: { word: string; translation: string; example: string }) {
+    const card: VocabularyCard = {
+      id: genId(),
+      word: item.word,
+      meaning: item.translation,
+      example: item.example || undefined,
+      source: 'ai',
+      reviewStatus: 'new',
+      difficulty: 'medium',
+      createdAt: new Date().toISOString(),
+      nextReviewAt: toDateOnly(new Date()),
+      repetitions: 0,
+      correctCount: 0,
+      incorrectCount: 0,
+    };
+    setData(prev => ({ ...prev, vocabularyCards: [card, ...prev.vocabularyCards] }));
+  }
+
+  function handleCardReview(id: string, grade: ReviewGrade) {
     setData(prev => ({
       ...prev,
-      vocabularyCards: prev.vocabularyCards.map(c =>
-        c.id === id ? { ...c, reviewStatus: status, nextReviewAt: addDays(days) } : c,
-      ),
+      vocabularyCards: prev.vocabularyCards.map(c => {
+        if (c.id !== id) return c;
+        const result = calculateNextCardReview(c, grade);
+        return {
+          ...c,
+          reviewStatus: result.reviewStatus,
+          difficulty: result.difficulty,
+          nextReviewAt: result.nextReviewAt,
+          repetitions: result.repetitions,
+          correctCount: result.correctCount,
+          incorrectCount: result.incorrectCount,
+        };
+      }),
     }));
   }
 
@@ -662,13 +789,24 @@ export function InglesPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-semibold text-surface-900 dark:text-white">{card.word}</span>
                 <Badge variant={STATUS_VARIANT[card.reviewStatus]}>{STATUS_LABEL[card.reviewStatus]}</Badge>
+                {card.difficulty && (
+                  <Badge variant="default">{DIFFICULTY_LABEL[card.difficulty]}</Badge>
+                )}
                 <span className="text-xs text-surface-400 dark:text-surface-500">
                   Próxima: {formatReviewDate(card.nextReviewAt)}
                 </span>
+                {(card.correctCount || card.incorrectCount) ? (
+                  <span className="text-xs text-surface-400 dark:text-surface-500">
+                    ✓ {card.correctCount ?? 0} · ✗ {card.incorrectCount ?? 0}
+                  </span>
+                ) : null}
               </div>
               <p className="text-sm text-surface-600 dark:text-surface-300">{card.meaning}</p>
               {card.example && (
-                <p className="mt-0.5 text-xs italic text-surface-400 dark:text-surface-500">{card.example}</p>
+                <p className="mt-0.5 text-xs italic text-surface-400 dark:text-surface-500">
+                  {card.example}
+                  {card.exampleTranslation && <span className="not-italic text-surface-400 dark:text-surface-500"> — {card.exampleTranslation}</span>}
+                </p>
               )}
             </div>
             <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -676,7 +814,7 @@ export function InglesPage() {
                 <button
                   key={action.label}
                   type="button"
-                  onClick={() => handleCardReview(card.id, action.status, action.days)}
+                  onClick={() => handleCardReview(card.id, action.grade)}
                   className="rounded-lg border border-surface-200 px-2.5 py-1 text-xs font-medium text-surface-600 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-700 transition-colors"
                 >
                   {action.label}
@@ -704,6 +842,16 @@ export function InglesPage() {
         eyebrow="Estudos"
         title="Inglês Diário"
         subtitle="4 etapas independentes: Listening · Questionário · Shadowing · Cards de vocabulário"
+        action={
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={<BookOpen size={14} />}
+            onClick={() => document.getElementById(CARDS_DUE_SECTION_ID)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          >
+            Revisar palavras {cardsDueToday.length > 0 ? `(${cardsDueToday.length})` : ''}
+          </Button>
+        }
       />
 
       {/* ══════════════════════════════════════════════════════
@@ -905,17 +1053,34 @@ export function InglesPage() {
           ) : !videoQuiz ? (
             <div className="space-y-3">
               <p className="text-sm text-surface-600 dark:text-surface-300">
-                Questionário de prática geral baseado no vídeo selecionado. Para perguntas específicas, será necessário adicionar transcrição ou IA em uma etapa futura.
+                A IA (Gemini) gera até 10 perguntas sobre o vídeo selecionado. Como não há transcrição do vídeo,
+                as perguntas são baseadas no título, canal e tema — isso fica sinalizado no questionário gerado.
               </p>
-              <Button onClick={handleGenerateQuiz}>
-                Gerar questionário
-              </Button>
+              {aiQuizError && (
+                <div className="rounded-lg border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700 dark:border-danger-900/40 dark:bg-danger-900/20 dark:text-danger-300">
+                  {aiQuizError}
+                </div>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <Button icon={<Sparkles size={14} />} loading={aiQuizLoading} onClick={handleGenerateQuiz}>
+                  Gerar quiz com IA
+                </Button>
+                <Button variant="secondary" onClick={handleGenerateFallbackQuiz} disabled={aiQuizLoading}>
+                  Usar perguntas genéricas (offline)
+                </Button>
+              </div>
             </div>
           ) : (
             <>
               <div className="rounded-lg border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-600 dark:border-surface-700 dark:bg-surface-800/60 dark:text-surface-300">
-                Questionário de prática geral baseado no vídeo selecionado. Para perguntas específicas, será necessário adicionar transcrição ou IA em uma etapa futura.
+                {videoQuiz.warning ?? 'Questionário gerado com IA a partir do conteúdo assistido.'}
               </div>
+
+              {aiQuizError && (
+                <div className="rounded-lg border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700 dark:border-danger-900/40 dark:bg-danger-900/20 dark:text-danger-300">
+                  {aiQuizError}
+                </div>
+              )}
 
               {quizScore && (
                 <div className={`rounded-lg px-4 py-3 text-sm font-medium ${
@@ -980,7 +1145,7 @@ export function InglesPage() {
                     Finalizar questionário ({answeredCount}/{totalQuestions})
                   </Button>
                 ) : (
-                  <Button variant="secondary" onClick={handleRetryQuiz}>
+                  <Button variant="secondary" loading={aiQuizLoading} onClick={handleRetryQuiz}>
                     Refazer questionário
                   </Button>
                 )}
@@ -1095,12 +1260,23 @@ export function InglesPage() {
                 placeholder="Nova frase em inglês"
                 className="rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
               />
-              <input
-                value={newShadowingTranslation}
-                onChange={e => setNewShadowingTranslation(e.target.value)}
-                placeholder="Tradução"
-                className="rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
-              />
+              <div className="flex gap-2">
+                <input
+                  value={newShadowingTranslation}
+                  onChange={e => setNewShadowingTranslation(e.target.value)}
+                  placeholder="Tradução"
+                  className="min-w-0 flex-1 rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+                />
+                <button
+                  type="button"
+                  title="Traduzir com IA"
+                  onClick={handleTranslateShadowingSentence}
+                  disabled={!newShadowingSentence.trim() || translatingShadowingSentence}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-surface-200 px-2.5 py-2 text-xs font-medium text-surface-600 hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-700"
+                >
+                  <Languages size={14} className={translatingShadowingSentence ? 'animate-pulse' : ''} />
+                </button>
+              </div>
               <Button
                 size="sm"
                 icon={<Plus size={14} />}
@@ -1110,6 +1286,9 @@ export function InglesPage() {
                 Adicionar frase
               </Button>
             </div>
+            {shadowingAiError && (
+              <p className="mb-3 text-sm text-danger-600 dark:text-danger-400">{shadowingAiError}</p>
+            )}
             <div className="space-y-2">
               {shadowingPractice.sentences.length === 0 ? (
                 <p className="text-sm text-surface-400 dark:text-surface-500">
@@ -1193,6 +1372,15 @@ export function InglesPage() {
                       </button>
                       <button
                         type="button"
+                        title="Salvar esta frase como card de vocabulário"
+                        onClick={() => handleSaveShadowingSentenceAsCard(sentence)}
+                        className="inline-flex items-center gap-1 text-xs text-surface-400 hover:text-primary-600 transition-colors"
+                      >
+                        <Save size={13} />
+                        Salvar como card
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleDeleteShadowingSentence(sentence.id)}
                         className="inline-flex items-center gap-1 text-xs text-surface-400 hover:text-danger-600 transition-colors"
                       >
@@ -1210,19 +1398,108 @@ export function InglesPage() {
       {/* ══════════════════════════════════════════════════════
           ETAPA 4 — CARDS DE VOCABULÁRIO
       ══════════════════════════════════════════════════════ */}
-      <Card>
+      <Card id={CARDS_DUE_SECTION_ID}>
         <CardHeader
           title="4. Revisão de palavras desconhecidas"
           subtitle={`${vocabularyCards.length} card(s) salvos no dispositivo.`}
           icon={<BookOpen size={18} />}
         />
         <CardBody className="space-y-4">
-          {/* Add card form */}
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          {/* AI panel */}
+          <div className="space-y-3 rounded-lg border border-surface-200 p-3 dark:border-surface-700">
+            <p className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
+              Traduzir e explicar com IA (Gemini)
+            </p>
             <input
               value={cardWord}
               onChange={e => setCardWord(e.target.value)}
-              placeholder="Palavra em inglês"
+              placeholder="Digite uma palavra ou frase em inglês"
+              className="w-full rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                icon={<Sparkles size={14} />}
+                loading={aiCardLoading === 'translate'}
+                disabled={!cardWord.trim() || aiCardLoading !== null}
+                onClick={() => handleAiCardAction('translate')}
+              >
+                Traduzir com IA
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={aiCardLoading === 'explain'}
+                disabled={!cardWord.trim() || aiCardLoading !== null}
+                onClick={() => handleAiCardAction('explain')}
+              >
+                Explicar frase
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={aiCardLoading === 'examples'}
+                disabled={!cardWord.trim() || aiCardLoading !== null}
+                onClick={() => handleAiCardAction('examples')}
+              >
+                Gerar exemplos
+              </Button>
+            </div>
+
+            {aiCardError && (
+              <div className="rounded-lg border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700 dark:border-danger-900/40 dark:bg-danger-900/20 dark:text-danger-300">
+                {aiCardError}
+              </div>
+            )}
+
+            {aiCardResult && (
+              <div className="space-y-2 rounded-lg border border-primary-200 bg-primary-50/40 p-3 text-sm dark:border-primary-900/40 dark:bg-primary-900/10">
+                <p><span className="font-semibold text-surface-900 dark:text-white">Tradução:</span> {aiCardResult.translation}</p>
+                <p className="text-surface-600 dark:text-surface-300">{aiCardResult.simpleExplanationPtBr}</p>
+                {aiCardResult.pronunciationTipPtBr && (
+                  <p className="text-xs italic text-surface-500 dark:text-surface-400">🗣 {aiCardResult.pronunciationTipPtBr}</p>
+                )}
+                {aiCardResult.examples.length > 0 && (
+                  <ul className="space-y-1">
+                    {aiCardResult.examples.map((example, idx) => (
+                      <li key={idx} className="text-xs text-surface-500 dark:text-surface-400">
+                        <span className="italic">{example.english}</span> — {example.portuguese}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {aiCardResult.vocabulary.length > 0 && (
+                  <div className="space-y-1 border-t border-primary-200 pt-2 dark:border-primary-900/40">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
+                      Vocabulário relacionado
+                    </p>
+                    {aiCardResult.vocabulary.map((item, idx) => (
+                      <div key={idx} className="flex items-center justify-between gap-2 text-xs">
+                        <span>
+                          <span className="font-medium text-surface-800 dark:text-surface-200">{item.word}</span> — {item.translation}
+                        </span>
+                        <button
+                          type="button"
+                          title="Salvar como card"
+                          onClick={() => handleAddVocabularyItemAsCard(item)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-surface-200 px-2 py-1 text-surface-600 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-700"
+                        >
+                          <Plus size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Add/save card form */}
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <input
+              value={cardWord}
+              onChange={e => setCardWord(e.target.value)}
+              placeholder="Palavra ou frase em inglês"
               className="rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
             />
             <input
@@ -1234,17 +1511,23 @@ export function InglesPage() {
             <input
               value={cardExample}
               onChange={e => setCardExample(e.target.value)}
-              placeholder="Exemplo (opcional)"
+              placeholder="Exemplo em inglês (opcional)"
+              className="rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+            />
+            <input
+              value={cardExampleTranslation}
+              onChange={e => setCardExampleTranslation(e.target.value)}
+              placeholder="Tradução do exemplo (opcional)"
               className="rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
             />
           </div>
           <Button
             size="sm"
-            icon={<Plus size={14} />}
+            icon={<Save size={14} />}
             disabled={!cardWord.trim() || !cardMeaning.trim()}
             onClick={handleAddCard}
           >
-            Adicionar card
+            Salvar como card
           </Button>
 
           {/* Card list */}

@@ -29,6 +29,10 @@ export interface VideoQuiz {
   answers: Record<string, number>;
   score?: number;
   completedAt?: string;
+  /** 'transcript' | 'summary' | 'metadata' | 'fallback' — de onde vieram as perguntas. */
+  source?: 'transcript' | 'summary' | 'metadata' | 'fallback';
+  /** Aviso a mostrar ao usuário (ex.: quiz gerado só com metadados, sem transcrição). */
+  warning?: string;
 }
 
 export interface ShadowingSentence {
@@ -68,11 +72,18 @@ export interface VocabularyCard {
   word: string;
   meaning: string;
   example?: string;
-  source?: 'listening' | 'quiz' | 'shadowing' | 'manual';
+  /** Tradução em português do exemplo em inglês (`example`). */
+  exampleTranslation?: string;
+  source?: 'listening' | 'quiz' | 'shadowing' | 'manual' | 'ai';
   sourceYoutubeVideoId?: string;
   reviewStatus: 'new' | 'learning' | 'review' | 'known';
+  difficulty?: 'easy' | 'medium' | 'hard';
   createdAt: string;
   nextReviewAt: string;
+  /** Quantas vezes o card avançou a escada de revisão (Bom/Fácil/Difícil). */
+  repetitions?: number;
+  correctCount?: number;
+  incorrectCount?: number;
 }
 
 export interface EnglishDataV2 {

@@ -1,11 +1,113 @@
 // Serviço de questionário do vídeo de listening.
-// Preparado para futura integração com transcrição/IA.
-// Por ora usa perguntas genéricas de listening como fallback.
+// A geração principal usa Gemini (via /api/english/generate-quiz, chave só no backend).
+// generateFallbackQuiz continua disponível como opção manual/offline caso a IA falhe
+// ou a chave não esteja configurada — nunca é usada para mascarar um erro da IA.
 
-import type { QuizQuestion, VideoQuiz } from './englishStorage';
+import type { ListeningVideo, QuizQuestion, VideoQuiz } from './englishStorage';
+import type { ListeningLevel } from './youtubeListeningService';
 
 function genId(): string {
   return Math.random().toString(36).slice(2, 10);
+}
+
+const LEVEL_TO_CEFR: Record<ListeningLevel, string> = {
+  basic: 'A1',
+  intermediate: 'A2',
+  advanced: 'B1',
+  fluent: 'B2',
+};
+
+interface GeminiQuizQuestion {
+  id: string;
+  type: 'multiple_choice';
+  question: string;
+  options: string[];
+  correctIndex: number;
+  explanation: string;
+  skill: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+}
+
+interface GeminiQuizResponse {
+  videoId: string;
+  title: string;
+  level: string;
+  questionCount: number;
+  generatedAt: string;
+  source: 'transcript' | 'summary' | 'metadata';
+  warning?: string;
+  questions: GeminiQuizQuestion[];
+}
+
+interface ErrorResponse {
+  success?: false;
+  error?: string;
+}
+
+function isGeminiQuizResponse(value: unknown): value is GeminiQuizResponse {
+  const quiz = value as Partial<GeminiQuizResponse> | null;
+  return Boolean(
+    quiz
+    && Array.isArray(quiz.questions)
+    && quiz.questions.length >= 1
+    && quiz.questions.every(q =>
+      q
+      && typeof q.question === 'string'
+      && Array.isArray(q.options) && q.options.length === 4
+      && Number.isInteger(q.correctIndex),
+    ),
+  );
+}
+
+const GENERIC_QUIZ_ERROR = 'Não foi possível gerar o questionário com a IA agora. Tente novamente ou use as perguntas genéricas.';
+
+/**
+ * Gera um questionário com Gemini baseado no vídeo selecionado. Sem transcrição
+ * disponível, o backend gera perguntas gerais a partir do título/canal/tema e
+ * devolve um aviso (`warning`) deixando isso claro para o usuário — nunca inventa
+ * detalhes específicos do vídeo que não existem.
+ */
+export async function generateAiQuiz(video: ListeningVideo, questionCount = 10): Promise<VideoQuiz> {
+  let response: Response;
+  try {
+    response = await fetch('/api/english/generate-quiz', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        videoId: video.youtubeVideoId,
+        title: video.title,
+        channel: video.channelTitle,
+        level: LEVEL_TO_CEFR[video.level],
+        theme: video.title,
+        durationSeconds: video.durationSeconds || 1,
+        questionCount,
+      }),
+    });
+  } catch (networkError) {
+    console.error('[AI Quiz] Network error calling /api/english/generate-quiz', networkError);
+    throw new Error('Sem conexão com o servidor de IA. Verifique sua internet e tente novamente.');
+  }
+
+  const data = await response.json().catch(() => ({})) as GeminiQuizResponse | ErrorResponse;
+  if (!response.ok || !isGeminiQuizResponse(data)) {
+    const error = 'error' in data && typeof data.error === 'string' ? data.error : GENERIC_QUIZ_ERROR;
+    console.error('[AI Quiz] Gemini quiz request failed', { status: response.status, error });
+    throw new Error(error);
+  }
+
+  return {
+    youtubeVideoId: video.youtubeVideoId,
+    questions: data.questions.map(q => ({
+      id: q.id || genId(),
+      question: q.question,
+      options: q.options,
+      correctAnswerIndex: q.correctIndex,
+      explanation: q.explanation,
+    })),
+    answers: {},
+    source: data.source,
+    warning: data.warning,
+  };
 }
 
 const FALLBACK_QUESTIONS: QuizQuestion[] = [
@@ -92,5 +194,7 @@ export function generateFallbackQuiz(youtubeVideoId: string): VideoQuiz {
     youtubeVideoId,
     questions: shuffled,
     answers: {},
+    source: 'fallback',
+    warning: 'Perguntas genéricas de listening (offline) — não são específicas deste vídeo.',
   };
 }
