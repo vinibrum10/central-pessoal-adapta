@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { BookOpen, ExternalLink, Languages, Mic, Pencil, Plus, RotateCcw, Save, Sparkles, Trash2, Video, X } from 'lucide-react';
+import { BookOpen, Check, CheckCircle2, ExternalLink, Languages, Mic, Pencil, Plus, RotateCcw, Save, Sparkles, Trash2, Video, X } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Card, CardBody, CardHeader } from '../components/Card';
 import { Badge } from '../components/Badge';
@@ -9,11 +9,23 @@ import {
   type ListeningVideo,
   type VideoQuiz,
   type VocabularyCard,
+  type VocabularyCardSource,
+  type ShadowingPhrase,
+  type ShadowingPhraseSource,
   DEFAULT_SHADOWING,
   getDefaultShadowingPhrases,
   getShadowingSourceKey,
+  incrementPhraseRepetition,
+  resetPhraseRepetition,
+  markPhraseCompleted,
+  createCardFromShadowingPhrase,
   loadEnglishData,
   saveEnglishData,
+  getTodayISO,
+  getDueTodayCards,
+  getFutureCards,
+  getMasteredCards,
+  getCardHistory,
 } from '../services/english/englishStorage';
 import {
   isYouTubeConfigured,
@@ -26,7 +38,8 @@ import {
 import { generateAiQuiz, generateFallbackQuiz } from '../services/english/videoQuizService';
 import { parseShadowingLink, buildShadowingFromLink } from '../services/english/shadowingService';
 import { translateWithAi, type AiTranslateResult, type TranslateFocus } from '../services/english/aiTranslationService';
-import { calculateNextCardReview, type ReviewGrade } from '../services/english/spacedRepetition';
+import { applyCardReview, type ReviewGrade } from '../services/english/spacedRepetition';
+import { generateAiShadowingPhrases, generateShadowingPhrasesForVideo } from '../services/english/shadowingPhraseService';
 
 // ============================================================
 // HELPERS
@@ -48,38 +61,40 @@ const LEVEL_LABEL: Record<ListeningLevel, string> = {
   fluent: 'Fluente',
 };
 
-const STATUS_LABEL: Record<VocabularyCard['reviewStatus'], string> = {
-  new: 'Novo',
+const CARD_STATUS_LABEL: Record<VocabularyCard['status'], string> = {
   learning: 'Aprendendo',
-  review: 'Revisão',
-  known: 'Dominado',
+  reviewing: 'Revisando',
+  mastered: 'Aprendido',
 };
 
-const STATUS_VARIANT: Record<VocabularyCard['reviewStatus'], 'default' | 'primary' | 'warning' | 'success'> = {
-  new: 'default',
-  learning: 'primary',
-  review: 'warning',
-  known: 'success',
+const CARD_STATUS_VARIANT: Record<VocabularyCard['status'], 'default' | 'primary' | 'warning' | 'success'> = {
+  learning: 'warning',
+  reviewing: 'primary',
+  mastered: 'success',
 };
 
-const REVIEW_ACTIONS: Array<{ label: string; grade: ReviewGrade }> = [
-  { label: 'Errei', grade: 'again' },
-  { label: 'Difícil', grade: 'hard' },
-  { label: 'Bom', grade: 'good' },
-  { label: 'Fácil', grade: 'easy' },
+const CARD_SOURCE_LABEL: Record<VocabularyCardSource, string> = {
+  manual: 'Manual',
+  gemini: 'IA (Gemini)',
+  shadowing: 'Shadowing',
+  video: 'Vídeo',
+};
+
+const PHRASE_SOURCE_LABEL: Record<ShadowingPhraseSource, string> = {
+  videoTranscript: 'Vídeo (transcrição)',
+  videoMetadata: 'Vídeo (descrição)',
+  aiGenerated: 'IA',
+  manual: 'Manual',
+  fallback: 'Padrão',
+};
+
+const REVIEW_GRADE_ACTIONS: Array<{ label: string; grade: ReviewGrade; variant: 'danger' | 'secondary' | 'success' }> = [
+  { label: 'Errei', grade: 'again', variant: 'danger' },
+  { label: 'Difícil', grade: 'hard', variant: 'secondary' },
+  { label: 'Fácil', grade: 'easy', variant: 'success' },
 ];
 
-const DIFFICULTY_LABEL: Record<NonNullable<VocabularyCard['difficulty']>, string> = {
-  easy: 'Fácil',
-  medium: 'Médio',
-  hard: 'Difícil',
-};
-
-const CARDS_DUE_SECTION_ID = 'ingles-cards-revisao';
-
-function toDateOnly(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
+const CARDS_REVIEW_SECTION_ID = 'ingles-cards-revisao';
 
 function formatReviewDate(value: string): string {
   return new Date(`${value}T00:00:00`).toLocaleDateString('pt-BR');
@@ -148,8 +163,13 @@ export function InglesPage() {
   const [editingSentenceTranslation, setEditingSentenceTranslation] = useState('');
   const [translatingShadowingSentence, setTranslatingShadowingSentence] = useState(false);
   const [shadowingAiError, setShadowingAiError] = useState('');
+  const [shadowingAutoFillLoading, setShadowingAutoFillLoading] = useState(false);
+  const [shadowingThemeInput, setShadowingThemeInput] = useState('');
+  const [shadowingAiGenLoading, setShadowingAiGenLoading] = useState(false);
+  const [shadowingAiGenError, setShadowingAiGenError] = useState('');
+  const [savedPhraseIds, setSavedPhraseIds] = useState<Set<string>>(new Set());
 
-  // ETAPA 4 — Cards
+  // ETAPA 4 — Cards (flashcards)
   const [cardWord, setCardWord] = useState('');
   const [cardMeaning, setCardMeaning] = useState('');
   const [cardExample, setCardExample] = useState('');
@@ -157,6 +177,7 @@ export function InglesPage() {
   const [aiCardResult, setAiCardResult] = useState<AiTranslateResult | null>(null);
   const [aiCardLoading, setAiCardLoading] = useState<TranslateFocus | null>(null);
   const [aiCardError, setAiCardError] = useState('');
+  const [revealed, setRevealed] = useState(false);
 
   // ── Persist helper ─────────────────────────────────────────
   function setData(updater: (prev: EnglishDataV2) => EnglishDataV2) {
@@ -416,7 +437,7 @@ export function InglesPage() {
   }
 
   // ── ETAPA 3: Shadowing ──────────────────────────────────────
-  function updateShadowingSentences(updater: (sentences: typeof data.shadowingPractice.sentences) => typeof data.shadowingPractice.sentences) {
+  function updateShadowingSentences(updater: (sentences: ShadowingPhrase[]) => ShadowingPhrase[]) {
     setData(prev => {
       const key = getShadowingSourceKey(prev.shadowingPractice);
       const nextSentences = updater(prev.shadowingPractice.sentences);
@@ -450,7 +471,7 @@ export function InglesPage() {
     const currentSentences = dataRef.current.shadowingPractice.sentences;
     const savedSentences = dataRef.current.shadowingPhraseSets[sourceKey]?.phrases;
     const choice = window.prompt(
-      'Deseja manter as frases atuais ou criar uma lista nova para este vídeo?\n1 - Manter frases atuais\n2 - Usar lista salva desta fonte, se existir\n3 - Criar lista nova vazia\n4 - Usar frases padrão',
+      'Deseja manter as frases atuais ou criar uma lista nova para este vídeo?\n1 - Manter frases atuais\n2 - Usar lista salva desta fonte, se existir\n3 - Criar lista nova (a IA tenta preencher automaticamente com frases do vídeo)\n4 - Usar frases padrão',
       savedSentences ? '2' : '1',
     );
 
@@ -460,7 +481,7 @@ export function InglesPage() {
     return currentSentences;
   }
 
-  function persistShadowingPractice(practice: typeof data.shadowingPractice, sentences: typeof data.shadowingPractice.sentences) {
+  function persistShadowingPractice(practice: typeof data.shadowingPractice, sentences: ShadowingPhrase[]) {
     const sourceKey = getShadowingSourceKey(practice);
     setData(prev => ({
       ...prev,
@@ -483,6 +504,18 @@ export function InglesPage() {
     }));
   }
 
+  /** Preenche automaticamente frases vindas do vídeo (ou IA/fallback) quando a lista de um vídeo novo está vazia. */
+  async function autoFillShadowingIfEmpty(context: { videoId?: string; videoTitle?: string; videoDescription?: string }) {
+    if (dataRef.current.shadowingPractice.sentences.length > 0) return;
+    setShadowingAutoFillLoading(true);
+    try {
+      const phrases = await generateShadowingPhrasesForVideo(context);
+      updateShadowingSentences(() => phrases);
+    } finally {
+      setShadowingAutoFillLoading(false);
+    }
+  }
+
   function handleLoadShadowingLink() {
     const parsed = parseShadowingLink(shadowingLinkInput);
     if (!parsed) {
@@ -495,6 +528,7 @@ export function InglesPage() {
     const newPractice = buildShadowingFromLink(parsed, selectedSentences);
     persistShadowingPractice(newPractice, selectedSentences);
     setShadowingLinkInput('');
+    void autoFillShadowingIfEmpty({ videoId: parsed.type === 'video' ? parsed.videoId : undefined });
   }
 
   function handleShadowingLevelChange(level: ListeningLevel) {
@@ -542,6 +576,7 @@ export function InglesPage() {
       };
       const selectedSentences = chooseSentencesForShadowingSource(getShadowingSourceKey(practice));
       persistShadowingPractice(practice, selectedSentences);
+      void autoFillShadowingIfEmpty({ videoId: video.youtubeVideoId, videoTitle: video.title, videoDescription: video.description });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao buscar vídeo de shadowing no YouTube.';
       setShadowingLinkError(msg);
@@ -567,15 +602,15 @@ export function InglesPage() {
   }
 
   function handleRepetitionIncrement(sentenceId: string) {
-    updateShadowingSentences(sentences => sentences.map(s =>
-      s.id === sentenceId ? { ...s, repetitions: Math.min(s.repetitions + 1, s.targetRepetitions), updatedAt: new Date().toISOString() } : s,
-    ));
+    updateShadowingSentences(sentences => sentences.map(s => (s.id === sentenceId ? incrementPhraseRepetition(s) : s)));
   }
 
   function handleRepetitionReset(sentenceId: string) {
-    updateShadowingSentences(sentences => sentences.map(s =>
-      s.id === sentenceId ? { ...s, repetitions: 0, updatedAt: new Date().toISOString() } : s,
-    ));
+    updateShadowingSentences(sentences => sentences.map(s => (s.id === sentenceId ? resetPhraseRepetition(s) : s)));
+  }
+
+  function handleMarkSentenceCompleted(sentenceId: string) {
+    updateShadowingSentences(sentences => sentences.map(s => (s.id === sentenceId ? markPhraseCompleted(s) : s)));
   }
 
   function handleAddShadowingSentence() {
@@ -586,8 +621,10 @@ export function InglesPage() {
         id: genId(),
         text: newShadowingSentence.trim(),
         translation: newShadowingTranslation.trim(),
-        targetRepetitions: 5,
-        repetitions: 0,
+        source: 'manual',
+        repetitionsDone: 0,
+        repetitionsTarget: 5,
+        completed: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },
@@ -612,24 +649,38 @@ export function InglesPage() {
     }
   }
 
-  function handleSaveShadowingSentenceAsCard(sentence: { text: string; translation: string }) {
+  async function handleGenerateShadowingPhrasesWithAi() {
+    setShadowingAiGenError('');
+    setShadowingAiGenLoading(true);
+    try {
+      const practice = dataRef.current.shadowingPractice;
+      const newPhrases = await generateAiShadowingPhrases({
+        videoId: practice.youtubeVideoId,
+        videoTitle: practice.title,
+        theme: shadowingThemeInput.trim() || undefined,
+        count: 5,
+      });
+      updateShadowingSentences(sentences => [...sentences, ...newPhrases]);
+    } catch (err) {
+      console.error('[Inglês Diário] Falha ao gerar frases de shadowing com IA', err);
+      setShadowingAiGenError(err instanceof Error ? err.message : 'Não foi possível gerar frases com IA agora.');
+    } finally {
+      setShadowingAiGenLoading(false);
+    }
+  }
+
+  function handleSaveShadowingSentenceAsCard(sentence: ShadowingPhrase) {
     if (!sentence.text.trim() || !sentence.translation.trim()) return;
-    const card: VocabularyCard = {
-      id: genId(),
-      word: sentence.text.trim(),
-      meaning: sentence.translation.trim(),
-      example: sentence.text.trim(),
-      exampleTranslation: sentence.translation.trim(),
-      source: 'shadowing',
-      reviewStatus: 'new',
-      difficulty: 'medium',
-      createdAt: new Date().toISOString(),
-      nextReviewAt: toDateOnly(new Date()),
-      repetitions: 0,
-      correctCount: 0,
-      incorrectCount: 0,
-    };
+    const card = createCardFromShadowingPhrase(sentence, genId());
     setData(prev => ({ ...prev, vocabularyCards: [card, ...prev.vocabularyCards] }));
+    setSavedPhraseIds(prev => new Set(prev).add(sentence.id));
+    window.setTimeout(() => {
+      setSavedPhraseIds(prev => {
+        const next = new Set(prev);
+        next.delete(sentence.id);
+        return next;
+      });
+    }, 2000);
   }
 
   function handleStartEditSentence(sentenceId: string, text: string, translation: string) {
@@ -660,23 +711,23 @@ export function InglesPage() {
     updateShadowingSentences(sentences => sentences.filter(s => s.id !== sentenceId));
   }
 
-  // ── ETAPA 4: Cards ──────────────────────────────────────────
+  // ── ETAPA 4: Cards (flashcards estilo Anki) ─────────────────
   function handleAddCard() {
     if (!cardWord.trim() || !cardMeaning.trim()) return;
     const card: VocabularyCard = {
       id: genId(),
-      word: cardWord.trim(),
-      meaning: cardMeaning.trim(),
+      wordOrPhrase: cardWord.trim(),
+      translation: cardMeaning.trim(),
       example: cardExample.trim() || undefined,
       exampleTranslation: cardExampleTranslation.trim() || undefined,
-      source: aiCardResult ? 'ai' : 'manual',
-      reviewStatus: 'new',
-      difficulty: 'medium',
+      source: aiCardResult ? 'gemini' : 'manual',
       createdAt: new Date().toISOString(),
-      nextReviewAt: toDateOnly(new Date()),
-      repetitions: 0,
-      correctCount: 0,
-      incorrectCount: 0,
+      nextReviewAt: getTodayISO(),
+      reviewCount: 0,
+      errorCount: 0,
+      easyStreak: 0,
+      difficultCount: 0,
+      status: 'learning',
     };
     setData(prev => ({ ...prev, vocabularyCards: [card, ...prev.vocabularyCards] }));
     setCardWord('');
@@ -701,6 +752,7 @@ export function InglesPage() {
         setCardExampleTranslation(result.examples[0].portuguese);
       }
     } catch (err) {
+      // Erro da IA nunca apaga o que o usuário já digitou.
       console.error('[Inglês Diário] Falha ao consultar IA para tradução de vocabulário', err);
       setAiCardError(err instanceof Error ? err.message : 'Não foi possível consultar a IA agora.');
     } finally {
@@ -711,52 +763,36 @@ export function InglesPage() {
   function handleAddVocabularyItemAsCard(item: { word: string; translation: string; example: string }) {
     const card: VocabularyCard = {
       id: genId(),
-      word: item.word,
-      meaning: item.translation,
+      wordOrPhrase: item.word,
+      translation: item.translation,
       example: item.example || undefined,
-      source: 'ai',
-      reviewStatus: 'new',
-      difficulty: 'medium',
+      source: 'gemini',
       createdAt: new Date().toISOString(),
-      nextReviewAt: toDateOnly(new Date()),
-      repetitions: 0,
-      correctCount: 0,
-      incorrectCount: 0,
+      nextReviewAt: getTodayISO(),
+      reviewCount: 0,
+      errorCount: 0,
+      easyStreak: 0,
+      difficultCount: 0,
+      status: 'learning',
     };
     setData(prev => ({ ...prev, vocabularyCards: [card, ...prev.vocabularyCards] }));
   }
 
   function handleCardReview(id: string, grade: ReviewGrade) {
+    const today = getTodayISO();
     setData(prev => ({
       ...prev,
-      vocabularyCards: prev.vocabularyCards.map(c => {
-        if (c.id !== id) return c;
-        const result = calculateNextCardReview(c, grade);
-        return {
-          ...c,
-          reviewStatus: result.reviewStatus,
-          difficulty: result.difficulty,
-          nextReviewAt: result.nextReviewAt,
-          repetitions: result.repetitions,
-          correctCount: result.correctCount,
-          incorrectCount: result.incorrectCount,
-        };
-      }),
+      vocabularyCards: prev.vocabularyCards.map(c => (c.id === id ? applyCardReview(c, grade, today) : c)),
     }));
+    setRevealed(false);
   }
 
   function handleCardDelete(id: string) {
     setData(prev => ({ ...prev, vocabularyCards: prev.vocabularyCards.filter(c => c.id !== id) }));
   }
 
-  function handleToggleCardSection(section: 'showFutureCards' | 'showKnownCards') {
-    setData(prev => ({
-      ...prev,
-      ui: {
-        ...prev.ui,
-        [section]: !prev.ui[section],
-      },
-    }));
+  function handleToggleHistory() {
+    setData(prev => ({ ...prev, ui: { ...prev.ui, showHistory: !prev.ui.showHistory } }));
   }
 
   // ── Derived ────────────────────────────────────────────────
@@ -764,73 +800,76 @@ export function InglesPage() {
   const answeredCount = Object.keys(quizAnswers).length;
   const totalQuestions = videoQuiz?.questions.length ?? 0;
   const allAnswered = answeredCount === totalQuestions && totalQuestions > 0;
-  const today = toDateOnly(new Date());
-  const cardsDueToday = vocabularyCards.filter(card => card.reviewStatus !== 'known' && card.nextReviewAt <= today);
-  const futureCards = vocabularyCards.filter(card => card.reviewStatus !== 'known' && card.nextReviewAt > today);
-  const knownCards = vocabularyCards.filter(card => card.reviewStatus === 'known');
+  const today = getTodayISO();
 
-  function renderVocabularyCards(cards: VocabularyCard[]) {
-    if (cards.length === 0) {
-      return (
-        <p className="text-sm text-surface-400 dark:text-surface-500">
-          Nenhum card nesta seção.
-        </p>
-      );
-    }
+  const dueTodayCards = getDueTodayCards(vocabularyCards, today);
+  const futureCards = getFutureCards(vocabularyCards, today);
+  const masteredCards = getMasteredCards(vocabularyCards);
+  const historyCards = getCardHistory(vocabularyCards);
 
+  // Fila do dia: cards ainda não tocados hoje primeiro; um card marcado
+  // "Errei" (lastReviewedAt = hoje) volta pro fim da fila da sessão atual.
+  const sortedDueToday = [...dueTodayCards].sort((a, b) => {
+    const aTouchedToday = a.lastReviewedAt ? a.lastReviewedAt.slice(0, 10) === today : false;
+    const bTouchedToday = b.lastReviewedAt ? b.lastReviewedAt.slice(0, 10) === today : false;
+    if (aTouchedToday !== bTouchedToday) return aTouchedToday ? 1 : -1;
+    return a.createdAt.localeCompare(b.createdAt);
+  });
+  const currentReviewCard = sortedDueToday[0] ?? null;
+
+  useEffect(() => {
+    setRevealed(false);
+  }, [currentReviewCard?.id]);
+
+  const shadowingSentences = shadowingPractice.sentences;
+  const allShadowingPhrasesCompleted = shadowingSentences.length > 0 && shadowingSentences.every(s => s.completed);
+  const shadowingRepetitionsCompletedTotal = shadowingSentences.reduce((sum, s) => sum + s.repetitionsDone, 0);
+
+  function renderVocabularyCardRow(card: VocabularyCard, options: { showNextReview?: boolean; showMasteredAt?: boolean } = {}) {
     return (
-      <div className="space-y-2">
-        {cards.map(card => (
-          <div
-            key={card.id}
-            className="flex flex-col gap-3 rounded-lg border border-surface-200 px-3 py-2.5 dark:border-surface-700 sm:flex-row sm:items-start sm:justify-between"
-          >
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-semibold text-surface-900 dark:text-white">{card.word}</span>
-                <Badge variant={STATUS_VARIANT[card.reviewStatus]}>{STATUS_LABEL[card.reviewStatus]}</Badge>
-                {card.difficulty && (
-                  <Badge variant="default">{DIFFICULTY_LABEL[card.difficulty]}</Badge>
-                )}
-                <span className="text-xs text-surface-400 dark:text-surface-500">
-                  Próxima: {formatReviewDate(card.nextReviewAt)}
-                </span>
-                {(card.correctCount || card.incorrectCount) ? (
-                  <span className="text-xs text-surface-400 dark:text-surface-500">
-                    ✓ {card.correctCount ?? 0} · ✗ {card.incorrectCount ?? 0}
-                  </span>
-                ) : null}
-              </div>
-              <p className="text-sm text-surface-600 dark:text-surface-300">{card.meaning}</p>
-              {card.example && (
-                <p className="mt-0.5 text-xs italic text-surface-400 dark:text-surface-500">
-                  {card.example}
-                  {card.exampleTranslation && <span className="not-italic text-surface-400 dark:text-surface-500"> — {card.exampleTranslation}</span>}
-                </p>
-              )}
-            </div>
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              {REVIEW_ACTIONS.map(action => (
-                <button
-                  key={action.label}
-                  type="button"
-                  onClick={() => handleCardReview(card.id, action.grade)}
-                  className="rounded-lg border border-surface-200 px-2.5 py-1 text-xs font-medium text-surface-600 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-700 transition-colors"
-                >
-                  {action.label}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => handleCardDelete(card.id)}
-                className="text-surface-400 hover:text-danger-600 transition-colors"
-                title="Excluir card"
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
+      <div
+        key={card.id}
+        className="flex flex-col gap-3 rounded-lg border border-surface-200 px-3 py-2.5 dark:border-surface-700 sm:flex-row sm:items-start sm:justify-between"
+      >
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-surface-900 dark:text-white">{card.wordOrPhrase}</span>
+            <Badge variant={CARD_STATUS_VARIANT[card.status]}>{CARD_STATUS_LABEL[card.status]}</Badge>
+            <Badge variant="default">{CARD_SOURCE_LABEL[card.source]}</Badge>
+            {options.showNextReview && (
+              <span className="text-xs text-surface-400 dark:text-surface-500">
+                Próxima: {formatReviewDate(card.nextReviewAt)}
+              </span>
+            )}
+            {options.showMasteredAt && card.masteredAt && (
+              <span className="text-xs text-surface-400 dark:text-surface-500">
+                Aprendida em: {new Date(card.masteredAt).toLocaleDateString('pt-BR')}
+              </span>
+            )}
+            {(card.errorCount > 0 || card.reviewCount > 0) && (
+              <span className="text-xs text-surface-400 dark:text-surface-500">
+                {card.reviewCount} revisão(ões) · {card.errorCount} erro(s)
+              </span>
+            )}
           </div>
-        ))}
+          <p className="text-sm text-surface-600 dark:text-surface-300">{card.translation}</p>
+          {card.example && (
+            <p className="mt-0.5 text-xs italic text-surface-400 dark:text-surface-500">
+              {card.example}
+              {card.exampleTranslation && <span className="not-italic text-surface-400 dark:text-surface-500"> — {card.exampleTranslation}</span>}
+            </p>
+          )}
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handleCardDelete(card.id)}
+            className="text-surface-400 hover:text-danger-600 transition-colors"
+            title="Excluir card"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
       </div>
     );
   }
@@ -847,9 +886,9 @@ export function InglesPage() {
             size="sm"
             variant="secondary"
             icon={<BookOpen size={14} />}
-            onClick={() => document.getElementById(CARDS_DUE_SECTION_ID)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            onClick={() => document.getElementById(CARDS_REVIEW_SECTION_ID)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
           >
-            Revisar palavras {cardsDueToday.length > 0 ? `(${cardsDueToday.length})` : ''}
+            Revisar palavras {dueTodayCards.length > 0 ? `(${dueTodayCards.length})` : ''}
           </Button>
         }
       />
@@ -1225,6 +1264,13 @@ export function InglesPage() {
             <p className="text-sm text-danger-600 dark:text-danger-400">{shadowingLinkError}</p>
           )}
 
+          {shadowingAutoFillLoading && (
+            <div className="flex items-center gap-2 rounded-lg border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-600 dark:border-surface-700 dark:bg-surface-800/60 dark:text-surface-300">
+              <Sparkles size={14} className="animate-pulse" />
+              Buscando frases deste vídeo (transcrição, descrição ou IA)...
+            </div>
+          )}
+
           {shadowingPractice.source === 'default_playlist' ? (
             <p className="text-xs text-surface-400 dark:text-surface-500">
               Usando playlist padrão de shadowing.{' '}
@@ -1248,6 +1294,34 @@ export function InglesPage() {
             </p>
           )}
 
+          {allShadowingPhrasesCompleted && (
+            <div className="rounded-lg border border-success-200 bg-success-50/60 px-4 py-3 text-sm text-success-700 dark:border-success-900/40 dark:bg-success-900/10 dark:text-success-300">
+              <p className="font-semibold">Shadowing finalizado 🎉</p>
+              <p>{shadowingSentences.length} frase(s) praticada(s) — {shadowingRepetitionsCompletedTotal} repetições concluídas.</p>
+            </div>
+          )}
+
+          {/* Gerar frases com IA */}
+          <div className="space-y-2 rounded-lg border border-surface-200 p-3 dark:border-surface-700">
+            <p className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
+              Gerar frases aleatórias com IA
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                value={shadowingThemeInput}
+                onChange={e => setShadowingThemeInput(e.target.value)}
+                placeholder={shadowingPractice.title ? `Tema (padrão: "${shadowingPractice.title}")` : 'Tema (ex.: viagens, trabalho, comida)'}
+                className="min-w-0 flex-1 rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+              />
+              <Button size="sm" icon={<Sparkles size={14} />} loading={shadowingAiGenLoading} onClick={handleGenerateShadowingPhrasesWithAi}>
+                Gerar frases com IA
+              </Button>
+            </div>
+            {shadowingAiGenError && (
+              <p className="text-sm text-danger-600 dark:text-danger-400">{shadowingAiGenError}</p>
+            )}
+          </div>
+
           {/* Sentences */}
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
@@ -1257,7 +1331,7 @@ export function InglesPage() {
               <input
                 value={newShadowingSentence}
                 onChange={e => setNewShadowingSentence(e.target.value)}
-                placeholder="Nova frase em inglês"
+                placeholder="Nova frase em inglês (manual)"
                 className="rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
               />
               <div className="flex gap-2">
@@ -1290,15 +1364,22 @@ export function InglesPage() {
               <p className="mb-3 text-sm text-danger-600 dark:text-danger-400">{shadowingAiError}</p>
             )}
             <div className="space-y-2">
-              {shadowingPractice.sentences.length === 0 ? (
+              {shadowingSentences.length === 0 ? (
                 <p className="text-sm text-surface-400 dark:text-surface-500">
-                  Nenhuma frase nesta lista. Adicione frases para praticar este vídeo ou playlist.
+                  Nenhuma frase nesta lista ainda. Use "Gerar frases com IA" ou adicione manualmente.
                 </p>
-              ) : shadowingPractice.sentences.map(sentence => (
+              ) : shadowingSentences.map((sentence, index) => (
                   <div
                     key={sentence.id}
                     className="rounded-lg border border-surface-200 p-3 dark:border-surface-700"
                   >
+                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-surface-400 dark:text-surface-500">
+                        Frase {index + 1} de {shadowingSentences.length}
+                      </span>
+                      <Badge variant="default">{PHRASE_SOURCE_LABEL[sentence.source]}</Badge>
+                      {sentence.completed && <Badge variant="success">Finalizado</Badge>}
+                    </div>
                     {editingSentenceId === sentence.id ? (
                       <div className="space-y-2">
                         <input
@@ -1341,20 +1422,30 @@ export function InglesPage() {
                       <div className="flex h-2 min-w-32 flex-1 overflow-hidden rounded-full bg-surface-200 dark:bg-surface-700">
                         <div
                           className="h-full rounded-full bg-primary-500 transition-all"
-                          style={{ width: `${(sentence.repetitions / sentence.targetRepetitions) * 100}%` }}
+                          style={{ width: `${(sentence.repetitionsDone / sentence.repetitionsTarget) * 100}%` }}
                         />
                       </div>
                       <span className="shrink-0 text-xs text-surface-500 dark:text-surface-400">
-                        {sentence.repetitions}/{sentence.targetRepetitions}
+                        {sentence.repetitionsDone}/{sentence.repetitionsTarget}
                       </span>
                       <button
                         type="button"
                         onClick={() => handleRepetitionIncrement(sentence.id)}
-                        disabled={sentence.repetitions >= sentence.targetRepetitions}
+                        disabled={sentence.repetitionsDone >= sentence.repetitionsTarget}
                         className="rounded-lg bg-primary-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-40 transition-all"
                       >
-                        +1
+                        +1 repetição
                       </button>
+                      {!sentence.completed && (
+                        <button
+                          type="button"
+                          onClick={() => handleMarkSentenceCompleted(sentence.id)}
+                          className="inline-flex items-center gap-1 text-xs text-surface-400 hover:text-success-600 transition-colors"
+                        >
+                          <Check size={13} />
+                          Finalizar
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => handleStartEditSentence(sentence.id, sentence.text, sentence.translation)}
@@ -1376,8 +1467,8 @@ export function InglesPage() {
                         onClick={() => handleSaveShadowingSentenceAsCard(sentence)}
                         className="inline-flex items-center gap-1 text-xs text-surface-400 hover:text-primary-600 transition-colors"
                       >
-                        <Save size={13} />
-                        Salvar como card
+                        {savedPhraseIds.has(sentence.id) ? <CheckCircle2 size={13} className="text-success-600" /> : <Save size={13} />}
+                        {savedPhraseIds.has(sentence.id) ? 'Salvo!' : 'Salvar como card'}
                       </button>
                       <button
                         type="button"
@@ -1396,15 +1487,15 @@ export function InglesPage() {
       </Card>
 
       {/* ══════════════════════════════════════════════════════
-          ETAPA 4 — CARDS DE VOCABULÁRIO
+          ETAPA 4 — CARDS DE VOCABULÁRIO (flashcards estilo Anki)
       ══════════════════════════════════════════════════════ */}
-      <Card id={CARDS_DUE_SECTION_ID}>
+      <Card id={CARDS_REVIEW_SECTION_ID}>
         <CardHeader
           title="4. Revisão de palavras desconhecidas"
           subtitle={`${vocabularyCards.length} card(s) salvos no dispositivo.`}
           icon={<BookOpen size={18} />}
         />
-        <CardBody className="space-y-4">
+        <CardBody className="space-y-5">
           {/* AI panel */}
           <div className="space-y-3 rounded-lg border border-surface-200 p-3 dark:border-surface-700">
             <p className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
@@ -1530,43 +1621,96 @@ export function InglesPage() {
             Salvar como card
           </Button>
 
-          {/* Card list */}
-          {vocabularyCards.length === 0 ? (
-            <p className="text-sm text-surface-400 dark:text-surface-500">
-              Nenhum card adicionado ainda. Adicione palavras novas enquanto assiste ou pratica.
-            </p>
-          ) : (
-            <div className="space-y-5">
-              <section className="space-y-2">
-                <h3 className="text-sm font-semibold text-surface-900 dark:text-white">
-                  Cards para revisar hoje ({cardsDueToday.length})
-                </h3>
-                {renderVocabularyCards(cardsDueToday)}
-              </section>
-              <section className="space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-surface-900 dark:text-white">
-                    Cards futuros ({futureCards.length})
-                  </h3>
-                  <Button size="sm" variant="secondary" onClick={() => handleToggleCardSection('showFutureCards')}>
-                    {ui.showFutureCards ? 'Ocultar' : 'Mostrar'}
-                  </Button>
-                </div>
-                {ui.showFutureCards && renderVocabularyCards(futureCards)}
-              </section>
-              <section className="space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-surface-900 dark:text-white">
-                    Cards dominados ({knownCards.length})
-                  </h3>
-                  <Button size="sm" variant="secondary" onClick={() => handleToggleCardSection('showKnownCards')}>
-                    {ui.showKnownCards ? 'Ocultar' : 'Mostrar'}
-                  </Button>
-                </div>
-                {ui.showKnownCards && renderVocabularyCards(knownCards)}
-              </section>
+          {/* Flashcard de revisão — estilo Anki */}
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-surface-900 dark:text-white">
+              Revisar hoje ({dueTodayCards.length})
+            </h3>
+            {!currentReviewCard ? (
+              <p className="text-sm text-surface-400 dark:text-surface-500">
+                {vocabularyCards.length === 0
+                  ? 'Nenhum card salvo ainda. Adicione palavras acima para começar a revisar.'
+                  : 'Nenhum card vencido para revisar hoje. 🎉'}
+              </p>
+            ) : (
+              <div className="rounded-xl border border-surface-200 bg-surface-50/60 p-6 text-center dark:border-surface-700 dark:bg-surface-800/40">
+                <p className="mb-3 text-2xl font-semibold text-surface-900 dark:text-white">
+                  {currentReviewCard.wordOrPhrase}
+                </p>
+                {!revealed ? (
+                  <Button onClick={() => setRevealed(true)}>Mostrar resposta</Button>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="mx-auto max-w-md space-y-1 text-left text-sm">
+                      <p><span className="font-semibold text-surface-900 dark:text-white">Tradução:</span> {currentReviewCard.translation}</p>
+                      {currentReviewCard.example && (
+                        <p><span className="font-semibold text-surface-900 dark:text-white">Exemplo:</span> {currentReviewCard.example}</p>
+                      )}
+                      {currentReviewCard.exampleTranslation && (
+                        <p><span className="font-semibold text-surface-900 dark:text-white">Tradução do exemplo:</span> {currentReviewCard.exampleTranslation}</p>
+                      )}
+                      <p className="pt-1">
+                        <Badge variant="default">{`Origem: ${CARD_SOURCE_LABEL[currentReviewCard.source]}`}</Badge>
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap justify-center gap-2">
+                      {REVIEW_GRADE_ACTIONS.map(action => (
+                        <Button
+                          key={action.grade}
+                          variant={action.variant}
+                          onClick={() => handleCardReview(currentReviewCard.id, action.grade)}
+                        >
+                          {action.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-surface-900 dark:text-white">
+              Cards futuros ({futureCards.length})
+            </h3>
+            {futureCards.length === 0 ? (
+              <p className="text-sm text-surface-400 dark:text-surface-500">Nenhum card agendado para mais tarde.</p>
+            ) : (
+              <div className="space-y-2">
+                {futureCards.map(card => renderVocabularyCardRow(card, { showNextReview: true }))}
+              </div>
+            )}
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-surface-900 dark:text-white">
+              Dominadas ({masteredCards.length})
+            </h3>
+            {masteredCards.length === 0 ? (
+              <p className="text-sm text-surface-400 dark:text-surface-500">Nenhuma palavra dominada ainda.</p>
+            ) : (
+              <div className="space-y-2">
+                {masteredCards.map(card => renderVocabularyCardRow(card, { showMasteredAt: true }))}
+              </div>
+            )}
+          </section>
+
+          <section className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-surface-900 dark:text-white">
+                Histórico ({historyCards.length})
+              </h3>
+              <Button size="sm" variant="secondary" onClick={handleToggleHistory}>
+                {ui.showHistory ? 'Ocultar' : 'Mostrar'}
+              </Button>
             </div>
-          )}
+            {ui.showHistory && (
+              <div className="space-y-2">
+                {historyCards.map(card => renderVocabularyCardRow(card, { showNextReview: true, showMasteredAt: true }))}
+              </div>
+            )}
+          </section>
         </CardBody>
       </Card>
     </div>

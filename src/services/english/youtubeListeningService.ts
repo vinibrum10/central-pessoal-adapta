@@ -167,6 +167,7 @@ async function fetchVideoDetails(ids: string[]) {
       snippet?: {
         title?: string;
         channelTitle?: string;
+        description?: string;
       };
     }>;
   };
@@ -219,6 +220,7 @@ function buildValidVideo(
     embedUrl: `https://www.youtube.com/embed/${videoId}`,
     source: 'youtube_api',
     qualityScore,
+    description: item.snippet?.description?.trim() || undefined,
   };
 }
 

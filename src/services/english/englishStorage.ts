@@ -3,6 +3,30 @@
 
 const STORAGE_KEY = 'sgp_english_v2';
 
+// ============================================================
+// DATA/HORA — sempre no fuso local do dispositivo, nunca UTC cru.
+// ============================================================
+// `new Date().toISOString()` usa UTC. Para quem mora no Brasil (UTC-3), uma
+// palavra salva às 22h-23h59 local já cai no dia seguinte em UTC — o que
+// fazia cards "sumirem"/aparecerem no dia errado perto da meia-noite. Estas
+// funções usam sempre o fuso local do navegador para decidir "qual é o dia
+// de hoje", evitando esse desvio.
+export function getTodayISO(referenceDate = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(referenceDate);
+}
+
+export function addDaysISO(dateISO: string, days: number): string {
+  const [year, month, day] = dateISO.split('-').map(Number);
+  // meio-dia evita qualquer problema de horário de verão ao somar dias
+  const date = new Date(year, (month || 1) - 1, day || 1, 12, 0, 0, 0);
+  date.setDate(date.getDate() + days);
+  return getTodayISO(date);
+}
+
 export interface ListeningVideo {
   youtubeVideoId: string;
   title: string;
@@ -13,6 +37,8 @@ export interface ListeningVideo {
   embedUrl: string;
   source: 'youtube_api' | 'manual_link' | 'none';
   qualityScore?: number;
+  /** Descrição do vídeo (quando disponível pela YouTube API) — usada como base para shadowing. */
+  description?: string;
 }
 
 export interface QuizQuestion {
@@ -35,12 +61,21 @@ export interface VideoQuiz {
   warning?: string;
 }
 
-export interface ShadowingSentence {
+// ============================================================
+// SHADOWING — frases vêm do vídeo (transcript/descrição), de IA ou manuais.
+// ============================================================
+export type ShadowingPhraseSource = 'videoTranscript' | 'videoMetadata' | 'aiGenerated' | 'manual' | 'fallback';
+
+export interface ShadowingPhrase {
   id: string;
   text: string;
   translation: string;
-  targetRepetitions: number;
-  repetitions: number;
+  source: ShadowingPhraseSource;
+  videoId?: string;
+  videoTitle?: string;
+  repetitionsDone: number;
+  repetitionsTarget: number;
+  completed: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -53,37 +88,50 @@ export interface ShadowingPractice {
   watchUrl: string;
   embedUrl: string;
   source: 'default_playlist' | 'manual_link' | 'youtube_api';
-  sentences: ShadowingSentence[];
+  sentences: ShadowingPhrase[];
 }
 
 export interface ShadowingPhraseSet {
   sourceTitle: string;
   sourceUrl: string;
-  phrases: ShadowingSentence[];
+  phrases: ShadowingPhrase[];
 }
 
 export interface EnglishUiState {
-  showFutureCards: boolean;
-  showKnownCards: boolean;
+  /**
+   * "Revisar hoje", "Cards futuros" e "Dominadas" ficam SEMPRE visíveis —
+   * essa era a causa raiz de cards parecerem ter sumido (ficavam atrás de um
+   * toggle escondido por padrão). Só o Histórico (redundante com os outros
+   * três grupos somados) é opcionalmente recolhido.
+   */
+  showHistory: boolean;
 }
+
+// ============================================================
+// CARDS DE VOCABULÁRIO (flashcards estilo Anki)
+// ============================================================
+export type VocabularyCardSource = 'manual' | 'gemini' | 'shadowing' | 'video';
+export type VocabularyCardStatus = 'learning' | 'reviewing' | 'mastered';
 
 export interface VocabularyCard {
   id: string;
-  word: string;
-  meaning: string;
+  wordOrPhrase: string;
+  translation: string;
   example?: string;
-  /** Tradução em português do exemplo em inglês (`example`). */
   exampleTranslation?: string;
-  source?: 'listening' | 'quiz' | 'shadowing' | 'manual' | 'ai';
-  sourceYoutubeVideoId?: string;
-  reviewStatus: 'new' | 'learning' | 'review' | 'known';
-  difficulty?: 'easy' | 'medium' | 'hard';
+  source: VocabularyCardSource;
+  videoId?: string;
+  videoTitle?: string;
   createdAt: string;
+  lastReviewedAt?: string;
   nextReviewAt: string;
-  /** Quantas vezes o card avançou a escada de revisão (Bom/Fácil/Difícil). */
-  repetitions?: number;
-  correctCount?: number;
-  incorrectCount?: number;
+  reviewCount: number;
+  errorCount: number;
+  easyStreak: number;
+  difficultCount: number;
+  status: VocabularyCardStatus;
+  masteredAt?: string;
+  archivedAt?: string;
 }
 
 export interface EnglishDataV2 {
@@ -92,18 +140,18 @@ export interface EnglishDataV2 {
   listeningVideo: ListeningVideo | null;
   videoQuiz: VideoQuiz | null;
   shadowingPractice: ShadowingPractice;
-  shadowingSentenceSets: Record<string, ShadowingSentence[]>;
+  shadowingSentenceSets: Record<string, ShadowingPhrase[]>;
   shadowingPhraseSets: Record<string, ShadowingPhraseSet>;
   vocabularyCards: VocabularyCard[];
   ui: EnglishUiState;
 }
 
-const DEFAULT_SHADOWING_SENTENCES: ShadowingSentence[] = [
-  { id: 's1', text: 'Could you say that one more time, please?', translation: 'Você poderia dizer isso mais uma vez, por favor?', targetRepetitions: 5, repetitions: 0, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
-  { id: 's2', text: "I'm trying to sound more natural when I speak.", translation: 'Estou tentando soar mais natural quando falo.', targetRepetitions: 5, repetitions: 0, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
-  { id: 's3', text: 'Let me repeat that slowly and then faster.', translation: 'Deixe-me repetir isso devagar e depois mais rápido.', targetRepetitions: 5, repetitions: 0, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
-  { id: 's4', text: 'I want to improve my rhythm, stress, and intonation.', translation: 'Quero melhorar meu ritmo, ênfase e entonação.', targetRepetitions: 5, repetitions: 0, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
-  { id: 's5', text: 'The more I practice, the more confident I become.', translation: 'Quanto mais eu pratico, mais confiante eu fico.', targetRepetitions: 5, repetitions: 0, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+const DEFAULT_SHADOWING_SENTENCES: ShadowingPhrase[] = [
+  { id: 's1', text: 'Could you say that one more time, please?', translation: 'Você poderia dizer isso mais uma vez, por favor?', source: 'fallback', repetitionsDone: 0, repetitionsTarget: 5, completed: false, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+  { id: 's2', text: "I'm trying to sound more natural when I speak.", translation: 'Estou tentando soar mais natural quando falo.', source: 'fallback', repetitionsDone: 0, repetitionsTarget: 5, completed: false, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+  { id: 's3', text: 'Let me repeat that slowly and then faster.', translation: 'Deixe-me repetir isso devagar e depois mais rápido.', source: 'fallback', repetitionsDone: 0, repetitionsTarget: 5, completed: false, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+  { id: 's4', text: 'I want to improve my rhythm, stress, and intonation.', translation: 'Quero melhorar meu ritmo, ênfase e entonação.', source: 'fallback', repetitionsDone: 0, repetitionsTarget: 5, completed: false, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+  { id: 's5', text: 'The more I practice, the more confident I become.', translation: 'Quanto mais eu pratico, mais confiante eu fico.', source: 'fallback', repetitionsDone: 0, repetitionsTarget: 5, completed: false, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
 ];
 
 export const DEFAULT_SHADOWING: ShadowingPractice = {
@@ -135,8 +183,7 @@ const DEFAULT_DATA: EnglishDataV2 = {
   },
   vocabularyCards: [],
   ui: {
-    showFutureCards: false,
-    showKnownCards: false,
+    showHistory: false,
   },
 };
 
@@ -151,32 +198,182 @@ export function getShadowingSourceKey(practice: Pick<ShadowingPractice, 'type' |
   return DEFAULT_SHADOWING_KEY;
 }
 
-export function getDefaultShadowingPhrases(): ShadowingSentence[] {
+export function getDefaultShadowingPhrases(): ShadowingPhrase[] {
   return DEFAULT_SHADOWING_SENTENCES.map(s => ({ ...s, updatedAt: new Date().toISOString() }));
 }
 
-function normalizeSentence(raw: Partial<ShadowingSentence> & { repetitionsDone?: number; repetitionsTarget?: number }, now: string): ShadowingSentence {
+/** +1 repetição, sem nunca passar do alvo (repetitionsTarget) — marca `completed` ao chegar lá. */
+export function incrementPhraseRepetition(phrase: ShadowingPhrase): ShadowingPhrase {
+  const repetitionsDone = Math.min(phrase.repetitionsDone + 1, phrase.repetitionsTarget);
+  return { ...phrase, repetitionsDone, completed: repetitionsDone >= phrase.repetitionsTarget, updatedAt: new Date().toISOString() };
+}
+
+export function resetPhraseRepetition(phrase: ShadowingPhrase): ShadowingPhrase {
+  return { ...phrase, repetitionsDone: 0, completed: false, updatedAt: new Date().toISOString() };
+}
+
+/** Marca a frase como finalizada manualmente (ex.: usuário já praticou offline). */
+export function markPhraseCompleted(phrase: ShadowingPhrase): ShadowingPhrase {
+  return { ...phrase, repetitionsDone: phrase.repetitionsTarget, completed: true, updatedAt: new Date().toISOString() };
+}
+
+/** Transforma uma frase de shadowing em um card de vocabulário novo — origem sempre 'shadowing'. */
+export function createCardFromShadowingPhrase(phrase: ShadowingPhrase, id: string): VocabularyCard {
+  return {
+    id,
+    wordOrPhrase: phrase.text,
+    translation: phrase.translation,
+    example: phrase.text,
+    exampleTranslation: phrase.translation,
+    source: 'shadowing',
+    videoId: phrase.videoId,
+    videoTitle: phrase.videoTitle,
+    createdAt: new Date().toISOString(),
+    nextReviewAt: getTodayISO(),
+    reviewCount: 0,
+    errorCount: 0,
+    easyStreak: 0,
+    difficultCount: 0,
+    status: 'learning',
+  };
+}
+
+/** Migra frases de shadowing de formatos antigos (repetitions/targetRepetitions, sem `source`/`completed`) sem perder nada. */
+function normalizeSentence(
+  raw: Partial<ShadowingPhrase> & { repetitions?: number; targetRepetitions?: number },
+  now: string,
+): ShadowingPhrase {
+  const repetitionsTarget = raw.repetitionsTarget ?? raw.targetRepetitions ?? 5;
+  const repetitionsDone = Math.min(raw.repetitionsDone ?? raw.repetitions ?? 0, repetitionsTarget);
   return {
     id: raw.id ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
     text: raw.text ?? '',
     translation: raw.translation ?? '',
-    repetitions: raw.repetitions ?? raw.repetitionsDone ?? 0,
-    targetRepetitions: raw.targetRepetitions ?? raw.repetitionsTarget ?? 5,
+    source: raw.source ?? 'manual',
+    videoId: raw.videoId,
+    videoTitle: raw.videoTitle,
+    repetitionsDone,
+    repetitionsTarget,
+    completed: raw.completed ?? repetitionsDone >= repetitionsTarget,
     createdAt: raw.createdAt ?? now,
     updatedAt: raw.updatedAt ?? now,
   };
 }
 
-function buildPhraseSet(sourceTitle: string, sourceUrl: string, phrases: ShadowingSentence[]): ShadowingPhraseSet {
+function buildPhraseSet(sourceTitle: string, sourceUrl: string, phrases: ShadowingPhrase[]): ShadowingPhraseSet {
   return { sourceTitle, sourceUrl, phrases };
+}
+
+// ============================================================
+// MIGRAÇÃO DE CARDS — formato antigo (word/meaning/reviewStatus/...) para o
+// novo formato (wordOrPhrase/translation/status/...). Nenhum card é perdido:
+// todo campo ausente recebe um default seguro, nunca um valor que apague
+// progresso real do usuário.
+// ============================================================
+type LegacyVocabularyCard = {
+  id: string;
+  word?: string;
+  meaning?: string;
+  wordOrPhrase?: string;
+  translation?: string;
+  example?: string;
+  exampleTranslation?: string;
+  source?: string;
+  sourceYoutubeVideoId?: string;
+  videoId?: string;
+  videoTitle?: string;
+  reviewStatus?: 'new' | 'learning' | 'review' | 'known';
+  status?: VocabularyCardStatus;
+  createdAt?: string;
+  updatedAt?: string;
+  lastReviewedAt?: string;
+  nextReviewAt?: string;
+  repetitions?: number;
+  correctCount?: number;
+  incorrectCount?: number;
+  reviewCount?: number;
+  errorCount?: number;
+  easyStreak?: number;
+  difficultCount?: number;
+  masteredAt?: string;
+  archivedAt?: string;
+};
+
+const LEGACY_SOURCE_MAP: Record<string, VocabularyCardSource> = {
+  manual: 'manual',
+  ai: 'gemini',
+  gemini: 'gemini',
+  shadowing: 'shadowing',
+  listening: 'video',
+  quiz: 'video',
+  video: 'video',
+};
+
+function migrateCardSource(raw?: string): VocabularyCardSource {
+  if (raw && raw in LEGACY_SOURCE_MAP) return LEGACY_SOURCE_MAP[raw];
+  return 'manual';
+}
+
+function migrateCardStatus(raw: LegacyVocabularyCard): VocabularyCardStatus {
+  if (raw.status === 'learning' || raw.status === 'reviewing' || raw.status === 'mastered') return raw.status;
+  if (raw.reviewStatus === 'known') return 'mastered';
+  if (raw.reviewStatus === 'review') return 'reviewing';
+  return 'learning';
+}
+
+export function normalizeVocabularyCard(raw: LegacyVocabularyCard, todayISO: string): VocabularyCard {
+  const createdAt = raw.createdAt ?? new Date().toISOString();
+  const status = migrateCardStatus(raw);
+  return {
+    id: raw.id,
+    wordOrPhrase: raw.wordOrPhrase ?? raw.word ?? '',
+    translation: raw.translation ?? raw.meaning ?? '',
+    example: raw.example,
+    exampleTranslation: raw.exampleTranslation,
+    source: migrateCardSource(raw.source),
+    videoId: raw.videoId ?? raw.sourceYoutubeVideoId,
+    videoTitle: raw.videoTitle,
+    createdAt,
+    lastReviewedAt: raw.lastReviewedAt,
+    nextReviewAt: raw.nextReviewAt ?? todayISO,
+    reviewCount: raw.reviewCount ?? raw.repetitions ?? (raw.correctCount ?? 0) + (raw.incorrectCount ?? 0),
+    errorCount: raw.errorCount ?? raw.incorrectCount ?? 0,
+    easyStreak: raw.easyStreak ?? 0,
+    difficultCount: raw.difficultCount ?? 0,
+    status,
+    masteredAt: raw.masteredAt ?? (status === 'mastered' ? raw.updatedAt ?? createdAt : undefined),
+    archivedAt: raw.archivedAt,
+  };
+}
+
+// ----------------------------------------------------------------
+// Grupos de cards — sempre calculados a partir da lista completa. A troca de
+// dia NUNCA remove um card da lista; ela só muda em qual destes grupos ele
+// aparece.
+// ----------------------------------------------------------------
+export function getDueTodayCards(cards: VocabularyCard[], todayISO: string): VocabularyCard[] {
+  return cards.filter(c => !c.archivedAt && c.status !== 'mastered' && c.nextReviewAt <= todayISO);
+}
+
+export function getFutureCards(cards: VocabularyCard[], todayISO: string): VocabularyCard[] {
+  return cards.filter(c => !c.archivedAt && c.status !== 'mastered' && c.nextReviewAt > todayISO);
+}
+
+export function getMasteredCards(cards: VocabularyCard[]): VocabularyCard[] {
+  return cards.filter(c => !c.archivedAt && c.status === 'mastered');
+}
+
+/** Histórico = todos os cards já criados, inclusive arquivados — nada some daqui. */
+export function getCardHistory(cards: VocabularyCard[]): VocabularyCard[] {
+  return cards;
 }
 
 export function loadEnglishData(): EnglishDataV2 {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULT_DATA, shadowingPractice: cloneDefaultShadowing() };
-    const parsed = JSON.parse(raw) as Partial<EnglishDataV2>;
-    const today = new Date().toISOString().slice(0, 10);
+    const parsed = JSON.parse(raw) as Partial<EnglishDataV2> & { vocabularyCards?: LegacyVocabularyCard[] };
+    const today = getTodayISO();
     const now = new Date().toISOString();
     const parsedPractice = parsed.shadowingPractice ?? cloneDefaultShadowing();
     const shadowingKey = getShadowingSourceKey(parsedPractice);
@@ -190,7 +387,10 @@ export function loadEnglishData(): EnglishDataV2 {
         key,
         buildPhraseSet(key, parsedPractice.watchUrl ?? DEFAULT_SHADOWING.watchUrl, phrases.map(sentence => normalizeSentence(sentence, now))),
       ])),
-      ...parsedPhraseSets,
+      ...Object.fromEntries(Object.entries(parsedPhraseSets).map(([key, set]) => [
+        key,
+        buildPhraseSet(set.sourceTitle, set.sourceUrl, set.phrases.map(sentence => normalizeSentence(sentence, now))),
+      ])),
     };
     if (!shadowingPhraseSets[shadowingKey]) {
       shadowingPhraseSets[shadowingKey] = buildPhraseSet(
@@ -219,13 +419,11 @@ export function loadEnglishData(): EnglishDataV2 {
           phrases: shadowingSentences,
         },
       },
-      vocabularyCards: (parsed.vocabularyCards ?? []).map(card => ({
-        ...card,
-        nextReviewAt: card.nextReviewAt ?? today,
-      })),
+      // Migração: cards salvos com o formato antigo (word/meaning/reviewStatus)
+      // são convertidos para o novo formato sem perder nenhum registro.
+      vocabularyCards: (parsed.vocabularyCards ?? []).map(card => normalizeVocabularyCard(card, today)),
       ui: {
-        showFutureCards: parsed.ui?.showFutureCards ?? false,
-        showKnownCards: parsed.ui?.showKnownCards ?? false,
+        showHistory: parsed.ui?.showHistory ?? false,
       },
     };
   } catch {

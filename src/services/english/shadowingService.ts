@@ -1,4 +1,4 @@
-import type { ShadowingPractice, ShadowingSentence } from './englishStorage';
+import type { ShadowingPractice, ShadowingPhrase } from './englishStorage';
 import { DEFAULT_SHADOWING } from './englishStorage';
 
 const PLAYLIST_PATTERN = /[?&]list=([A-Za-z0-9_-]+)/;
@@ -36,7 +36,7 @@ export function parseShadowingLink(input: string): ParsedShadowingLink {
   return null;
 }
 
-export function buildShadowingFromLink(parsed: ParsedShadowingLink, existingSentences: ShadowingSentence[]): ShadowingPractice {
+export function buildShadowingFromLink(parsed: ParsedShadowingLink, existingSentences: ShadowingPhrase[]): ShadowingPractice {
   if (!parsed) return DEFAULT_SHADOWING;
 
   if (parsed.type === 'playlist') {
