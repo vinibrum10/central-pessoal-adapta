@@ -81,7 +81,7 @@ export function calculateNextCardReview(
       break;
     }
     case 'easy': {
-      const idx = Math.min(repetitions + 1, EASY_LADDER_DAYS.length - 1);
+      const idx = Math.min(repetitions, EASY_LADDER_DAYS.length - 1);
       intervalDays = EASY_LADDER_DAYS[idx];
       nextRepetitions += 1;
       nextCorrect += 1;
