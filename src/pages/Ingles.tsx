@@ -10,6 +10,7 @@ import {
   type VideoQuiz,
   type VocabularyCard,
   DEFAULT_SHADOWING,
+  getDefaultShadowingPhrases,
   getShadowingSourceKey,
   loadEnglishData,
   saveEnglishData,
@@ -17,6 +18,7 @@ import {
 import {
   isYouTubeConfigured,
   searchListeningVideo,
+  searchShadowingVideo,
   extractYouTubeVideoId,
   buildManualListeningVideo,
   type ListeningLevel,
@@ -129,6 +131,8 @@ export function InglesPage() {
   const [quizScore, setQuizScore] = useState<{ correct: number; total: number } | null>(null);
 
   // ETAPA 3 — Shadowing
+  const [loadingShadowingVideo, setLoadingShadowingVideo] = useState(false);
+  const [shadowingQueryIndex, setShadowingQueryIndex] = useState(0);
   const [shadowingLinkInput, setShadowingLinkInput] = useState('');
   const [shadowingLinkError, setShadowingLinkError] = useState('');
   const [newShadowingSentence, setNewShadowingSentence] = useState('');
@@ -382,6 +386,11 @@ export function InglesPage() {
     setData(prev => {
       const key = getShadowingSourceKey(prev.shadowingPractice);
       const nextSentences = updater(prev.shadowingPractice.sentences);
+      const phraseSet = prev.shadowingPhraseSets[key] ?? {
+        sourceTitle: prev.shadowingPractice.title ?? 'Shadowing',
+        sourceUrl: prev.shadowingPractice.watchUrl,
+        phrases: prev.shadowingPractice.sentences,
+      };
       return {
         ...prev,
         shadowingPractice: {
@@ -392,22 +401,52 @@ export function InglesPage() {
           ...prev.shadowingSentenceSets,
           [key]: nextSentences,
         },
+        shadowingPhraseSets: {
+          ...prev.shadowingPhraseSets,
+          [key]: {
+            ...phraseSet,
+            phrases: nextSentences,
+          },
+        },
       };
     });
   }
 
   function chooseSentencesForShadowingSource(sourceKey: string) {
     const currentSentences = dataRef.current.shadowingPractice.sentences;
-    const savedSentences = dataRef.current.shadowingSentenceSets[sourceKey];
+    const savedSentences = dataRef.current.shadowingPhraseSets[sourceKey]?.phrases;
     const choice = window.prompt(
-      'Deseja manter as frases atuais ou criar uma lista nova para este vídeo?\n1 - Manter frases atuais\n2 - Usar lista salva desta fonte, se existir\n3 - Criar lista nova vazia\n4 - Restaurar frases padrão',
+      'Deseja manter as frases atuais ou criar uma lista nova para este vídeo?\n1 - Manter frases atuais\n2 - Usar lista salva desta fonte, se existir\n3 - Criar lista nova vazia\n4 - Usar frases padrão',
       savedSentences ? '2' : '1',
     );
 
     if (choice === '3') return [];
-    if (choice === '4') return DEFAULT_SHADOWING.sentences.map(s => ({ ...s, repetitionsDone: 0 }));
+    if (choice === '4') return getDefaultShadowingPhrases();
     if (choice === '2' && savedSentences) return savedSentences;
     return currentSentences;
+  }
+
+  function persistShadowingPractice(practice: typeof data.shadowingPractice, sentences: typeof data.shadowingPractice.sentences) {
+    const sourceKey = getShadowingSourceKey(practice);
+    setData(prev => ({
+      ...prev,
+      shadowingPractice: {
+        ...practice,
+        sentences,
+      },
+      shadowingSentenceSets: {
+        ...prev.shadowingSentenceSets,
+        [sourceKey]: sentences,
+      },
+      shadowingPhraseSets: {
+        ...prev.shadowingPhraseSets,
+        [sourceKey]: {
+          sourceTitle: practice.title ?? (practice.source === 'default_playlist' ? 'Playlist padrão' : 'Shadowing'),
+          sourceUrl: practice.watchUrl,
+          phrases: sentences,
+        },
+      },
+    }));
   }
 
   function handleLoadShadowingLink() {
@@ -420,29 +459,65 @@ export function InglesPage() {
     const sourceKey = parsed.type === 'playlist' ? `playlist:${parsed.playlistId}` : `video:${parsed.videoId}`;
     const selectedSentences = chooseSentencesForShadowingSource(sourceKey);
     const newPractice = buildShadowingFromLink(parsed, selectedSentences);
-    setData(prev => ({
-      ...prev,
-      shadowingPractice: newPractice,
-      shadowingSentenceSets: {
-        ...prev.shadowingSentenceSets,
-        [sourceKey]: selectedSentences,
-      },
-    }));
+    persistShadowingPractice(newPractice, selectedSentences);
     setShadowingLinkInput('');
   }
 
+  function handleShadowingLevelChange(level: ListeningLevel) {
+    setData(prev => ({ ...prev, selectedShadowingLevel: level }));
+    setShadowingLinkError('');
+    setShadowingQueryIndex(0);
+  }
+
+  async function handleSearchShadowingVideo() {
+    setLoadingShadowingVideo(true);
+    setShadowingLinkError('');
+
+    if (!isYouTubeConfigured()) {
+      setShadowingLinkError('Configure VITE_YOUTUBE_API_KEY para buscar vídeos reais no YouTube.');
+      setLoadingShadowingVideo(false);
+      return;
+    }
+
+    const level = dataRef.current.selectedShadowingLevel;
+    const excludeId = dataRef.current.shadowingPractice.youtubeVideoId;
+
+    try {
+      let video: ListeningVideo | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        video = await searchShadowingVideo(level, excludeId, shadowingQueryIndex + attempt);
+        if (video) {
+          setShadowingQueryIndex(qi => qi + attempt + 1);
+          break;
+        }
+      }
+
+      if (!video) {
+        setShadowingLinkError('Nenhum vídeo válido de shadowing encontrado para este nível. Tente outro nível ou clique novamente.');
+        return;
+      }
+
+      const practice = {
+        type: 'video' as const,
+        youtubeVideoId: video.youtubeVideoId,
+        title: video.title,
+        watchUrl: video.watchUrl,
+        embedUrl: video.embedUrl,
+        source: 'youtube_api' as const,
+        sentences: [],
+      };
+      const selectedSentences = chooseSentencesForShadowingSource(getShadowingSourceKey(practice));
+      persistShadowingPractice(practice, selectedSentences);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao buscar vídeo de shadowing no YouTube.';
+      setShadowingLinkError(msg);
+    } finally {
+      setLoadingShadowingVideo(false);
+    }
+  }
+
   function handleUseDefaultShadowingPlaylist() {
-    setData(prev => ({
-      ...prev,
-      shadowingPractice: {
-        ...DEFAULT_SHADOWING,
-        sentences: prev.shadowingPractice.sentences,
-      },
-      shadowingSentenceSets: {
-        ...prev.shadowingSentenceSets,
-        [getShadowingSourceKey(DEFAULT_SHADOWING)]: prev.shadowingPractice.sentences,
-      },
-    }));
+    persistShadowingPractice({ ...DEFAULT_SHADOWING, sentences: dataRef.current.shadowingPractice.sentences }, dataRef.current.shadowingPractice.sentences);
     setShadowingLinkInput('');
     setShadowingLinkError('');
   }
@@ -452,20 +527,20 @@ export function InglesPage() {
       return;
     }
 
-    updateShadowingSentences(() => DEFAULT_SHADOWING.sentences.map(s => ({ ...s, repetitionsDone: 0 })));
+    updateShadowingSentences(() => getDefaultShadowingPhrases());
     setShadowingLinkInput('');
     setShadowingLinkError('');
   }
 
   function handleRepetitionIncrement(sentenceId: string) {
     updateShadowingSentences(sentences => sentences.map(s =>
-      s.id === sentenceId ? { ...s, repetitionsDone: Math.min(s.repetitionsDone + 1, s.repetitionsTarget) } : s,
+      s.id === sentenceId ? { ...s, repetitions: Math.min(s.repetitions + 1, s.targetRepetitions), updatedAt: new Date().toISOString() } : s,
     ));
   }
 
   function handleRepetitionReset(sentenceId: string) {
     updateShadowingSentences(sentences => sentences.map(s =>
-      s.id === sentenceId ? { ...s, repetitionsDone: 0 } : s,
+      s.id === sentenceId ? { ...s, repetitions: 0, updatedAt: new Date().toISOString() } : s,
     ));
   }
 
@@ -477,8 +552,10 @@ export function InglesPage() {
         id: genId(),
         text: newShadowingSentence.trim(),
         translation: newShadowingTranslation.trim(),
-        repetitionsTarget: 5,
-        repetitionsDone: 0,
+        targetRepetitions: 5,
+        repetitions: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       },
     ]);
     setNewShadowingSentence('');
@@ -495,7 +572,7 @@ export function InglesPage() {
     if (!editingSentenceId || !editingSentenceText.trim() || !editingSentenceTranslation.trim()) return;
     updateShadowingSentences(sentences => sentences.map(s =>
       s.id === editingSentenceId
-        ? { ...s, text: editingSentenceText.trim(), translation: editingSentenceTranslation.trim() }
+        ? { ...s, text: editingSentenceText.trim(), translation: editingSentenceTranslation.trim(), updatedAt: new Date().toISOString() }
         : s,
     ));
     setEditingSentenceId(null);
@@ -556,7 +633,7 @@ export function InglesPage() {
   }
 
   // ── Derived ────────────────────────────────────────────────
-  const { selectedListeningLevel, listeningVideo, videoQuiz, shadowingPractice, vocabularyCards, ui } = data;
+  const { selectedListeningLevel, selectedShadowingLevel, listeningVideo, videoQuiz, shadowingPractice, vocabularyCards, ui } = data;
   const answeredCount = Object.keys(quizAnswers).length;
   const totalQuestions = videoQuiz?.questions.length ?? 0;
   const allAnswered = answeredCount === totalQuestions && totalQuestions > 0;
@@ -936,17 +1013,47 @@ export function InglesPage() {
           </div>
 
           {/* Link controls */}
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="space-y-3">
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Nível do shadowing</p>
+              <div className="flex flex-wrap gap-2">
+                {(['basic', 'intermediate', 'advanced', 'fluent'] as const).map(level => (
+                  <button
+                    key={level}
+                    type="button"
+                    onClick={() => handleShadowingLevelChange(level)}
+                    className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
+                      selectedShadowingLevel === level
+                        ? 'bg-primary-600 text-white'
+                        : 'bg-surface-100 text-surface-600 hover:bg-surface-200 dark:bg-surface-700 dark:text-surface-300 dark:hover:bg-surface-600'
+                    }`}
+                  >
+                    {LEVEL_LABEL[level]}
+                  </button>
+                ))}
+              </div>
+            </div>
             <input
               value={shadowingLinkInput}
               onChange={e => setShadowingLinkInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleLoadShadowingLink()}
-              placeholder="Cole link do YouTube (vídeo ou playlist)"
-              className="flex-1 rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
+              placeholder="Cole link do YouTube para Shadowing"
+              className="w-full rounded-lg border border-surface-200 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-white"
             />
-            <Button size="sm" onClick={handleLoadShadowingLink}>Carregar link</Button>
-            <Button size="sm" variant="secondary" onClick={handleUseDefaultShadowingPlaylist}>Usar playlist padrão</Button>
-            <Button size="sm" variant="secondary" onClick={handleRestoreDefaultShadowingSentences}>Restaurar frases padrão</Button>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" onClick={handleLoadShadowingLink} disabled={!shadowingLinkInput.trim()}>Carregar link</Button>
+              {!shadowingPractice.youtubeVideoId ? (
+                <Button size="sm" variant="secondary" loading={loadingShadowingVideo} onClick={handleSearchShadowingVideo} disabled={loadingShadowingVideo || !isYouTubeConfigured()}>
+                  Buscar vídeo de shadowing
+                </Button>
+              ) : (
+                <Button size="sm" variant="secondary" loading={loadingShadowingVideo} onClick={handleSearchShadowingVideo} disabled={loadingShadowingVideo || !isYouTubeConfigured()}>
+                  Trocar vídeo de shadowing
+                </Button>
+              )}
+              <Button size="sm" variant="secondary" onClick={handleUseDefaultShadowingPlaylist}>Usar playlist padrão</Button>
+              <Button size="sm" variant="secondary" onClick={handleRestoreDefaultShadowingSentences}>Restaurar frases padrão</Button>
+            </div>
           </div>
 
           {shadowingLinkError && (
@@ -956,6 +1063,13 @@ export function InglesPage() {
           {shadowingPractice.source === 'default_playlist' ? (
             <p className="text-xs text-surface-400 dark:text-surface-500">
               Usando playlist padrão de shadowing.{' '}
+              <a href={shadowingPractice.watchUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-primary-600">
+                Abrir no YouTube
+              </a>
+            </p>
+          ) : shadowingPractice.source === 'youtube_api' ? (
+            <p className="text-xs text-surface-400 dark:text-surface-500">
+              Vídeo de shadowing carregado pela YouTube API.{' '}
               <a href={shadowingPractice.watchUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-primary-600">
                 Abrir no YouTube
               </a>
@@ -1048,16 +1162,16 @@ export function InglesPage() {
                       <div className="flex h-2 min-w-32 flex-1 overflow-hidden rounded-full bg-surface-200 dark:bg-surface-700">
                         <div
                           className="h-full rounded-full bg-primary-500 transition-all"
-                          style={{ width: `${(sentence.repetitionsDone / sentence.repetitionsTarget) * 100}%` }}
+                          style={{ width: `${(sentence.repetitions / sentence.targetRepetitions) * 100}%` }}
                         />
                       </div>
                       <span className="shrink-0 text-xs text-surface-500 dark:text-surface-400">
-                        {sentence.repetitionsDone}/{sentence.repetitionsTarget}
+                        {sentence.repetitions}/{sentence.targetRepetitions}
                       </span>
                       <button
                         type="button"
                         onClick={() => handleRepetitionIncrement(sentence.id)}
-                        disabled={sentence.repetitionsDone >= sentence.repetitionsTarget}
+                        disabled={sentence.repetitions >= sentence.targetRepetitions}
                         className="rounded-lg bg-primary-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-40 transition-all"
                       >
                         +1

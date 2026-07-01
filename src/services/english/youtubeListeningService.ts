@@ -7,32 +7,47 @@ const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY as string | undefin
 const SEARCH_API = 'https://www.googleapis.com/youtube/v3/search';
 const VIDEOS_API = 'https://www.googleapis.com/youtube/v3/videos';
 const MAX_DURATION_SECONDS = 600;
+const MAX_SHADOWING_DURATION_SECONDS = 900;
 const QUOTA_ERROR_MESSAGE = 'Limite diário da YouTube API atingido. Use um link manual de vídeo ou tente novamente amanhã.';
 
 export type ListeningLevel = 'basic' | 'intermediate' | 'advanced' | 'fluent';
 
-const LEVEL_QUERIES: Record<ListeningLevel, string[]> = {
-  basic: [
-    'American English listening practice A1 A2 short conversation',
-    'basic American English conversation under 10 minutes',
-    'English for beginners American listening practice',
-  ],
-  intermediate: [
-    'American English listening practice B1 B2 conversation under 10 minutes',
-    'intermediate American English conversation practice',
-    'American English speaking practice intermediate business',
-  ],
-  advanced: [
-    'advanced American English listening practice C1 under 10 minutes',
-    'advanced business English conversation American English',
-    'C1 American English speaking practice',
-  ],
-  fluent: [
-    'C2 American English listening practice native speakers under 10 minutes',
-    'native speaker American English conversation under 10 minutes',
-    'advanced native American English business conversation',
-  ],
+const LISTENING_LEVEL_QUERIES: Record<ListeningLevel, string> = {
+  basic: 'English in a Minute VOA Learning English American English',
+  intermediate: 'VOA Learning English intermediate American English listening',
+  advanced: "Rachel's English American English pronunciation listening",
+  fluent: "natural American English conversation Rachel's English short",
 };
+
+const SHADOWING_LEVEL_QUERIES: Record<ListeningLevel, string> = {
+  basic: 'basic American English shadowing pronunciation practice',
+  intermediate: 'intermediate American English shadowing speaking practice',
+  advanced: "Rachel's English American English shadowing pronunciation",
+  fluent: 'natural American English conversation shadowing short',
+};
+
+type PrioritizedSource = {
+  label: string;
+  channelTitleIncludes?: string;
+  queryBoost?: string;
+};
+
+const LISTENING_SOURCES: PrioritizedSource[] = [
+  { label: 'VOA Learning English - English in a Minute', channelTitleIncludes: 'VOA Learning English', queryBoost: 'English in a Minute' },
+  { label: 'VOA Learning English', channelTitleIncludes: 'VOA Learning English' },
+  { label: "Rachel's English", channelTitleIncludes: "Rachel's English" },
+  { label: 'Listening Time', channelTitleIncludes: 'Listening Time' },
+  { label: 'English with Jennifer', channelTitleIncludes: 'English with Jennifer' },
+  { label: 'Speak English With Vanessa', channelTitleIncludes: 'Speak English With Vanessa' },
+];
+
+const SHADOWING_SOURCES: PrioritizedSource[] = [
+  { label: 'Fluent American Shadowing', channelTitleIncludes: 'Fluent American', queryBoost: 'shadowing' },
+  { label: "Rachel's English", channelTitleIncludes: "Rachel's English" },
+  { label: "Accent's Way English with Hadar", channelTitleIncludes: 'Hadar' },
+  { label: 'English With Kayla', channelTitleIncludes: 'English With Kayla' },
+  { label: 'Speak English With Vanessa', channelTitleIncludes: 'Speak English With Vanessa' },
+];
 
 export function isYouTubeConfigured(): boolean {
   return Boolean(YOUTUBE_API_KEY?.trim());
@@ -83,21 +98,20 @@ function parseDuration(iso: string): number {
     + (parseInt(m[3] ?? '0', 10));
 }
 
-export async function searchListeningVideo(
-  level: ListeningLevel,
-  excludeVideoId?: string,
-  queryIndex = 0,
-): Promise<ListeningVideo | null> {
-  if (!isYouTubeConfigured()) return null;
+function normalize(value: string): string {
+  return value.toLowerCase().replace(/['’]/g, '').replace(/\s+/g, ' ').trim();
+}
 
-  const queries = LEVEL_QUERIES[level];
-  const query = queries[queryIndex % queries.length];
+function matchesSource(channelTitle: string, source: PrioritizedSource): boolean {
+  if (!source.channelTitleIncludes) return true;
+  return normalize(channelTitle).includes(normalize(source.channelTitleIncludes));
+}
 
-  // 1. Search for candidate IDs
+async function fetchCandidateIds(query: string, excludeVideoId?: string): Promise<string[]> {
   const searchParams = new URLSearchParams({
     part: 'snippet',
     type: 'video',
-    maxResults: '25',
+    maxResults: '15',
     q: query,
     relevanceLanguage: 'en',
     regionCode: 'US',
@@ -119,17 +133,15 @@ export async function searchListeningVideo(
 
   const searchBody = await searchRes.json() as {
     items?: Array<{ id?: { videoId?: string } }>;
-    error?: { message?: string };
   };
 
-  const ids = (searchBody.items ?? [])
+  return (searchBody.items ?? [])
     .map(item => item.id?.videoId)
     .filter((id): id is string => Boolean(id && /^[a-zA-Z0-9_-]{11}$/.test(id)))
     .filter(id => id !== excludeVideoId);
+}
 
-  if (ids.length === 0) return null;
-
-  // 2. Validate each candidate via videos.list
+async function fetchVideoDetails(ids: string[]) {
   const detailsParams = new URLSearchParams({
     part: 'contentDetails,snippet,status,statistics',
     id: ids.join(','),
@@ -143,7 +155,7 @@ export async function searchListeningVideo(
       console.error('[English Listening] YouTube API quota exceeded:', body);
       throw new Error(QUOTA_ERROR_MESSAGE);
     }
-    return null;
+    return [];
   }
 
   const detailsBody = await detailsRes.json() as {
@@ -155,52 +167,98 @@ export async function searchListeningVideo(
       snippet?: {
         title?: string;
         channelTitle?: string;
-        thumbnails?: { medium?: { url?: string } };
       };
     }>;
   };
 
-  for (const item of detailsBody.items ?? []) {
-    const durationSeconds = parseDuration(item.contentDetails?.duration ?? '');
-    const title = item.snippet?.title?.trim() ?? '';
-    const channelTitle = item.snippet?.channelTitle?.trim() ?? '';
-    const videoId = item.id ?? '';
+  return detailsBody.items ?? [];
+}
 
-    const valid = /^[a-zA-Z0-9_-]{11}$/.test(videoId)
-      && durationSeconds > 0
-      && durationSeconds <= MAX_DURATION_SECONDS
-      && item.status?.privacyStatus === 'public'
-      && item.status?.embeddable === true
-      && item.status?.uploadStatus === 'processed'
-      && title.length > 0
-      && channelTitle.length > 0;
+function buildValidVideo(
+  item: Awaited<ReturnType<typeof fetchVideoDetails>>[number],
+  level: ListeningLevel,
+  maxDurationSeconds: number,
+  source: PrioritizedSource,
+): ListeningVideo | null {
+  const durationSeconds = parseDuration(item.contentDetails?.duration ?? '');
+  const title = item.snippet?.title?.trim() ?? '';
+  const channelTitle = item.snippet?.channelTitle?.trim() ?? '';
+  const videoId = item.id ?? '';
 
-    if (!valid) continue;
+  const valid = /^[a-zA-Z0-9_-]{11}$/.test(videoId)
+    && durationSeconds > 0
+    && durationSeconds <= maxDurationSeconds
+    && item.status?.privacyStatus === 'public'
+    && item.status?.embeddable === true
+    && item.status?.uploadStatus === 'processed'
+    && title.length > 0
+    && channelTitle.length > 0
+    && matchesSource(channelTitle, source);
 
-    const viewCount = Number(item.statistics?.viewCount ?? 0);
-    const likeCount = Number(item.statistics?.likeCount ?? 0);
-    const qualityScore = Math.min(100,
-      35 // public + embeddable confirmed
-      + (durationSeconds > 0 && durationSeconds <= MAX_DURATION_SECONDS ? 25 : 0)
-      + (viewCount >= 1000 ? 10 : 0)
-      + (viewCount >= 10000 ? 5 : 0)
-      + (likeCount >= 50 ? 5 : 0)
-      + (/english|learn|listening|conversation|practice|speak|business|native/i.test(`${title} ${channelTitle}`) ? 15 : 0)
-      + (channelTitle.length > 0 ? 5 : 0),
-    );
+  if (!valid) return null;
 
-    return {
-      youtubeVideoId: videoId,
-      title,
-      channelTitle,
-      durationSeconds,
-      level,
-      watchUrl: `https://www.youtube.com/watch?v=${videoId}`,
-      embedUrl: `https://www.youtube.com/embed/${videoId}`,
-      source: 'youtube_api',
-      qualityScore,
-    };
+  const viewCount = Number(item.statistics?.viewCount ?? 0);
+  const likeCount = Number(item.statistics?.likeCount ?? 0);
+  const qualityScore = Math.min(100,
+    35
+    + (durationSeconds > 0 && durationSeconds <= maxDurationSeconds ? 25 : 0)
+    + (viewCount >= 1000 ? 10 : 0)
+    + (viewCount >= 10000 ? 5 : 0)
+    + (likeCount >= 50 ? 5 : 0)
+    + (/english|learn|listening|conversation|practice|speak|pronunciation|shadowing|native/i.test(`${title} ${channelTitle}`) ? 15 : 0)
+    + (channelTitle.length > 0 ? 5 : 0),
+  );
+
+  return {
+    youtubeVideoId: videoId,
+    title,
+    channelTitle,
+    durationSeconds,
+    level,
+    watchUrl: `https://www.youtube.com/watch?v=${videoId}`,
+    embedUrl: `https://www.youtube.com/embed/${videoId}`,
+    source: 'youtube_api',
+    qualityScore,
+  };
+}
+
+async function searchPrioritizedVideo(
+  level: ListeningLevel,
+  excludeVideoId: string | undefined,
+  _queryIndex: number,
+  sources: PrioritizedSource[],
+  levelQueries: Record<ListeningLevel, string>,
+  maxDurationSeconds: number,
+): Promise<ListeningVideo | null> {
+  if (!isYouTubeConfigured()) return null;
+
+  for (const source of sources) {
+    const query = `${source.queryBoost ?? source.label} ${levelQueries[level]}`;
+    const ids = await fetchCandidateIds(query, excludeVideoId);
+    if (ids.length === 0) continue;
+
+    const details = await fetchVideoDetails(ids);
+    for (const item of details) {
+      const video = buildValidVideo(item, level, maxDurationSeconds, source);
+      if (video) return video;
+    }
   }
 
   return null;
+}
+
+export async function searchListeningVideo(
+  level: ListeningLevel,
+  excludeVideoId?: string,
+  queryIndex = 0,
+): Promise<ListeningVideo | null> {
+  return searchPrioritizedVideo(level, excludeVideoId, queryIndex, LISTENING_SOURCES, LISTENING_LEVEL_QUERIES, MAX_DURATION_SECONDS);
+}
+
+export async function searchShadowingVideo(
+  level: ListeningLevel,
+  excludeVideoId?: string,
+  queryIndex = 0,
+): Promise<ListeningVideo | null> {
+  return searchPrioritizedVideo(level, excludeVideoId, queryIndex, SHADOWING_SOURCES, SHADOWING_LEVEL_QUERIES, MAX_SHADOWING_DURATION_SECONDS);
 }
