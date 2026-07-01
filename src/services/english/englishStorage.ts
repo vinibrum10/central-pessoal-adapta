@@ -145,11 +145,13 @@ export interface ShadowingPhraseSet {
 
 export interface EnglishUiState {
   /**
-   * "Revisar hoje", "Cards futuros" e "Dominadas" ficam SEMPRE visíveis —
-   * essa era a causa raiz de cards parecerem ter sumido (ficavam atrás de um
-   * toggle escondido por padrão). Só o Histórico (redundante com os outros
-   * três grupos somados) é opcionalmente recolhido.
+   * "Revisar hoje" fica SEMPRE visível — é a fila principal do estudo
+   * diário. "Cards futuros", "Dominadas" e "Histórico" ficam recolhidos por
+   * padrão (Mostrar/Ocultar): os cards continuam salvos e contados no
+   * título mesmo escondidos, só a lista longa some da tela por padrão.
    */
+  showFutureCards: boolean;
+  showMasteredCards: boolean;
   showHistory: boolean;
 }
 
@@ -229,6 +231,8 @@ const DEFAULT_DATA: EnglishDataV2 = {
   },
   vocabularyCards: [],
   ui: {
+    showFutureCards: false,
+    showMasteredCards: false,
     showHistory: false,
   },
 };
@@ -492,6 +496,8 @@ export function loadEnglishData(): EnglishDataV2 {
       // são convertidos para o novo formato sem perder nenhum registro.
       vocabularyCards: (parsed.vocabularyCards ?? []).map(card => normalizeVocabularyCard(card, today)),
       ui: {
+        showFutureCards: parsed.ui?.showFutureCards ?? false,
+        showMasteredCards: parsed.ui?.showMasteredCards ?? false,
         showHistory: parsed.ui?.showHistory ?? false,
       },
     };

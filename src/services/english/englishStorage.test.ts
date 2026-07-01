@@ -223,6 +223,54 @@ describe('grupos de cards (hoje / futuros / dominadas / histórico)', () => {
   });
 });
 
+describe('visibilidade de "Cards futuros" / "Dominadas" / "Histórico" (Mostrar/Ocultar)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('"Cards futuros" e "Dominadas" começam ocultos por padrão (showFutureCards/showMasteredCards = false)', () => {
+    const data = loadEnglishData();
+    expect(data.ui.showFutureCards).toBe(false);
+    expect(data.ui.showMasteredCards).toBe(false);
+  });
+
+  it('"Histórico" também começa oculto por padrão, como já era antes', () => {
+    const data = loadEnglishData();
+    expect(data.ui.showHistory).toBe(false);
+  });
+
+  it('ocultar um grupo NUNCA apaga os cards — só o estado de visibilidade muda', () => {
+    const future = new Date();
+    future.setDate(future.getDate() + 5);
+    const cards = [
+      makeCard({ id: 'future-1', nextReviewAt: future.toISOString().slice(0, 10), status: 'reviewing' }),
+      makeCard({ id: 'mastered-1', status: 'mastered', masteredAt: new Date().toISOString() }),
+    ];
+    const today = getTodayISO();
+
+    // Independente de showFutureCards/showMasteredCards, os cards continuam
+    // nos grupos — esses seletores nunca olham para `ui`.
+    expect(getFutureCards(cards, today).map(c => c.id)).toEqual(['future-1']);
+    expect(getMasteredCards(cards).map(c => c.id)).toEqual(['mastered-1']);
+  });
+
+  it('a escolha de Mostrar/Ocultar sobrevive a um reload (persistida em localStorage), sem afetar os cards salvos', () => {
+    const initial = loadEnglishData();
+    saveEnglishData({
+      ...initial,
+      vocabularyCards: [makeCard({ id: 'card-1' })],
+      ui: { ...initial.ui, showFutureCards: true, showMasteredCards: false, showHistory: true },
+    });
+
+    const reloaded = loadEnglishData();
+    expect(reloaded.ui.showFutureCards).toBe(true);
+    expect(reloaded.ui.showMasteredCards).toBe(false);
+    expect(reloaded.ui.showHistory).toBe(true);
+    expect(reloaded.vocabularyCards).toHaveLength(1);
+    expect(reloaded.vocabularyCards[0].id).toBe('card-1');
+  });
+});
+
 describe('frases de shadowing — contador de repetições (0/5 até 5/5)', () => {
   it('uma frase nova começa em 0/5 e não concluída', () => {
     const phrase = makePhrase();

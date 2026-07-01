@@ -834,6 +834,14 @@ export function InglesPage() {
     setData(prev => ({ ...prev, vocabularyCards: prev.vocabularyCards.filter(c => c.id !== id) }));
   }
 
+  function handleToggleFutureCards() {
+    setData(prev => ({ ...prev, ui: { ...prev.ui, showFutureCards: !prev.ui.showFutureCards } }));
+  }
+
+  function handleToggleMasteredCards() {
+    setData(prev => ({ ...prev, ui: { ...prev.ui, showMasteredCards: !prev.ui.showMasteredCards } }));
+  }
+
   function handleToggleHistory() {
     setData(prev => ({ ...prev, ui: { ...prev.ui, showHistory: !prev.ui.showHistory } }));
   }
@@ -1758,28 +1766,42 @@ export function InglesPage() {
           </section>
 
           <section className="space-y-2">
-            <h3 className="text-sm font-semibold text-surface-900 dark:text-white">
-              Cards futuros ({futureCards.length})
-            </h3>
-            {futureCards.length === 0 ? (
-              <p className="text-sm text-surface-400 dark:text-surface-500">Nenhum card agendado para mais tarde.</p>
-            ) : (
-              <div className="space-y-2">
-                {futureCards.map(card => renderVocabularyCardRow(card, { showNextReview: true }))}
-              </div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-surface-900 dark:text-white">
+                Cards futuros ({futureCards.length})
+              </h3>
+              <Button size="sm" variant="secondary" onClick={handleToggleFutureCards}>
+                {ui.showFutureCards ? 'Ocultar' : 'Mostrar'}
+              </Button>
+            </div>
+            {ui.showFutureCards && (
+              futureCards.length === 0 ? (
+                <p className="text-sm text-surface-400 dark:text-surface-500">Nenhum card agendado para mais tarde.</p>
+              ) : (
+                <div className="space-y-2">
+                  {futureCards.map(card => renderVocabularyCardRow(card, { showNextReview: true }))}
+                </div>
+              )
             )}
           </section>
 
           <section className="space-y-2">
-            <h3 className="text-sm font-semibold text-surface-900 dark:text-white">
-              Dominadas ({masteredCards.length})
-            </h3>
-            {masteredCards.length === 0 ? (
-              <p className="text-sm text-surface-400 dark:text-surface-500">Nenhuma palavra dominada ainda.</p>
-            ) : (
-              <div className="space-y-2">
-                {masteredCards.map(card => renderVocabularyCardRow(card, { showMasteredAt: true }))}
-              </div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-surface-900 dark:text-white">
+                Dominadas ({masteredCards.length})
+              </h3>
+              <Button size="sm" variant="secondary" onClick={handleToggleMasteredCards}>
+                {ui.showMasteredCards ? 'Ocultar' : 'Mostrar'}
+              </Button>
+            </div>
+            {ui.showMasteredCards && (
+              masteredCards.length === 0 ? (
+                <p className="text-sm text-surface-400 dark:text-surface-500">Nenhuma palavra dominada ainda.</p>
+              ) : (
+                <div className="space-y-2">
+                  {masteredCards.map(card => renderVocabularyCardRow(card, { showMasteredAt: true }))}
+                </div>
+              )
             )}
           </section>
 
