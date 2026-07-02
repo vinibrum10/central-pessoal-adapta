@@ -49,10 +49,15 @@ Isso cria profiles para todos os usuários sem profile e promove `vinibrum10@gma
 
 1. No Supabase Dashboard → **Authentication → Providers → Google**
 2. Ativar e inserir **Client ID** e **Client Secret** do Google Cloud Console
-3. Redirect URLs: `https://[seu-projeto].supabase.co/auth/v1/callback`
-4. No Google Cloud Console, adicione a mesma URL como "Authorized redirect URI"
-5. Adicione `VITE_GOOGLE_CLIENT_ID` nas variáveis de ambiente do app (para habilitar o botão na tela de login)
-6. No OAuth consent screen do Google Cloud, autorize os escopos `https://www.googleapis.com/auth/drive.readonly` e `https://www.googleapis.com/auth/calendar.readonly`; o login principal já solicita esses escopos para permitir sincronização automática da Leitura Diária e Agenda.
+3. No Google Cloud Console, adicione `https://[seu-projeto].supabase.co/auth/v1/callback` como **Authorized redirect URI**
+4. Em Supabase Dashboard → **Authentication → URL Configuration → Redirect URLs**, cadastre:
+   - Production: `https://central-pessoal-adapta.vercel.app/`
+   - Preview da Vercel: `https://central-pessoal-adapta-*-vinicius-brum.vercel.app/` ou a URL exata do preview ativo
+   - Local Vercel Dev: `http://localhost:3000/`
+   - Local Vite: `http://localhost:5173/`
+5. O app usa `window.location.origin` no `redirectTo` do Supabase OAuth, então não cadastre URLs hardcoded de outro ambiente.
+6. Adicione `VITE_GOOGLE_CLIENT_ID` nas variáveis de ambiente do app (para habilitar o botão na tela de login)
+7. No OAuth consent screen do Google Cloud, autorize os escopos `https://www.googleapis.com/auth/drive.readonly` e `https://www.googleapis.com/auth/calendar.readonly`; o login principal já solicita esses escopos para permitir sincronização automática da Leitura Diária e Agenda.
 
 ---
 
