@@ -303,6 +303,11 @@ O seed usa `source = 'job_posting'` e faz upsert em `glossary_terms` para evitar
 Rode a migration incremental `supabase/migrations/20260702_english_job_application_tracking_phase4d.sql`.
 Ela adiciona campos manuais de acompanhamento em `job_targets`, incluindo datas de aplicação, entrevista, follow-up, próxima ação, recrutador, salário, modelo de trabalho, sponsorship/visto e prioridade.
 
+### Fase 5 · Plano semanal automático
+
+Rode a migration incremental `supabase/migrations/20260702_english_weekly_preparation_phase5.sql`.
+Ela cria `weekly_preparation_plans` e `weekly_preparation_tasks`, ambas com RLS por dono. A geração do plano é determinística no cliente/serviços do app e usa dados já existentes do módulo, sem IA automática em background.
+
 ---
 
 ## 12 · Microsoft Outlook Calendar
