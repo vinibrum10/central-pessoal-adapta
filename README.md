@@ -241,22 +241,35 @@ O app remove automaticamente itens legados de Drive que apontem para pastas anti
 
 ---
 
-## 11 · Inglês
+## 11 · Inglês — Modo Entrevista
 
 1. Habilite **YouTube Data API v3** no Google Cloud Console.
 2. Crie uma API key, restrinja por domínio/origem e restrinja a chave somente para **YouTube Data API v3**.
 3. Configure `VITE_YOUTUBE_API_KEY` na Vercel e faça redeploy.
 4. Crie uma pasta no Google Drive para materiais de inglês e copie o ID da URL.
 5. Configure `VITE_ENGLISH_DRIVE_FOLDER_ID`. Se não houver uma pasta separada, o app usa `VITE_GOOGLE_DRIVE_FOLDER_ID` como fallback.
-6. Rode a migration `supabase/migrations/20260623_english_study_data.sql`.
-7. Para apoio com Claude, configure `ANTHROPIC_API_KEY` na Vercel como variável server-side. Nunca use `VITE_` para essa chave.
-8. Opcionalmente configure `ANTHROPIC_MODEL=claude-sonnet-4-5`.
-9. Para gerar questionários do Inglês, configure `GEMINI_API_KEY` na Vercel como variável server-side. Nunca use `VITE_` para essa chave.
-10. Configure `GEMINI_MODEL=gemini-2.5-flash`.
-11. No app: **Estudo → Inglês**.
+6. Rode a migration `supabase/migrations/20260702_english_interview_mode_phase1.sql`.
+7. Popule os conteúdos compartilhados com service role local:
 
-Os dados de estudo ficam na tabela `english_study_data`, isolados por usuário via RLS. Em desenvolvimento local sem Supabase, o app usa LocalStorage apenas como fallback.
-O Claude é chamado pela rota serverless `/api/claude`; a chave Anthropic nunca é enviada para o bundle React.
+```bash
+$env:SUPABASE_URL="https://xxxx.supabase.co"
+$env:SUPABASE_SERVICE_ROLE_KEY="eyJ..."
+npm run seed:english-interview
+```
+
+No macOS/Linux:
+
+```bash
+SUPABASE_URL="https://xxxx.supabase.co" SUPABASE_SERVICE_ROLE_KEY="eyJ..." npm run seed:english-interview
+```
+
+8. `SUPABASE_SERVICE_ROLE_KEY` nunca deve ser commitada nem exposta no cliente. Ela é necessária porque `glossary_terms`, `interview_questions` e `listening_sources` são somente leitura para usuários autenticados via RLS.
+9. Para recursos de IA do módulo, use apenas Gemini: configure `GEMINI_API_KEY` como variável server-side. Nunca use `VITE_` para essa chave.
+10. Configure `GEMINI_MODEL=gemini-2.5-flash`.
+11. No app: **Estudo → Inglês — Entrevista**.
+
+O Modo Entrevista usa tabelas normalizadas: `glossary_terms`, `interview_questions`, `listening_sources`, `listening_episodes`, `glossary_reviews`, `daily_sessions`, `interview_answers` e `mock_sessions`.
+A migration antiga `english_study_data` permanece para compatibilidade, mas a nova página não grava mais nela. Na primeira carga, cards antigos do `localStorage` (`sgp_english_v2`) são importados por RPC para `glossary_terms`/`glossary_reviews` com `source = 'legacy'`, deduplicando termos existentes.
 
 ---
 

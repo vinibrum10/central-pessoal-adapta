@@ -1,0 +1,1420 @@
+{
+  "meta": {
+    "name": "Glossário Técnico Power Systems — 200 termos",
+    "objetivo": "Vocabulário de entrevista técnica para Power Systems Engineer (EUA). Meta: 200 termos dominados até Dez/2026.",
+    "temas": [
+      "transmissao-distribuicao",
+      "subestacoes-equipamentos",
+      "protecao-controle",
+      "operacao-confiabilidade",
+      "medicao-ami-dados",
+      "seguranca-ehs",
+      "interconexao-mercado-regulatorio",
+      "entrevista-carreira"
+    ],
+    "campos": "term (EN), translation_pt, definition_en (curta, para o verso do card), example_en (frase no estilo vaga/entrevista)",
+    "total": 200
+  },
+  "terms": [
+    {
+      "term": "transmission line",
+      "theme": "transmissao-distribuicao",
+      "translation_pt": "linha de transmissão",
+      "definition_en": "High-voltage line that carries bulk power over long distances.",
+      "example_en": "I managed maintenance for 800 km of 230 kV transmission lines."
+    },
+    {
+      "term": "distribution network",
+      "theme": "transmissao-distribuicao",
+      "translation_pt": "rede de distribuição",
+      "definition_en": "Medium/low-voltage system delivering power from substations to customers.",
+      "example_en": "Our team modernized the distribution network serving 300,000 customers."
+    },
+    {
+      "term": "feeder",
+      "theme": "transmissao-distribuicao",
+      "translation_pt": "alimentador",
+      "definition_en": "Distribution circuit that carries power from a substation to loads.",
+      "example_en": "We rebalanced loads across three feeders to reduce overloads."
+    },
+    {
+      "term": "right-of-way",
+      "theme": "transmissao-distribuicao",
+      "translation_pt": "faixa de servidão",
+      "definition_en": "Land corridor reserved for transmission lines and their maintenance.",
+      "example_en": "Vegetation management along the right-of-way cut outages by 20%."
+    },
+    {
+      "term": "conductor",
+      "theme": "transmissao-distribuicao",
+      "translation_pt": "condutor / cabo",
+      "definition_en": "Wire that carries electric current on a line.",
+      "example_en": "We replaced aging conductors to increase line ampacity."
+    },
+    {
+      "term": "overhead line",
+      "theme": "transmissao-distribuicao",
+      "translation_pt": "linha aérea",
+      "definition_en": "Power line supported by towers or poles above ground.",
+      "example_en": "Most of our assets were overhead lines exposed to storms."
+    },
+    {
+      "term": "underground cable",
+      "theme": "transmissao-distribuicao",
+      "translation_pt": "cabo subterrâneo",
+      "definition_en": "Insulated power cable installed below ground.",
+      "example_en": "The city center circuits were converted to underground cable."
+    },
+    {
+      "term": "transmission tower",
+      "theme": "transmissao-distribuicao",
+      "translation_pt": "torre de transmissão",
+      "definition_en": "Structure that supports high-voltage overhead conductors.",
+      "example_en": "We inspected transmission towers with drones and thermal cameras."
+    },
+    {
+      "term": "span",
+      "theme": "transmissao-distribuicao",
+      "translation_pt": "vão (entre torres)",
+      "definition_en": "Distance between two adjacent line supports.",
+      "example_en": "Long spans over the river required special conductor design."
+    },
+    {
+      "term": "sag",
+      "theme": "transmissao-distribuicao",
+      "translation_pt": "flecha (do cabo)",
+      "definition_en": "Vertical dip of a conductor between supports.",
+      "example_en": "High temperatures increase sag and reduce ground clearance."
+    },
+    {
+      "term": "clearance",
+      "theme": "transmissao-distribuicao",
+      "translation_pt": "distância de segurança",
+      "definition_en": "Minimum required distance between conductors and objects or ground.",
+      "example_en": "We audited clearances after vegetation growth complaints."
+    },
+    {
+      "term": "voltage level",
+      "theme": "transmissao-distribuicao",
+      "translation_pt": "nível de tensão",
+      "definition_en": "Nominal operating voltage of a system or equipment.",
+      "example_en": "I worked across voltage levels from 13.8 kV to 500 kV."
+    },
+    {
+      "term": "load",
+      "theme": "transmissao-distribuicao",
+      "translation_pt": "carga",
+      "definition_en": "Power demand drawn by customers or equipment.",
+      "example_en": "Data center load in the region doubled in three years."
+    },
+    {
+      "term": "load growth",
+      "theme": "transmissao-distribuicao",
+      "translation_pt": "crescimento de carga",
+      "definition_en": "Increase in power demand over time.",
+      "example_en": "Load growth forecasts drove our substation expansion plan."
+    },
+    {
+      "term": "power grid",
+      "theme": "transmissao-distribuicao",
+      "translation_pt": "rede elétrica",
+      "definition_en": "Interconnected network of generation, transmission, and distribution.",
+      "example_en": "Grid modernization is the core of my professional focus."
+    },
+    {
+      "term": "power flow",
+      "theme": "transmissao-distribuicao",
+      "translation_pt": "fluxo de potência",
+      "definition_en": "Movement of electric power through the network; also the study of it.",
+      "example_en": "I ran power flow studies to validate the new interconnection."
+    },
+    {
+      "term": "technical losses",
+      "theme": "transmissao-distribuicao",
+      "translation_pt": "perdas técnicas",
+      "definition_en": "Energy lost physically in conductors and equipment.",
+      "example_en": "Reconductoring reduced technical losses on critical feeders."
+    },
+    {
+      "term": "non-technical losses",
+      "theme": "transmissao-distribuicao",
+      "translation_pt": "perdas não técnicas / comerciais",
+      "definition_en": "Energy losses from theft, fraud, or metering errors.",
+      "example_en": "My patents target non-technical losses through anomaly detection."
+    },
+    {
+      "term": "capacity",
+      "theme": "transmissao-distribuicao",
+      "translation_pt": "capacidade",
+      "definition_en": "Maximum power a system or asset can carry or deliver.",
+      "example_en": "The upgrade added 150 MVA of transformer capacity."
+    },
+    {
+      "term": "congestion",
+      "theme": "transmissao-distribuicao",
+      "translation_pt": "congestionamento (da rede)",
+      "definition_en": "Condition where lines cannot carry all scheduled power.",
+      "example_en": "Congestion on the corridor justified a new transmission project."
+    },
+    {
+      "term": "radial system",
+      "theme": "transmissao-distribuicao",
+      "translation_pt": "sistema radial",
+      "definition_en": "Network where power flows along a single path to loads.",
+      "example_en": "Rural feeders were radial, so a single fault meant an outage."
+    },
+    {
+      "term": "looped network",
+      "theme": "transmissao-distribuicao",
+      "translation_pt": "rede em anel",
+      "definition_en": "Network with alternative paths that improve reliability.",
+      "example_en": "We converted key circuits to a looped network configuration."
+    },
+    {
+      "term": "primary distribution",
+      "theme": "transmissao-distribuicao",
+      "translation_pt": "distribuição primária (média tensão)",
+      "definition_en": "Medium-voltage portion of the distribution system.",
+      "example_en": "Primary distribution automation was my main modernization project."
+    },
+    {
+      "term": "ampacity",
+      "theme": "transmissao-distribuicao",
+      "translation_pt": "capacidade de corrente",
+      "definition_en": "Maximum current a conductor can carry safely.",
+      "example_en": "Dynamic line rating raised effective ampacity by 15%."
+    },
+    {
+      "term": "service territory",
+      "theme": "transmissao-distribuicao",
+      "translation_pt": "área de concessão",
+      "definition_en": "Geographic area a utility is responsible for serving.",
+      "example_en": "Our service territory covered both urban and remote areas."
+    },
+    {
+      "term": "substation",
+      "theme": "subestacoes-equipamentos",
+      "translation_pt": "subestação",
+      "definition_en": "Facility that transforms voltage and switches circuits.",
+      "example_en": "I led commissioning of two 230/69 kV substations."
+    },
+    {
+      "term": "switchyard",
+      "theme": "subestacoes-equipamentos",
+      "translation_pt": "pátio de manobras",
+      "definition_en": "Outdoor area of a substation with switching equipment.",
+      "example_en": "The switchyard layout was redesigned to allow future bays."
+    },
+    {
+      "term": "busbar",
+      "theme": "subestacoes-equipamentos",
+      "translation_pt": "barramento",
+      "definition_en": "Conductor that connects multiple circuits inside a substation.",
+      "example_en": "A busbar fault triggered the differential protection correctly."
+    },
+    {
+      "term": "bay",
+      "theme": "subestacoes-equipamentos",
+      "translation_pt": "vão / bay de subestação",
+      "definition_en": "Section of a substation dedicated to one circuit connection.",
+      "example_en": "We added a new line bay without a full station outage."
+    },
+    {
+      "term": "power transformer",
+      "theme": "subestacoes-equipamentos",
+      "translation_pt": "transformador de potência",
+      "definition_en": "Equipment that steps voltage up or down between systems.",
+      "example_en": "Monitoring data predicted a power transformer failure early."
+    },
+    {
+      "term": "tap changer (OLTC)",
+      "theme": "subestacoes-equipamentos",
+      "translation_pt": "comutador de tap sob carga",
+      "definition_en": "Device that adjusts transformer ratio to regulate voltage.",
+      "example_en": "OLTC wear was a leading cause of transformer maintenance."
+    },
+    {
+      "term": "circuit breaker",
+      "theme": "subestacoes-equipamentos",
+      "translation_pt": "disjuntor",
+      "definition_en": "Switch that interrupts fault current automatically.",
+      "example_en": "We replaced oil circuit breakers with SF6 and vacuum units."
+    },
+    {
+      "term": "disconnect switch",
+      "theme": "subestacoes-equipamentos",
+      "translation_pt": "chave seccionadora",
+      "definition_en": "Switch that isolates equipment; not for interrupting load.",
+      "example_en": "The crew opened the disconnect switch before maintenance."
+    },
+    {
+      "term": "switchgear",
+      "theme": "subestacoes-equipamentos",
+      "translation_pt": "conjunto de manobra / cubículo",
+      "definition_en": "Assembly of switching and protection devices.",
+      "example_en": "Indoor switchgear replaced the aging outdoor equipment."
+    },
+    {
+      "term": "gas-insulated switchgear (GIS)",
+      "theme": "subestacoes-equipamentos",
+      "translation_pt": "subestação isolada a gás",
+      "definition_en": "Compact switchgear insulated with SF6 gas.",
+      "example_en": "GIS was chosen because of the limited urban footprint."
+    },
+    {
+      "term": "surge arrester",
+      "theme": "subestacoes-equipamentos",
+      "translation_pt": "para-raios",
+      "definition_en": "Device that protects equipment from voltage surges.",
+      "example_en": "Failed surge arresters showed up in thermal inspections."
+    },
+    {
+      "term": "current transformer (CT)",
+      "theme": "subestacoes-equipamentos",
+      "translation_pt": "transformador de corrente (TC)",
+      "definition_en": "Instrument transformer that scales current for metering and protection.",
+      "example_en": "A saturated CT caused the relay to misoperate."
+    },
+    {
+      "term": "voltage transformer (VT/PT)",
+      "theme": "subestacoes-equipamentos",
+      "translation_pt": "transformador de potencial (TP)",
+      "definition_en": "Instrument transformer that scales voltage for measurement.",
+      "example_en": "We verified VT circuits during protection commissioning."
+    },
+    {
+      "term": "capacitor bank",
+      "theme": "subestacoes-equipamentos",
+      "translation_pt": "banco de capacitores",
+      "definition_en": "Equipment that supplies reactive power and supports voltage.",
+      "example_en": "Switching the capacitor bank corrected the power factor."
+    },
+    {
+      "term": "shunt reactor",
+      "theme": "subestacoes-equipamentos",
+      "translation_pt": "reator shunt",
+      "definition_en": "Equipment that absorbs reactive power on long lines.",
+      "example_en": "Shunt reactors controlled overvoltage on the lightly loaded line."
+    },
+    {
+      "term": "grounding grid",
+      "theme": "subestacoes-equipamentos",
+      "translation_pt": "malha de aterramento",
+      "definition_en": "Buried conductor mesh that ensures safe ground potentials.",
+      "example_en": "We measured step and touch voltages on the grounding grid."
+    },
+    {
+      "term": "bushing",
+      "theme": "subestacoes-equipamentos",
+      "translation_pt": "bucha",
+      "definition_en": "Insulated feed-through that carries a conductor into equipment.",
+      "example_en": "Bushing failures are a classic cause of transformer outages."
+    },
+    {
+      "term": "insulator",
+      "theme": "subestacoes-equipamentos",
+      "translation_pt": "isolador",
+      "definition_en": "Component that supports conductors while blocking current flow.",
+      "example_en": "Polluted insulators caused flashovers near the coast."
+    },
+    {
+      "term": "transformer cooling (ONAN/ONAF)",
+      "theme": "subestacoes-equipamentos",
+      "translation_pt": "resfriamento do transformador",
+      "definition_en": "Cooling stages using oil and air, natural or forced.",
+      "example_en": "Fans failing on ONAF stage limited transformer loading."
+    },
+    {
+      "term": "control house",
+      "theme": "subestacoes-equipamentos",
+      "translation_pt": "casa de comando",
+      "definition_en": "Substation building housing relays, RTUs, and batteries.",
+      "example_en": "Panel wiring in the control house was fully redocumented."
+    },
+    {
+      "term": "commissioning",
+      "theme": "subestacoes-equipamentos",
+      "translation_pt": "comissionamento",
+      "definition_en": "Testing process that proves equipment is ready for service.",
+      "example_en": "I coordinated commissioning tests with the protection team."
+    },
+    {
+      "term": "energization",
+      "theme": "subestacoes-equipamentos",
+      "translation_pt": "energização",
+      "definition_en": "First application of voltage to new equipment.",
+      "example_en": "Energization followed a detailed switching and safety plan."
+    },
+    {
+      "term": "dissolved gas analysis (DGA)",
+      "theme": "subestacoes-equipamentos",
+      "translation_pt": "análise de gases dissolvidos",
+      "definition_en": "Oil test that detects developing faults inside transformers.",
+      "example_en": "DGA trends flagged the unit months before failure."
+    },
+    {
+      "term": "asset fleet",
+      "theme": "subestacoes-equipamentos",
+      "translation_pt": "parque de ativos",
+      "definition_en": "Full set of equipment a utility owns and maintains.",
+      "example_en": "Our asset fleet included 40 substations and 12,000 km of lines."
+    },
+    {
+      "term": "relay",
+      "theme": "protecao-controle",
+      "translation_pt": "relé",
+      "definition_en": "Device that detects faults and commands breakers to trip.",
+      "example_en": "We migrated electromechanical relays to digital IEDs."
+    },
+    {
+      "term": "protective relaying",
+      "theme": "protecao-controle",
+      "translation_pt": "proteção de sistemas",
+      "definition_en": "Discipline of detecting and isolating power system faults.",
+      "example_en": "Protective relaying philosophy was standardized across sites."
+    },
+    {
+      "term": "protection scheme",
+      "theme": "protecao-controle",
+      "translation_pt": "esquema de proteção",
+      "definition_en": "Coordinated set of relays and logic protecting an asset.",
+      "example_en": "The new protection scheme cut average clearing time in half."
+    },
+    {
+      "term": "overcurrent protection",
+      "theme": "protecao-controle",
+      "translation_pt": "proteção de sobrecorrente",
+      "definition_en": "Protection that trips when current exceeds a setting.",
+      "example_en": "Feeder overcurrent protection was recoordinated after DER growth."
+    },
+    {
+      "term": "distance protection",
+      "theme": "protecao-controle",
+      "translation_pt": "proteção de distância",
+      "definition_en": "Line protection based on measured impedance to the fault.",
+      "example_en": "Distance protection zones were reviewed for the longer line."
+    },
+    {
+      "term": "differential protection",
+      "theme": "protecao-controle",
+      "translation_pt": "proteção diferencial",
+      "definition_en": "Protection comparing currents in and out of a zone.",
+      "example_en": "Transformer differential protection avoided a catastrophic failure."
+    },
+    {
+      "term": "breaker failure protection",
+      "theme": "protecao-controle",
+      "translation_pt": "proteção de falha de disjuntor",
+      "definition_en": "Backup logic that acts when a breaker fails to open.",
+      "example_en": "Breaker failure protection isolated the bus in 250 ms."
+    },
+    {
+      "term": "reclosing",
+      "theme": "protecao-controle",
+      "translation_pt": "religamento",
+      "definition_en": "Automatic re-energizing of a line after a temporary fault.",
+      "example_en": "Smart reclosing restored most storm-related trips automatically."
+    },
+    {
+      "term": "recloser",
+      "theme": "protecao-controle",
+      "translation_pt": "religador",
+      "definition_en": "Self-contained breaker with reclosing logic on feeders.",
+      "example_en": "We deployed reclosers to segment long rural feeders."
+    },
+    {
+      "term": "fuse",
+      "theme": "protecao-controle",
+      "translation_pt": "fusível",
+      "definition_en": "Sacrificial device that melts to clear a fault.",
+      "example_en": "Fuse-saving schemes reduced sustained outages downstream."
+    },
+    {
+      "term": "sectionalizer",
+      "theme": "protecao-controle",
+      "translation_pt": "seccionalizador",
+      "definition_en": "Device that isolates faulted sections after recloser operations.",
+      "example_en": "Sectionalizers limited each fault to a smaller customer group."
+    },
+    {
+      "term": "fault",
+      "theme": "protecao-controle",
+      "translation_pt": "falta / falha",
+      "definition_en": "Abnormal condition such as a short circuit on the system.",
+      "example_en": "Most faults on the line were caused by lightning."
+    },
+    {
+      "term": "short circuit",
+      "theme": "protecao-controle",
+      "translation_pt": "curto-circuito",
+      "definition_en": "Low-impedance connection causing very high current.",
+      "example_en": "Short circuit studies sized the new switchgear correctly."
+    },
+    {
+      "term": "fault current",
+      "theme": "protecao-controle",
+      "translation_pt": "corrente de curto / de falta",
+      "definition_en": "Current that flows during a fault condition.",
+      "example_en": "Rising fault current levels required breaker upgrades."
+    },
+    {
+      "term": "trip",
+      "theme": "protecao-controle",
+      "translation_pt": "atuação / desligamento",
+      "definition_en": "Protective opening of a breaker by a relay.",
+      "example_en": "We analyzed every trip to confirm correct relay operation."
+    },
+    {
+      "term": "pickup setting",
+      "theme": "protecao-controle",
+      "translation_pt": "ajuste de partida (pickup)",
+      "definition_en": "Threshold value at which a relay starts to operate.",
+      "example_en": "Pickup settings were revised after the load transfer."
+    },
+    {
+      "term": "protection coordination",
+      "theme": "protecao-controle",
+      "translation_pt": "coordenação da proteção",
+      "definition_en": "Setting devices so the closest one clears the fault first.",
+      "example_en": "Poor protection coordination was causing upstream trips."
+    },
+    {
+      "term": "zone of protection",
+      "theme": "protecao-controle",
+      "translation_pt": "zona de proteção",
+      "definition_en": "Portion of the system a relay is responsible for.",
+      "example_en": "Overlapping zones of protection left no blind spots."
+    },
+    {
+      "term": "SCADA",
+      "theme": "protecao-controle",
+      "translation_pt": "sistema SCADA (supervisão e controle)",
+      "definition_en": "System for remote monitoring and control of the grid.",
+      "example_en": "I integrated new substations into the SCADA system."
+    },
+    {
+      "term": "remote terminal unit (RTU)",
+      "theme": "protecao-controle",
+      "translation_pt": "unidade terminal remota",
+      "definition_en": "Field device that connects equipment to SCADA.",
+      "example_en": "RTU replacement enabled full remote switching."
+    },
+    {
+      "term": "intelligent electronic device (IED)",
+      "theme": "protecao-controle",
+      "translation_pt": "dispositivo eletrônico inteligente",
+      "definition_en": "Microprocessor relay or controller with communications.",
+      "example_en": "IED event logs made post-fault analysis much faster."
+    },
+    {
+      "term": "telemetry",
+      "theme": "protecao-controle",
+      "translation_pt": "telemetria",
+      "definition_en": "Remote measurement data sent to the control center.",
+      "example_en": "Bad telemetry was masking a real overload condition."
+    },
+    {
+      "term": "setpoint",
+      "theme": "protecao-controle",
+      "translation_pt": "valor de ajuste / setpoint",
+      "definition_en": "Configured target or threshold value in a controller.",
+      "example_en": "Voltage setpoints were tuned to reduce tap operations."
+    },
+    {
+      "term": "interlock",
+      "theme": "protecao-controle",
+      "translation_pt": "intertravamento",
+      "definition_en": "Logic that blocks unsafe switching sequences.",
+      "example_en": "Interlocks prevented closing into a grounded circuit."
+    },
+    {
+      "term": "event records / oscillography",
+      "theme": "protecao-controle",
+      "translation_pt": "registros de eventos / oscilografia",
+      "definition_en": "Recorded waveforms and events used in fault analysis.",
+      "example_en": "Oscillography confirmed the fault location within one span."
+    },
+    {
+      "term": "outage",
+      "theme": "operacao-confiabilidade",
+      "translation_pt": "desligamento / interrupção",
+      "definition_en": "Loss of service on a circuit or to customers.",
+      "example_en": "Our program reduced outage duration by 30% in two years."
+    },
+    {
+      "term": "planned outage",
+      "theme": "operacao-confiabilidade",
+      "translation_pt": "desligamento programado",
+      "definition_en": "Scheduled interruption for maintenance or construction.",
+      "example_en": "The tie-in required a six-hour planned outage."
+    },
+    {
+      "term": "forced outage",
+      "theme": "operacao-confiabilidade",
+      "translation_pt": "desligamento forçado",
+      "definition_en": "Unplanned interruption caused by a failure or fault.",
+      "example_en": "Forced outage rates dropped after the reliability program."
+    },
+    {
+      "term": "blackout",
+      "theme": "operacao-confiabilidade",
+      "translation_pt": "apagão",
+      "definition_en": "Large-scale, complete loss of power in an area.",
+      "example_en": "The study assessed blackout risk under extreme heat."
+    },
+    {
+      "term": "restoration",
+      "theme": "operacao-confiabilidade",
+      "translation_pt": "restabelecimento / recomposição",
+      "definition_en": "Process of returning customers to service after an outage.",
+      "example_en": "Automated switching cut restoration time to minutes."
+    },
+    {
+      "term": "switching order",
+      "theme": "operacao-confiabilidade",
+      "translation_pt": "ordem de manobra",
+      "definition_en": "Step-by-step written sequence for safe switching.",
+      "example_en": "I reviewed every switching order before execution."
+    },
+    {
+      "term": "dispatch",
+      "theme": "operacao-confiabilidade",
+      "translation_pt": "despacho",
+      "definition_en": "Real-time direction of generation and grid operations.",
+      "example_en": "Dispatch requested an emergency load transfer."
+    },
+    {
+      "term": "control center",
+      "theme": "operacao-confiabilidade",
+      "translation_pt": "centro de operação",
+      "definition_en": "Facility from which operators monitor and control the grid.",
+      "example_en": "I worked closely with the control center during storms."
+    },
+    {
+      "term": "system operator",
+      "theme": "operacao-confiabilidade",
+      "translation_pt": "operador do sistema",
+      "definition_en": "Professional who operates the grid in real time.",
+      "example_en": "System operators validated our new automation logic."
+    },
+    {
+      "term": "contingency",
+      "theme": "operacao-confiabilidade",
+      "translation_pt": "contingência",
+      "definition_en": "Potential loss of an element used in planning studies.",
+      "example_en": "The plan covered every single contingency on the corridor."
+    },
+    {
+      "term": "N-1 criterion",
+      "theme": "operacao-confiabilidade",
+      "translation_pt": "critério N-1",
+      "definition_en": "Rule that the grid must survive losing any one element.",
+      "example_en": "The new line restored N-1 compliance for the region."
+    },
+    {
+      "term": "reliability",
+      "theme": "operacao-confiabilidade",
+      "translation_pt": "confiabilidade",
+      "definition_en": "Ability of the grid to deliver power without interruptions.",
+      "example_en": "Reliability KPIs were tied to our maintenance strategy."
+    },
+    {
+      "term": "SAIDI",
+      "theme": "operacao-confiabilidade",
+      "translation_pt": "SAIDI (duração média de interrupção)",
+      "definition_en": "Average outage duration per customer per year.",
+      "example_en": "SAIDI improved 25% after feeder automation."
+    },
+    {
+      "term": "SAIFI",
+      "theme": "operacao-confiabilidade",
+      "translation_pt": "SAIFI (frequência média de interrupção)",
+      "definition_en": "Average number of interruptions per customer per year.",
+      "example_en": "SAIFI was driven mainly by vegetation-related faults."
+    },
+    {
+      "term": "resilience",
+      "theme": "operacao-confiabilidade",
+      "translation_pt": "resiliência",
+      "definition_en": "Ability to withstand and recover from extreme events.",
+      "example_en": "Grid resilience against hurricanes guided the hardening plan."
+    },
+    {
+      "term": "storm hardening",
+      "theme": "operacao-confiabilidade",
+      "translation_pt": "reforço contra tempestades",
+      "definition_en": "Upgrades that make the grid withstand severe weather.",
+      "example_en": "Florida utilities invest heavily in storm hardening."
+    },
+    {
+      "term": "load shedding",
+      "theme": "operacao-confiabilidade",
+      "translation_pt": "corte de carga",
+      "definition_en": "Controlled disconnection of load to protect the system.",
+      "example_en": "Underfrequency load shedding stopped the disturbance."
+    },
+    {
+      "term": "demand response",
+      "theme": "operacao-confiabilidade",
+      "translation_pt": "resposta da demanda",
+      "definition_en": "Customers reducing load in response to grid signals.",
+      "example_en": "Demand response offset the evening peak that summer."
+    },
+    {
+      "term": "peak demand",
+      "theme": "operacao-confiabilidade",
+      "translation_pt": "demanda de pico",
+      "definition_en": "Highest load level on the system in a period.",
+      "example_en": "Peak demand records were broken three times that year."
+    },
+    {
+      "term": "frequency regulation",
+      "theme": "operacao-confiabilidade",
+      "translation_pt": "regulação de frequência",
+      "definition_en": "Keeping system frequency at its nominal value.",
+      "example_en": "Battery storage now helps with frequency regulation."
+    },
+    {
+      "term": "voltage regulation",
+      "theme": "operacao-confiabilidade",
+      "translation_pt": "regulação de tensão",
+      "definition_en": "Keeping voltage within acceptable limits across the grid.",
+      "example_en": "Voltage regulation issues appeared at feeder ends."
+    },
+    {
+      "term": "reactive power",
+      "theme": "operacao-confiabilidade",
+      "translation_pt": "potência reativa",
+      "definition_en": "Power component that supports voltage but does no work.",
+      "example_en": "Reactive power support came from capacitor banks."
+    },
+    {
+      "term": "power factor",
+      "theme": "operacao-confiabilidade",
+      "translation_pt": "fator de potência",
+      "definition_en": "Ratio of real to apparent power in a circuit.",
+      "example_en": "Industrial customers were penalized for low power factor."
+    },
+    {
+      "term": "system stability",
+      "theme": "operacao-confiabilidade",
+      "translation_pt": "estabilidade do sistema",
+      "definition_en": "Ability of the grid to remain synchronized after disturbances.",
+      "example_en": "Stability studies validated the interconnection design."
+    },
+    {
+      "term": "situational awareness",
+      "theme": "operacao-confiabilidade",
+      "translation_pt": "consciência situacional",
+      "definition_en": "Operators' real-time understanding of grid conditions.",
+      "example_en": "New dashboards improved situational awareness during storms."
+    },
+    {
+      "term": "metering",
+      "theme": "medicao-ami-dados",
+      "translation_pt": "medição",
+      "definition_en": "Measurement of energy consumption for billing and analytics.",
+      "example_en": "Metering accuracy audits were part of my loss program."
+    },
+    {
+      "term": "smart meter",
+      "theme": "medicao-ami-dados",
+      "translation_pt": "medidor inteligente",
+      "definition_en": "Digital meter with two-way communication.",
+      "example_en": "Smart meter data feeds our anomaly detection models."
+    },
+    {
+      "term": "advanced metering infrastructure (AMI)",
+      "theme": "medicao-ami-dados",
+      "translation_pt": "infraestrutura de medição avançada",
+      "definition_en": "System of smart meters, networks, and data platforms.",
+      "example_en": "My patents apply analytics on top of AMI data."
+    },
+    {
+      "term": "meter data management (MDM)",
+      "theme": "medicao-ami-dados",
+      "translation_pt": "gestão de dados de medição",
+      "definition_en": "Platform that stores and validates meter data.",
+      "example_en": "We integrated the MDM with the billing system."
+    },
+    {
+      "term": "interval data",
+      "theme": "medicao-ami-dados",
+      "translation_pt": "dados de intervalo (curva de carga)",
+      "definition_en": "Consumption readings taken at short, regular intervals.",
+      "example_en": "Fifteen-minute interval data revealed the theft pattern."
+    },
+    {
+      "term": "anomaly detection",
+      "theme": "medicao-ami-dados",
+      "translation_pt": "detecção de anomalias",
+      "definition_en": "Identifying data patterns that deviate from normal behavior.",
+      "example_en": "I hold four patents in grid anomaly detection."
+    },
+    {
+      "term": "energy theft",
+      "theme": "medicao-ami-dados",
+      "translation_pt": "furto de energia",
+      "definition_en": "Illegal consumption that bypasses or tampers with meters.",
+      "example_en": "The model ranked customers by energy theft probability."
+    },
+    {
+      "term": "meter tampering",
+      "theme": "medicao-ami-dados",
+      "translation_pt": "fraude / violação de medidor",
+      "definition_en": "Physical or electronic manipulation of a meter.",
+      "example_en": "Tampering alarms from AMI triggered field inspections."
+    },
+    {
+      "term": "load profile",
+      "theme": "medicao-ami-dados",
+      "translation_pt": "perfil de carga",
+      "definition_en": "Pattern of a customer's consumption over time.",
+      "example_en": "Unusual load profiles flagged commercial fraud cases."
+    },
+    {
+      "term": "data analytics",
+      "theme": "medicao-ami-dados",
+      "translation_pt": "análise de dados",
+      "definition_en": "Extracting insights from data to support decisions.",
+      "example_en": "Data analytics turned meter data into loss reduction."
+    },
+    {
+      "term": "machine learning model",
+      "theme": "medicao-ami-dados",
+      "translation_pt": "modelo de aprendizado de máquina",
+      "definition_en": "Algorithm that learns patterns from data to make predictions.",
+      "example_en": "The machine learning model cut false positives by 40%."
+    },
+    {
+      "term": "predictive maintenance",
+      "theme": "medicao-ami-dados",
+      "translation_pt": "manutenção preditiva",
+      "definition_en": "Maintenance scheduled from condition data before failure.",
+      "example_en": "Predictive maintenance avoided three transformer failures."
+    },
+    {
+      "term": "condition monitoring",
+      "theme": "medicao-ami-dados",
+      "translation_pt": "monitoramento de condição",
+      "definition_en": "Continuous tracking of equipment health indicators.",
+      "example_en": "Online condition monitoring covered our critical fleet."
+    },
+    {
+      "term": "asset management",
+      "theme": "medicao-ami-dados",
+      "translation_pt": "gestão de ativos",
+      "definition_en": "Optimizing asset investment, maintenance, and replacement.",
+      "example_en": "Asset management decisions used risk and health data."
+    },
+    {
+      "term": "asset health index",
+      "theme": "medicao-ami-dados",
+      "translation_pt": "índice de saúde do ativo",
+      "definition_en": "Score summarizing an asset's condition.",
+      "example_en": "We prioritized replacements by asset health index."
+    },
+    {
+      "term": "sensor",
+      "theme": "medicao-ami-dados",
+      "translation_pt": "sensor",
+      "definition_en": "Device that measures a physical quantity.",
+      "example_en": "Temperature sensors fed the transformer health model."
+    },
+    {
+      "term": "IoT device",
+      "theme": "medicao-ami-dados",
+      "translation_pt": "dispositivo IoT",
+      "definition_en": "Connected field device that reports data over networks.",
+      "example_en": "Low-cost IoT devices extended monitoring to small assets."
+    },
+    {
+      "term": "digital twin",
+      "theme": "medicao-ami-dados",
+      "translation_pt": "gêmeo digital",
+      "definition_en": "Virtual model of a physical asset or system.",
+      "example_en": "The digital twin simulated switching before execution."
+    },
+    {
+      "term": "dashboard",
+      "theme": "medicao-ami-dados",
+      "translation_pt": "painel de indicadores",
+      "definition_en": "Visual display of key metrics and status.",
+      "example_en": "I built dashboards that executives actually used."
+    },
+    {
+      "term": "KPI",
+      "theme": "medicao-ami-dados",
+      "translation_pt": "indicador-chave de desempenho",
+      "definition_en": "Metric that tracks performance against a goal.",
+      "example_en": "Reliability KPIs drove the maintenance budget."
+    },
+    {
+      "term": "algorithm",
+      "theme": "medicao-ami-dados",
+      "translation_pt": "algoritmo",
+      "definition_en": "Defined procedure for solving a problem with data.",
+      "example_en": "The patented algorithm detects losses in near real time."
+    },
+    {
+      "term": "false positive",
+      "theme": "medicao-ami-dados",
+      "translation_pt": "falso positivo",
+      "definition_en": "Alert raised when no real problem exists.",
+      "example_en": "Reducing false positives was key for field team trust."
+    },
+    {
+      "term": "dataset",
+      "theme": "medicao-ami-dados",
+      "translation_pt": "conjunto de dados",
+      "definition_en": "Structured collection of data used for analysis.",
+      "example_en": "We trained the model on three years of AMI datasets."
+    },
+    {
+      "term": "geographic information system (GIS)",
+      "theme": "medicao-ami-dados",
+      "translation_pt": "sistema de informação geográfica",
+      "definition_en": "Platform that maps assets and network topology.",
+      "example_en": "GIS accuracy was essential for the outage system."
+    },
+    {
+      "term": "billing",
+      "theme": "medicao-ami-dados",
+      "translation_pt": "faturamento",
+      "definition_en": "Process of charging customers for measured energy.",
+      "example_en": "Billing exceptions pointed to metering failures."
+    },
+    {
+      "term": "arc flash",
+      "theme": "seguranca-ehs",
+      "translation_pt": "arco elétrico",
+      "definition_en": "Explosive release of energy from an electrical arc.",
+      "example_en": "Arc flash studies defined PPE for every panel."
+    },
+    {
+      "term": "arc flash boundary",
+      "theme": "seguranca-ehs",
+      "translation_pt": "limite de aproximação de arco",
+      "definition_en": "Distance within which arc flash PPE is required.",
+      "example_en": "Labels showed the arc flash boundary on all switchgear."
+    },
+    {
+      "term": "incident energy",
+      "theme": "seguranca-ehs",
+      "translation_pt": "energia incidente",
+      "definition_en": "Thermal energy a worker could receive from an arc.",
+      "example_en": "We recalculated incident energy after the upgrade."
+    },
+    {
+      "term": "personal protective equipment (PPE)",
+      "theme": "seguranca-ehs",
+      "translation_pt": "EPI",
+      "definition_en": "Gear that protects workers from hazards.",
+      "example_en": "PPE requirements were matched to incident energy levels."
+    },
+    {
+      "term": "lockout/tagout (LOTO)",
+      "theme": "seguranca-ehs",
+      "translation_pt": "bloqueio e etiquetagem",
+      "definition_en": "Procedure that isolates energy sources before work.",
+      "example_en": "LOTO audits were part of our monthly safety routine."
+    },
+    {
+      "term": "de-energized work",
+      "theme": "seguranca-ehs",
+      "translation_pt": "trabalho desenergizado",
+      "definition_en": "Work performed only after removing all energy sources.",
+      "example_en": "Our policy prioritized de-energized work whenever possible."
+    },
+    {
+      "term": "live-line work",
+      "theme": "seguranca-ehs",
+      "translation_pt": "trabalho em linha viva",
+      "definition_en": "Maintenance performed on energized lines.",
+      "example_en": "Certified crews performed live-line work on the 138 kV line."
+    },
+    {
+      "term": "permit to work",
+      "theme": "seguranca-ehs",
+      "translation_pt": "permissão de trabalho",
+      "definition_en": "Formal authorization required before high-risk tasks.",
+      "example_en": "No switching started without an approved permit to work."
+    },
+    {
+      "term": "job hazard analysis (JHA)",
+      "theme": "seguranca-ehs",
+      "translation_pt": "análise preliminar de risco (APR)",
+      "definition_en": "Step-by-step review of task hazards and controls.",
+      "example_en": "Crews completed a JHA before every field job."
+    },
+    {
+      "term": "risk assessment",
+      "theme": "seguranca-ehs",
+      "translation_pt": "avaliação de riscos",
+      "definition_en": "Systematic evaluation of hazards and their controls.",
+      "example_en": "Risk assessment shaped the substation work plan."
+    },
+    {
+      "term": "near miss",
+      "theme": "seguranca-ehs",
+      "translation_pt": "quase acidente",
+      "definition_en": "Incident that could have caused harm but did not.",
+      "example_en": "Near miss reporting doubled after we removed blame."
+    },
+    {
+      "term": "incident investigation",
+      "theme": "seguranca-ehs",
+      "translation_pt": "investigação de incidente",
+      "definition_en": "Structured inquiry into what caused an event.",
+      "example_en": "I led incident investigations with the operations team."
+    },
+    {
+      "term": "root cause analysis",
+      "theme": "seguranca-ehs",
+      "translation_pt": "análise de causa raiz",
+      "definition_en": "Method to find the underlying cause of a failure.",
+      "example_en": "Root cause analysis pointed to a procedure gap, not people."
+    },
+    {
+      "term": "safety culture",
+      "theme": "seguranca-ehs",
+      "translation_pt": "cultura de segurança",
+      "definition_en": "Shared values and behaviors around safety.",
+      "example_en": "Safety culture indicators improved along with reliability."
+    },
+    {
+      "term": "human factors",
+      "theme": "seguranca-ehs",
+      "translation_pt": "fatores humanos",
+      "definition_en": "How human capabilities and limits affect performance and safety.",
+      "example_en": "My human factors research is applied to grid operations."
+    },
+    {
+      "term": "human error",
+      "theme": "seguranca-ehs",
+      "translation_pt": "erro humano",
+      "definition_en": "Unintended action or decision that deviates from expectation.",
+      "example_en": "We redesigned procedures to make human error recoverable."
+    },
+    {
+      "term": "toolbox talk",
+      "theme": "seguranca-ehs",
+      "translation_pt": "diálogo de segurança (DDS)",
+      "definition_en": "Short safety briefing before starting work.",
+      "example_en": "Toolbox talks focused on the day's specific hazards."
+    },
+    {
+      "term": "confined space",
+      "theme": "seguranca-ehs",
+      "translation_pt": "espaço confinado",
+      "definition_en": "Enclosed area with limited entry and potential hazards.",
+      "example_en": "Cable vaults were managed as permit-required confined spaces."
+    },
+    {
+      "term": "fall protection",
+      "theme": "seguranca-ehs",
+      "translation_pt": "proteção contra quedas",
+      "definition_en": "Systems that prevent or arrest falls from height.",
+      "example_en": "Tower crews used full fall protection at all times."
+    },
+    {
+      "term": "protective grounding",
+      "theme": "seguranca-ehs",
+      "translation_pt": "aterramento temporário",
+      "definition_en": "Temporary grounds that protect workers on de-energized lines.",
+      "example_en": "Protective grounding placement was verified before work began."
+    },
+    {
+      "term": "minimum approach distance",
+      "theme": "seguranca-ehs",
+      "translation_pt": "distância mínima de aproximação",
+      "definition_en": "Closest a worker may get to energized parts.",
+      "example_en": "Training reinforced minimum approach distances by voltage."
+    },
+    {
+      "term": "electrical shock",
+      "theme": "seguranca-ehs",
+      "translation_pt": "choque elétrico",
+      "definition_en": "Injury from current passing through the body.",
+      "example_en": "Shock hazards were eliminated through design, not only PPE."
+    },
+    {
+      "term": "OSHA",
+      "theme": "seguranca-ehs",
+      "translation_pt": "OSHA (órgão de segurança do trabalho dos EUA)",
+      "definition_en": "US agency that sets and enforces workplace safety rules.",
+      "example_en": "I completed OSHA 30-hour training for general industry."
+    },
+    {
+      "term": "recordable incident rate (TRIR)",
+      "theme": "seguranca-ehs",
+      "translation_pt": "taxa de incidentes registráveis",
+      "definition_en": "Standard US metric of recordable injuries per hours worked.",
+      "example_en": "Our TRIR stayed below industry benchmark for three years."
+    },
+    {
+      "term": "interconnection",
+      "theme": "interconexao-mercado-regulatorio",
+      "translation_pt": "interconexão / conexão à rede",
+      "definition_en": "Connecting a generator or load to the grid.",
+      "example_en": "I supported interconnection studies for new projects."
+    },
+    {
+      "term": "interconnection queue",
+      "theme": "interconexao-mercado-regulatorio",
+      "translation_pt": "fila de conexão",
+      "definition_en": "Waiting list of projects requesting grid connection.",
+      "example_en": "The interconnection queue backlog is a national bottleneck."
+    },
+    {
+      "term": "point of interconnection (POI)",
+      "theme": "interconexao-mercado-regulatorio",
+      "translation_pt": "ponto de conexão",
+      "definition_en": "Physical location where a project ties into the grid.",
+      "example_en": "The POI substation needed a new breaker position."
+    },
+    {
+      "term": "utility",
+      "theme": "interconexao-mercado-regulatorio",
+      "translation_pt": "concessionária / empresa de energia",
+      "definition_en": "Company that delivers electric service to customers.",
+      "example_en": "I spent 12 years working for transmission utilities."
+    },
+    {
+      "term": "investor-owned utility (IOU)",
+      "theme": "interconexao-mercado-regulatorio",
+      "translation_pt": "concessionária privada",
+      "definition_en": "Shareholder-owned utility, common in the US.",
+      "example_en": "NextEra is the largest investor-owned utility group."
+    },
+    {
+      "term": "electric cooperative",
+      "theme": "interconexao-mercado-regulatorio",
+      "translation_pt": "cooperativa de eletrificação",
+      "definition_en": "Member-owned utility serving mostly rural areas.",
+      "example_en": "Electric cooperatives serve much of rural Florida."
+    },
+    {
+      "term": "municipal utility",
+      "theme": "interconexao-mercado-regulatorio",
+      "translation_pt": "concessionária municipal",
+      "definition_en": "City-owned electric utility.",
+      "example_en": "OUC is Orlando's municipal utility."
+    },
+    {
+      "term": "ISO/RTO",
+      "theme": "interconexao-mercado-regulatorio",
+      "translation_pt": "operador independente do sistema",
+      "definition_en": "Organization that operates the grid and markets in a region.",
+      "example_en": "Florida is not in an RTO, unlike Texas with ERCOT."
+    },
+    {
+      "term": "NERC",
+      "theme": "interconexao-mercado-regulatorio",
+      "translation_pt": "NERC (confiabilidade da rede)",
+      "definition_en": "Body that sets mandatory grid reliability standards in North America.",
+      "example_en": "NERC compliance shaped our maintenance documentation."
+    },
+    {
+      "term": "FERC",
+      "theme": "interconexao-mercado-regulatorio",
+      "translation_pt": "FERC (regulador federal)",
+      "definition_en": "US federal regulator of transmission and wholesale markets.",
+      "example_en": "FERC orders are reshaping interconnection processes."
+    },
+    {
+      "term": "compliance",
+      "theme": "interconexao-mercado-regulatorio",
+      "translation_pt": "conformidade",
+      "definition_en": "Meeting regulatory and standard requirements.",
+      "example_en": "I built evidence packages for compliance audits."
+    },
+    {
+      "term": "reliability standard",
+      "theme": "interconexao-mercado-regulatorio",
+      "translation_pt": "norma de confiabilidade",
+      "definition_en": "Mandatory rule for planning and operating the grid.",
+      "example_en": "The project was driven by a NERC reliability standard."
+    },
+    {
+      "term": "tariff",
+      "theme": "interconexao-mercado-regulatorio",
+      "translation_pt": "tarifa",
+      "definition_en": "Approved rates and terms for utility service.",
+      "example_en": "The new tariff funded grid modernization investments."
+    },
+    {
+      "term": "rate case",
+      "theme": "interconexao-mercado-regulatorio",
+      "translation_pt": "processo de revisão tarifária",
+      "definition_en": "Regulatory proceeding to set utility rates.",
+      "example_en": "Reliability results supported the utility's rate case."
+    },
+    {
+      "term": "grid modernization",
+      "theme": "interconexao-mercado-regulatorio",
+      "translation_pt": "modernização da rede",
+      "definition_en": "Upgrading the grid with automation, sensing, and analytics.",
+      "example_en": "Grid modernization is the core of my proposed endeavor."
+    },
+    {
+      "term": "distributed energy resources (DER)",
+      "theme": "interconexao-mercado-regulatorio",
+      "translation_pt": "recursos energéticos distribuídos",
+      "definition_en": "Small generation and storage connected at distribution level.",
+      "example_en": "DER growth changed protection and voltage practices."
+    },
+    {
+      "term": "microgrid",
+      "theme": "interconexao-mercado-regulatorio",
+      "translation_pt": "microrrede",
+      "definition_en": "Local grid that can operate connected or islanded.",
+      "example_en": "The campus microgrid kept critical loads during storms."
+    },
+    {
+      "term": "battery energy storage (BESS)",
+      "theme": "interconexao-mercado-regulatorio",
+      "translation_pt": "armazenamento em baterias",
+      "definition_en": "Grid-scale batteries that store and dispatch energy.",
+      "example_en": "BESS projects dominate the interconnection queue."
+    },
+    {
+      "term": "renewable integration",
+      "theme": "interconexao-mercado-regulatorio",
+      "translation_pt": "integração de renováveis",
+      "definition_en": "Connecting and operating variable renewable generation.",
+      "example_en": "Renewable integration raised new protection challenges."
+    },
+    {
+      "term": "solar PV",
+      "theme": "interconexao-mercado-regulatorio",
+      "translation_pt": "solar fotovoltaica",
+      "definition_en": "Generation from photovoltaic panels.",
+      "example_en": "Utility-scale solar PV is booming in Florida."
+    },
+    {
+      "term": "wind farm",
+      "theme": "interconexao-mercado-regulatorio",
+      "translation_pt": "parque eólico",
+      "definition_en": "Group of wind turbines operating as one plant.",
+      "example_en": "The wind farm interconnection required a new 345 kV line."
+    },
+    {
+      "term": "data center load",
+      "theme": "interconexao-mercado-regulatorio",
+      "translation_pt": "carga de data centers",
+      "definition_en": "Large, fast-growing demand from computing facilities.",
+      "example_en": "AI data center load is straining regional grids."
+    },
+    {
+      "term": "transmission planning",
+      "theme": "interconexao-mercado-regulatorio",
+      "translation_pt": "planejamento da transmissão",
+      "definition_en": "Studies that define future grid reinforcements.",
+      "example_en": "Transmission planning identified the corridor upgrade."
+    },
+    {
+      "term": "permitting",
+      "theme": "interconexao-mercado-regulatorio",
+      "translation_pt": "licenciamento",
+      "definition_en": "Obtaining regulatory approvals to build projects.",
+      "example_en": "Permitting drove the critical path of the project."
+    },
+    {
+      "term": "stakeholder",
+      "theme": "interconexao-mercado-regulatorio",
+      "translation_pt": "parte interessada",
+      "definition_en": "Person or group affected by or influencing a project.",
+      "example_en": "I aligned stakeholders across operations and regulatory teams."
+    },
+    {
+      "term": "resume",
+      "theme": "entrevista-carreira",
+      "translation_pt": "currículo (formato EUA)",
+      "definition_en": "One-to-two-page US-style summary of experience.",
+      "example_en": "My resume leads with transmission and distribution results."
+    },
+    {
+      "term": "job posting",
+      "theme": "entrevista-carreira",
+      "translation_pt": "anúncio de vaga",
+      "definition_en": "Published description of an open position.",
+      "example_en": "I analyze job postings to extract recurring requirements."
+    },
+    {
+      "term": "requirements",
+      "theme": "entrevista-carreira",
+      "translation_pt": "requisitos",
+      "definition_en": "Skills and qualifications a role demands.",
+      "example_en": "I meet all core requirements listed for this role."
+    },
+    {
+      "term": "qualifications",
+      "theme": "entrevista-carreira",
+      "translation_pt": "qualificações",
+      "definition_en": "Education, licenses, and experience that qualify a candidate.",
+      "example_en": "My qualifications include an EIT and four patents."
+    },
+    {
+      "term": "hiring manager",
+      "theme": "entrevista-carreira",
+      "translation_pt": "gestor da vaga",
+      "definition_en": "Manager who owns the position and final decision.",
+      "example_en": "The hiring manager asked about my substation experience."
+    },
+    {
+      "term": "recruiter",
+      "theme": "entrevista-carreira",
+      "translation_pt": "recrutador",
+      "definition_en": "Professional who sources and screens candidates.",
+      "example_en": "I connect with utility recruiters every week on LinkedIn."
+    },
+    {
+      "term": "referral",
+      "theme": "entrevista-carreira",
+      "translation_pt": "indicação",
+      "definition_en": "Recommendation of a candidate by an employee.",
+      "example_en": "A referral multiplies the response rate of applications."
+    },
+    {
+      "term": "screening call",
+      "theme": "entrevista-carreira",
+      "translation_pt": "entrevista de triagem",
+      "definition_en": "Short first interview, usually with a recruiter.",
+      "example_en": "The screening call covered my background and visa status."
+    },
+    {
+      "term": "behavioral interview",
+      "theme": "entrevista-carreira",
+      "translation_pt": "entrevista comportamental",
+      "definition_en": "Interview about past situations and behavior.",
+      "example_en": "US behavioral interviews expect structured, specific stories."
+    },
+    {
+      "term": "STAR method",
+      "theme": "entrevista-carreira",
+      "translation_pt": "método STAR",
+      "definition_en": "Answer format: Situation, Task, Action, Result.",
+      "example_en": "I practice every story in the STAR method with metrics."
+    },
+    {
+      "term": "accomplishment",
+      "theme": "entrevista-carreira",
+      "translation_pt": "conquista / realização",
+      "definition_en": "Concrete achievement with measurable results.",
+      "example_en": "My main accomplishment was cutting losses by double digits."
+    },
+    {
+      "term": "ownership",
+      "theme": "entrevista-carreira",
+      "translation_pt": "senso de dono",
+      "definition_en": "Taking full responsibility for outcomes.",
+      "example_en": "I took ownership of the program end to end."
+    },
+    {
+      "term": "deliverable",
+      "theme": "entrevista-carreira",
+      "translation_pt": "entrega / produto do trabalho",
+      "definition_en": "Concrete output a project must produce.",
+      "example_en": "Key deliverables included studies, settings, and reports."
+    },
+    {
+      "term": "deadline",
+      "theme": "entrevista-carreira",
+      "translation_pt": "prazo final",
+      "definition_en": "Date by which work must be complete.",
+      "example_en": "We met an aggressive deadline without safety shortcuts."
+    },
+    {
+      "term": "cross-functional team",
+      "theme": "entrevista-carreira",
+      "translation_pt": "equipe multidisciplinar",
+      "definition_en": "Team combining people from different departments.",
+      "example_en": "I led a cross-functional team of engineers and field crews."
+    },
+    {
+      "term": "direct reports",
+      "theme": "entrevista-carreira",
+      "translation_pt": "subordinados diretos",
+      "definition_en": "Employees who report directly to a manager.",
+      "example_en": "I managed eight direct reports across two sites."
+    },
+    {
+      "term": "notice period",
+      "theme": "entrevista-carreira",
+      "translation_pt": "aviso prévio",
+      "definition_en": "Time between resignation and last working day.",
+      "example_en": "My notice period would be thirty days."
+    },
+    {
+      "term": "compensation",
+      "theme": "entrevista-carreira",
+      "translation_pt": "remuneração",
+      "definition_en": "Total pay including salary and incentives.",
+      "example_en": "My compensation expectation is in the posted range."
+    },
+    {
+      "term": "salary range",
+      "theme": "entrevista-carreira",
+      "translation_pt": "faixa salarial",
+      "definition_en": "Minimum and maximum pay offered for a role.",
+      "example_en": "The salary range matched senior power engineer market data."
+    },
+    {
+      "term": "benefits",
+      "theme": "entrevista-carreira",
+      "translation_pt": "benefícios",
+      "definition_en": "Non-salary compensation such as health and retirement.",
+      "example_en": "Benefits packages vary a lot between US utilities."
+    },
+    {
+      "term": "relocation",
+      "theme": "entrevista-carreira",
+      "translation_pt": "mudança / realocação",
+      "definition_en": "Moving for a job, sometimes with company support.",
+      "example_en": "I'm relocating to Orlando with my family."
+    },
+    {
+      "term": "work authorization",
+      "theme": "entrevista-carreira",
+      "translation_pt": "autorização de trabalho",
+      "definition_en": "Legal permission to work in the US.",
+      "example_en": "I hold permanent work authorization and need no sponsorship."
+    },
+    {
+      "term": "background check",
+      "theme": "entrevista-carreira",
+      "translation_pt": "verificação de antecedentes",
+      "definition_en": "Employer verification of history before hiring.",
+      "example_en": "The offer was contingent on a background check."
+    },
+    {
+      "term": "onboarding",
+      "theme": "entrevista-carreira",
+      "translation_pt": "integração (novo funcionário)",
+      "definition_en": "Process of integrating a new hire into the company.",
+      "example_en": "Onboarding included safety training and system access."
+    },
+    {
+      "term": "elevator pitch",
+      "theme": "entrevista-carreira",
+      "translation_pt": "apresentação rápida",
+      "definition_en": "Short, rehearsed summary of who you are professionally.",
+      "example_en": "My elevator pitch covers T&D, patents, and grid modernization."
+    },
+    {
+      "term": "station battery bank",
+      "theme": "subestacoes-equipamentos",
+      "translation_pt": "banco de baterias da subestação",
+      "definition_en": "DC supply that powers protection and control during outages.",
+      "example_en": "Station battery bank tests were part of every maintenance cycle."
+    },
+    {
+      "term": "hot work permit",
+      "theme": "seguranca-ehs",
+      "translation_pt": "permissão para trabalho a quente",
+      "definition_en": "Authorization for work involving sparks, flames, or heat.",
+      "example_en": "Welding near the transformer required a hot work permit."
+    }
+  ]
+}

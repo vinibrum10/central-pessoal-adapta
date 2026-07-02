@@ -29,7 +29,7 @@ const gestaoNavItems: NavItem[] = [
 
 const estudoNavItems: NavItem[] = [
   { to: '/estudo/leitura', label: 'Leitura Diária', icon: BookOpen, aliases: ['/leitura'] },
-  { to: '/estudo/ingles', label: 'Inglês Diário', icon: Languages },
+  { to: '/estudo/ingles', label: 'Inglês — Entrevista', icon: Languages },
 ];
 
 const topNavItems = [
