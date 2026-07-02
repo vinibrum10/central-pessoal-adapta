@@ -14,9 +14,11 @@ export interface GlossaryTerm {
   id: string;
   term: string;
   theme: string;
+  category?: string | null;
   translation_pt: string;
   definition_en: string;
   example_en: string;
+  importance_level?: number | null;
   source: 'seed' | 'job_posting' | 'episode' | 'legacy' | string;
   created_at: string;
 }
@@ -119,6 +121,51 @@ export interface InterviewAnswer {
   gemini_feedback: InterviewAnswerFeedback | null;
   created_at: string;
   audioUrl?: string;
+}
+
+export type EmployabilityTermStatus = 'domino' | 'revisar' | 'nao_domino';
+export type UserGlossaryTermStatusValue = 'mastered' | 'review' | 'not_mastered';
+
+export interface UserGlossaryTermStatus {
+  id: string;
+  user_id: string;
+  term_id: string;
+  status: UserGlossaryTermStatusValue;
+  updated_at: string;
+}
+
+export interface UsJobVocabularyTerm {
+  term: GlossaryTerm;
+  review: GlossaryReview | null;
+  userStatus: UserGlossaryTermStatus | null;
+  status: EmployabilityTermStatus;
+}
+
+export interface StarAnswer {
+  id: string;
+  user_id: string;
+  question_id: string;
+  title: string;
+  situation: string;
+  task: string;
+  action: string;
+  result: string;
+  final_answer_en: string;
+  notes_pt: string;
+  created_at: string;
+  updated_at: string;
+  interview_questions?: InterviewQuestion | null;
+}
+
+export interface StarAnswerInput {
+  question_id: string;
+  title: string;
+  situation: string;
+  task: string;
+  action: string;
+  result: string;
+  final_answer_en: string;
+  notes_pt: string;
 }
 
 export interface InterviewMissionMetrics {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, Loader2, MessageSquareText, RefreshCw } from 'lucide-react';
+import { AlertCircle, BookOpen, Briefcase, Edit3, Loader2, MessageSquareText, RefreshCw } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Card, CardBody, CardHeader } from '../components/Card';
 import { LoadingState } from '../components/DesignSystem';
@@ -10,7 +10,9 @@ import { InterviewQuestionBank } from '../components/english/InterviewQuestionBa
 import { InterviewMissionHeader } from '../components/english/InterviewMissionHeader';
 import { InterviewModuleGrid } from '../components/english/InterviewModuleGrid';
 import { SectorListeningPanel } from '../components/english/SectorListeningPanel';
+import { StarAnswerBuilder } from '../components/english/StarAnswerBuilder';
 import { TechnicalGlossaryCards } from '../components/english/TechnicalGlossaryCards';
+import { UsJobVocabularyPanel } from '../components/english/UsJobVocabularyPanel';
 import { useAuth } from '../contexts/AuthContext';
 import type {
   DailySession,
@@ -28,6 +30,7 @@ import { isInterviewModeStorageReady, listInterviewQuestions, reviewGlossaryTerm
 import { loadInterviewModeState, reselectDailyEpisode } from '../services/english/interviewModeSession';
 
 type StepKey = 'step_listening_done' | 'step_shadowing_done' | 'step_cards_done' | 'step_question_done';
+type EnglishInterviewTab = 'daily' | 'vocabulary' | 'star';
 
 const EMPTY_METRICS = {
   masteredTerms: 0,
@@ -57,6 +60,7 @@ export function InglesPage() {
   const [questionCategoryFilter, setQuestionCategoryFilter] = useState('all');
   const [questionThemeFilter, setQuestionThemeFilter] = useState('all');
   const [evaluatingAnswerId, setEvaluatingAnswerId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<EnglishInterviewTab>('daily');
   const sessionRef = useRef<HTMLDivElement | null>(null);
 
   const storageReady = isInterviewModeStorageReady(user?.id);
@@ -275,6 +279,13 @@ export function InglesPage() {
     reviewCards: [],
     metrics: EMPTY_METRICS,
   };
+  const userId = user?.id ?? '';
+
+  const tabs: Array<{ id: EnglishInterviewTab; label: string; icon: JSX.Element }> = [
+    { id: 'daily', label: 'Sessão diária', icon: <BookOpen size={15} /> },
+    { id: 'vocabulary', label: 'Vocabulário EUA', icon: <Briefcase size={15} /> },
+    { id: 'star', label: 'Respostas STAR', icon: <Edit3 size={15} /> },
+  ];
 
   return (
     <div className="space-y-6">
@@ -294,91 +305,116 @@ export function InglesPage() {
         </div>
       )}
 
-      <div ref={sessionRef}>
-        <DailyInterviewSession
-          session={currentState.session}
-          episode={currentState.episode}
-          question={currentState.question}
-          onToggleStep={handleToggleStep}
-          onStart={handleStartSession}
-        />
+      <div className="flex flex-wrap gap-2">
+        {tabs.map(tab => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveTab(tab.id)}
+            className={`inline-flex min-h-10 items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+              activeTab === tab.id
+                ? 'bg-primary-600 text-white shadow-sm shadow-primary-700/20'
+                : 'border border-surface-200 bg-white/80 text-surface-600 hover:bg-surface-50 dark:border-primary-300/15 dark:bg-white/[0.05] dark:text-surface-300 dark:hover:bg-white/10'
+            }`}
+          >
+            {tab.icon}
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      <SectorListeningPanel
-        episode={currentState.episode}
-        theme={theme}
-        level={level}
-        manualUrl={manualUrl}
-        manualEmbedUrl={manualEmbedUrl}
-        onThemeChange={handleThemeChange}
-        onLevelChange={handleLevelChange}
-        onManualUrlChange={setManualUrl}
-      />
+      {activeTab === 'daily' && (
+        <>
+          <div ref={sessionRef}>
+            <DailyInterviewSession
+              session={currentState.session}
+              episode={currentState.episode}
+              question={currentState.question}
+              onToggleStep={handleToggleStep}
+              onStart={handleStartSession}
+            />
+          </div>
 
-      <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-        <TechnicalGlossaryCards cards={currentState.reviewCards} onReview={handleReviewCard} />
+          <SectorListeningPanel
+            episode={currentState.episode}
+            theme={theme}
+            level={level}
+            manualUrl={manualUrl}
+            manualEmbedUrl={manualEmbedUrl}
+            onThemeChange={handleThemeChange}
+            onLevelChange={handleLevelChange}
+            onManualUrlChange={setManualUrl}
+          />
 
-        <InterviewQuestionBank
-          questions={questions}
-          selectedQuestionId={selectedQuestion?.id ?? null}
-          categoryFilter={questionCategoryFilter}
-          themeFilter={questionThemeFilter}
-          onCategoryFilterChange={setQuestionCategoryFilter}
-          onThemeFilterChange={setQuestionThemeFilter}
-          onSelectQuestion={handleSelectQuestion}
-        />
-      </div>
+          <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+            <TechnicalGlossaryCards cards={currentState.reviewCards} onReview={handleReviewCard} />
 
-      <Card>
-        <CardHeader
-          title="Resposta gravada"
-          subtitle="Grave, salve no histórico e avalie com IA quando quiser."
-          icon={<MessageSquareText size={18} />}
-          action={(
-            <Button type="button" size="sm" variant="secondary" icon={<RefreshCw size={14} />} onClick={loadState}>
-              Atualizar
-            </Button>
-          )}
-        />
-        <CardBody className="space-y-4">
-          {selectedQuestion ? (
-            <>
-              <div className="rounded-lg border border-surface-200 bg-white/70 p-4 dark:border-primary-300/15 dark:bg-white/[0.03]">
-                <div className="mb-3 flex flex-wrap items-center gap-2">
-                  <span className="rounded-lg bg-primary-500/10 px-2 py-1 text-xs font-semibold text-primary-700 dark:text-primary-200">
-                    {selectedQuestion.id}
-                  </span>
-                  <span className="rounded-lg bg-surface-100 px-2 py-1 text-xs font-medium text-surface-600 dark:bg-white/10 dark:text-surface-300">
-                    {selectedQuestion.category}
-                  </span>
-                  <span className="rounded-lg bg-surface-100 px-2 py-1 text-xs font-medium text-surface-600 dark:bg-white/10 dark:text-surface-300">
-                    {selectedQuestion.timer_sugerido_min} min
-                  </span>
-                </div>
-                <p className="text-base font-semibold leading-7 text-surface-950 dark:text-white">
-                  {selectedQuestion.question_en}
-                </p>
-              </div>
+            <InterviewQuestionBank
+              questions={questions}
+              selectedQuestionId={selectedQuestion?.id ?? null}
+              categoryFilter={questionCategoryFilter}
+              themeFilter={questionThemeFilter}
+              onCategoryFilterChange={setQuestionCategoryFilter}
+              onThemeFilterChange={setQuestionThemeFilter}
+              onSelectQuestion={handleSelectQuestion}
+            />
+          </div>
 
-              <div className="space-y-3 text-sm leading-6">
-                <details className="rounded-lg border border-surface-200 bg-white/60 p-3 dark:border-primary-300/15 dark:bg-white/[0.03]">
-                  <summary className="cursor-pointer font-semibold text-surface-800 dark:text-surface-100">O que avaliam</summary>
-                  <p className="mt-2 text-surface-600 dark:text-surface-300">{selectedQuestion.o_que_avaliam}</p>
-                </details>
-                <details className="rounded-lg border border-surface-200 bg-white/60 p-3 dark:border-primary-300/15 dark:bg-white/[0.03]">
-                  <summary className="cursor-pointer font-semibold text-surface-800 dark:text-surface-100">Como responder</summary>
-                  <p className="mt-2 text-surface-600 dark:text-surface-300">{selectedQuestion.como_responder}</p>
-                </details>
-              </div>
+          <Card>
+            <CardHeader
+              title="Resposta gravada"
+              subtitle="Grave, salve no histórico e avalie com IA quando quiser."
+              icon={<MessageSquareText size={18} />}
+              action={(
+                <Button type="button" size="sm" variant="secondary" icon={<RefreshCw size={14} />} onClick={loadState}>
+                  Atualizar
+                </Button>
+              )}
+            />
+            <CardBody className="space-y-4">
+              {selectedQuestion ? (
+                <>
+                  <div className="rounded-lg border border-surface-200 bg-white/70 p-4 dark:border-primary-300/15 dark:bg-white/[0.03]">
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                      <span className="rounded-lg bg-primary-500/10 px-2 py-1 text-xs font-semibold text-primary-700 dark:text-primary-200">
+                        {selectedQuestion.id}
+                      </span>
+                      <span className="rounded-lg bg-surface-100 px-2 py-1 text-xs font-medium text-surface-600 dark:bg-white/10 dark:text-surface-300">
+                        {selectedQuestion.category}
+                      </span>
+                      <span className="rounded-lg bg-surface-100 px-2 py-1 text-xs font-medium text-surface-600 dark:bg-white/10 dark:text-surface-300">
+                        {selectedQuestion.timer_sugerido_min} min
+                      </span>
+                    </div>
+                    <p className="text-base font-semibold leading-7 text-surface-950 dark:text-white">
+                      {selectedQuestion.question_en}
+                    </p>
+                  </div>
 
-              <InterviewAnswerRecorder question={selectedQuestion} saving={saving} onSave={handleSaveAnswer} />
-              <InterviewAnswerHistory answers={answers} evaluatingAnswerId={evaluatingAnswerId} onEvaluate={handleEvaluateAnswer} />
-            </>
-          ) : (
-            <p className="text-sm text-surface-500 dark:text-surface-400">Rode o seed do banco de perguntas para ativar esta etapa.</p>
-          )}
-        </CardBody>
-      </Card>
+                  <div className="space-y-3 text-sm leading-6">
+                    <details className="rounded-lg border border-surface-200 bg-white/60 p-3 dark:border-primary-300/15 dark:bg-white/[0.03]">
+                      <summary className="cursor-pointer font-semibold text-surface-800 dark:text-surface-100">O que avaliam</summary>
+                      <p className="mt-2 text-surface-600 dark:text-surface-300">{selectedQuestion.o_que_avaliam}</p>
+                    </details>
+                    <details className="rounded-lg border border-surface-200 bg-white/60 p-3 dark:border-primary-300/15 dark:bg-white/[0.03]">
+                      <summary className="cursor-pointer font-semibold text-surface-800 dark:text-surface-100">Como responder</summary>
+                      <p className="mt-2 text-surface-600 dark:text-surface-300">{selectedQuestion.como_responder}</p>
+                    </details>
+                  </div>
+
+                  <InterviewAnswerRecorder question={selectedQuestion} saving={saving} onSave={handleSaveAnswer} />
+                  <InterviewAnswerHistory answers={answers} evaluatingAnswerId={evaluatingAnswerId} onEvaluate={handleEvaluateAnswer} />
+                </>
+              ) : (
+                <p className="text-sm text-surface-500 dark:text-surface-400">Rode o seed do banco de perguntas para ativar esta etapa.</p>
+              )}
+            </CardBody>
+          </Card>
+        </>
+      )}
+
+      {activeTab === 'vocabulary' && userId && <UsJobVocabularyPanel userId={userId} />}
+      {activeTab === 'star' && userId && <StarAnswerBuilder userId={userId} questions={questions} />}
 
       <InterviewModuleGrid />
     </div>

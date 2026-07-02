@@ -12,7 +12,8 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "test": "vitest run",
-    "seed:english-interview": "node scripts/seed-english-interview-mode.mjs"
+    "seed:english-interview": "node scripts/seed-english-interview-mode.mjs",
+    "seed:english-employability": "node scripts/seed-english-employability-phase3.mjs"
   },
   "dependencies": {
     "@azure/msal-browser": "^5.14.0",

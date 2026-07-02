@@ -1,0 +1,260 @@
+{
+  "terms": [
+    {
+      "term_en": "power system studies",
+      "translation_pt": "estudos de sistemas de potência",
+      "example_en": "The role requires experience performing power system studies for utility-scale interconnection projects.",
+      "category": "power systems",
+      "importance_level": 5,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "load flow analysis",
+      "translation_pt": "análise de fluxo de carga",
+      "example_en": "The engineer will run load flow analysis to evaluate voltage profiles and equipment loading.",
+      "category": "power systems",
+      "importance_level": 5,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "short-circuit study",
+      "translation_pt": "estudo de curto-circuito",
+      "example_en": "Candidates should be able to perform short-circuit studies and recommend breaker ratings.",
+      "category": "power systems",
+      "importance_level": 5,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "arc flash analysis",
+      "translation_pt": "análise de arco elétrico",
+      "example_en": "The position includes arc flash analysis and preparation of electrical safety labels.",
+      "category": "electrical safety",
+      "importance_level": 5,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "utility interconnection",
+      "translation_pt": "interconexão com concessionária",
+      "example_en": "The project engineer will coordinate utility interconnection requirements with the local utility.",
+      "category": "utilities",
+      "importance_level": 5,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "SCADA integration",
+      "translation_pt": "integração SCADA",
+      "example_en": "This role supports SCADA integration for substations and remote field devices.",
+      "category": "SCADA",
+      "importance_level": 5,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "substation design",
+      "translation_pt": "projeto de subestação",
+      "example_en": "Applicants must have hands-on experience with substation design packages.",
+      "category": "substation",
+      "importance_level": 5,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "transmission line",
+      "translation_pt": "linha de transmissão",
+      "example_en": "The team is hiring an engineer to support transmission line routing and electrical design.",
+      "category": "transmission",
+      "importance_level": 4,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "distribution feeder",
+      "translation_pt": "alimentador de distribuição",
+      "example_en": "The engineer will evaluate distribution feeder capacity and reliability improvements.",
+      "category": "distribution",
+      "importance_level": 4,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "protection and control",
+      "translation_pt": "proteção e controle",
+      "example_en": "The position requires protection and control design for high-voltage substations.",
+      "category": "protection and control",
+      "importance_level": 5,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "relay settings",
+      "translation_pt": "ajustes de relés",
+      "example_en": "The engineer will develop relay settings and review coordination reports.",
+      "category": "relay protection",
+      "importance_level": 5,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "protective relay",
+      "translation_pt": "relé de proteção",
+      "example_en": "Experience testing protective relays is strongly preferred for this field role.",
+      "category": "relay protection",
+      "importance_level": 5,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "commissioning plan",
+      "translation_pt": "plano de comissionamento",
+      "example_en": "The successful candidate will prepare a commissioning plan before energization.",
+      "category": "commissioning",
+      "importance_level": 4,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "site acceptance test",
+      "translation_pt": "teste de aceitação em campo",
+      "example_en": "The field engineer will execute site acceptance tests for control panels and relays.",
+      "category": "commissioning",
+      "importance_level": 4,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "field engineering",
+      "translation_pt": "engenharia de campo",
+      "example_en": "The job involves field engineering support during construction and startup.",
+      "category": "field engineering",
+      "importance_level": 4,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "lockout tagout",
+      "translation_pt": "bloqueio e etiquetagem",
+      "example_en": "All applicants must follow lockout tagout procedures before working on energized equipment.",
+      "category": "electrical safety",
+      "importance_level": 5,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "grid automation",
+      "translation_pt": "automação da rede elétrica",
+      "example_en": "The company is expanding its grid automation team to improve outage response.",
+      "category": "grid automation",
+      "importance_level": 4,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "switchgear",
+      "translation_pt": "conjunto de manobra e proteção",
+      "example_en": "The engineer will specify medium-voltage switchgear for industrial and utility projects.",
+      "category": "switchgear",
+      "importance_level": 5,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "power transformer",
+      "translation_pt": "transformador de potência",
+      "example_en": "Candidates should understand power transformer testing and maintenance requirements.",
+      "category": "transformers",
+      "importance_level": 5,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "preventive maintenance",
+      "translation_pt": "manutenção preventiva",
+      "example_en": "The role includes preventive maintenance planning for electrical assets.",
+      "category": "maintenance",
+      "importance_level": 4,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "troubleshooting",
+      "translation_pt": "diagnóstico e solução de problemas",
+      "example_en": "The field engineer must troubleshoot electrical issues under time-sensitive conditions.",
+      "category": "troubleshooting",
+      "importance_level": 5,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "NERC compliance",
+      "translation_pt": "conformidade com normas NERC",
+      "example_en": "The utility engineer will support NERC compliance documentation and audits.",
+      "category": "compliance",
+      "importance_level": 4,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "one-line diagram",
+      "translation_pt": "diagrama unifilar",
+      "example_en": "Applicants must be able to read and update one-line diagrams for substations.",
+      "category": "substation",
+      "importance_level": 5,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "control wiring",
+      "translation_pt": "fiação de controle",
+      "example_en": "The designer will review control wiring diagrams for relay panels.",
+      "category": "protection and control",
+      "importance_level": 4,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "RTU configuration",
+      "translation_pt": "configuração de RTU",
+      "example_en": "The SCADA engineer will support RTU configuration and point-to-point checkout.",
+      "category": "SCADA",
+      "importance_level": 4,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "point-to-point testing",
+      "translation_pt": "teste ponto a ponto",
+      "example_en": "Commissioning includes point-to-point testing between field devices and the SCADA system.",
+      "category": "commissioning",
+      "importance_level": 4,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "feeder protection",
+      "translation_pt": "proteção de alimentador",
+      "example_en": "The engineer will review feeder protection schemes for distribution circuits.",
+      "category": "distribution",
+      "importance_level": 4,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "breaker failure protection",
+      "translation_pt": "proteção contra falha de disjuntor",
+      "example_en": "Senior candidates should understand breaker failure protection logic.",
+      "category": "relay protection",
+      "importance_level": 4,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "energization",
+      "translation_pt": "energização",
+      "example_en": "The commissioning engineer will support final checks before energization.",
+      "category": "commissioning",
+      "importance_level": 5,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "equipment outage",
+      "translation_pt": "desligamento de equipamento",
+      "example_en": "The planner will coordinate equipment outages with operations and maintenance teams.",
+      "category": "utilities",
+      "importance_level": 4,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "root cause analysis",
+      "translation_pt": "análise de causa raiz",
+      "example_en": "After failures, the engineer will lead root cause analysis and corrective actions.",
+      "category": "troubleshooting",
+      "importance_level": 4,
+      "source": "job_posting"
+    },
+    {
+      "term_en": "electrical code compliance",
+      "translation_pt": "conformidade com normas elétricas",
+      "example_en": "The design must meet electrical code compliance and client standards.",
+      "category": "compliance",
+      "importance_level": 4,
+      "source": "job_posting"
+    }
+  ]
+}

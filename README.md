@@ -279,6 +279,25 @@ A migration antiga `english_study_data` permanece para compatibilidade, mas a no
 
 As respostas gravadas usam `MediaRecorder` no cliente com bitrate baixo para voz. O arquivo vai para o bucket privado `interview-answers` em `{user_id}/{answer_id}.{ext}`, com extensão derivada do `mimeType` suportado pelo navegador. O feedback de IA é manual pelo botão **Avaliar com IA** e chama `/api/english/evaluate-answer`, que envia o áudio ao Gemini com JSON mode e salva o retorno em `interview_answers.gemini_feedback`.
 
+### Fase 3A/3B · Empregabilidade EUA
+
+1. Rode a migration incremental `supabase/migrations/20260702_english_employability_phase3.sql`.
+2. Popule o vocabulário de vagas dos EUA com service role local:
+
+```bash
+$env:SUPABASE_URL="https://xxxx.supabase.co"
+$env:SUPABASE_SERVICE_ROLE_KEY="<service-role-key>"
+npm run seed:english-employability
+```
+
+No macOS/Linux:
+
+```bash
+SUPABASE_URL="https://xxxx.supabase.co" SUPABASE_SERVICE_ROLE_KEY="<service-role-key>" npm run seed:english-employability
+```
+
+O seed usa `source = 'job_posting'` e faz upsert em `glossary_terms` para evitar duplicatas. As respostas STAR ficam em `star_answers` com RLS por dono.
+
 ---
 
 ## 12 · Microsoft Outlook Calendar
