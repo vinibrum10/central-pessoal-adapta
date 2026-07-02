@@ -294,6 +294,29 @@ export function calcularAReceberMes(mes: number, ano: number, data: AppData) {
   return { lista, totalAReceber, totalRecebido, totalEmAberto: totalAReceber };
 }
 
+// Receitas do mês por competência: mesReferencia/anoReferencia quando existem, senão o mês da data.
+export function filtrarReceitasMes(mes: number, ano: number, receitas: Receita[]): Receita[] {
+  return receitas.filter(r => {
+    const { mes: mesData, ano: anoData } = mesAnoDeIso(r.data);
+    const mesRef = (r.mesReferencia ?? mesData + 1) - 1;
+    const anoRef = r.anoReferencia ?? anoData;
+    return mesRef === mes && anoRef === ano;
+  });
+}
+
+// Fonte única de verdade do resumo financeiro mensal (card "Finanças do mês" na tela Hoje
+// e resumo da tela Orçamento): despesas seguem gerarItensPagarMes — despesas não-cartão do mês,
+// faturas de cartão por competência e parcelas de dívidas ativas.
+export function calcularResumoFinanceiroMensal(
+  mes: number,
+  ano: number,
+  data: AppData,
+): { receitas: number; despesas: number; saldo: number } {
+  const receitas = filtrarReceitasMes(mes, ano, data.receitas).reduce((acc, r) => acc + r.valor, 0);
+  const despesas = gerarItensPagarMes(mes, ano, data).reduce((acc, item) => acc + item.valor, 0);
+  return { receitas, despesas, saldo: receitas - despesas };
+}
+
 export function calcularResumoMensal(mes: number, ano: number, data: AppData) {
   const itens = gerarItensPagarMes(mes, ano, data);
   const aReceber = calcularAReceberMes(mes, ano, data);

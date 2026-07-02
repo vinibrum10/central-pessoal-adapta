@@ -35,6 +35,7 @@ import {
   calcularTotaisDespesasMes,
   converterRecebimentoEmReceita,
   desfazerPagamentoItem,
+  filtrarReceitasMes,
   gerarItensPagarMes,
   marcarItemComoPago,
   marcarRecebimentoComoRecebido,
@@ -238,12 +239,7 @@ export function OrcamentoPage() {
     const [anoStr, mesStr] = iso.slice(0, 7).split('-');
     return { mes: Number(mesStr) - 1, ano: Number(anoStr) };
   };
-  const receitasFiltradas = data.receitas.filter(r => {
-    const { mes, ano } = mesAnoDeData(r.data);
-    const mesRef = (r.mesReferencia ?? mes + 1) - 1;
-    const anoRef = r.anoReferencia ?? ano;
-    return mesRef === mesFiltro.mes && anoRef === mesFiltro.ano;
-  });
+  const receitasFiltradas = filtrarReceitasMes(mesFiltro.mes, mesFiltro.ano, data.receitas);
   // Despesas: não-cartão filtra por mês de referência; cartão filtra pela competência da fatura
   const despesasFiltradas = data.despesas.filter(d => {
     if (d.formaPagamento !== 'Cartão de crédito' || !d.faturaId) {

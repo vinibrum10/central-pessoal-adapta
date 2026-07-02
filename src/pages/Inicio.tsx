@@ -12,6 +12,7 @@ import {
   Clock, RefreshCw, Lightbulb, Wallet,
 } from 'lucide-react';
 import { useApp } from '../hooks/useApp';
+import { calcularResumoFinanceiroMensal } from '../utils/orcamento';
 import {
   formatarDinheiro, calcularMinutosDisponiveis, formatarMinutos,
   eAtrasada, revisaoAtrasada, corClassificacaoPrazo, labelClassificacaoPrazo,
@@ -174,20 +175,11 @@ export function InicioPage() {
   const mesAtual = hoje.getMonth();
   const anoAtual = hoje.getFullYear();
 
-  // Finanças — usa string parsing para evitar bug de fuso horário com datas ISO
-  const receitasMes = data.receitas
-    .filter(r => {
-      const mesData = Number(r.data.slice(5, 7)) - 1;
-      const anoData = Number(r.data.slice(0, 4));
-      const mesRef = (r.mesReferencia ?? mesData + 1) - 1;
-      const anoRef = r.anoReferencia ?? anoData;
-      return mesRef === mesAtual && anoRef === anoAtual;
-    })
-    .reduce((acc, r) => acc + r.valor, 0);
-  const despesasMes = data.despesas
-    .filter(d => Number(d.data.slice(5, 7)) - 1 === mesAtual && Number(d.data.slice(0, 4)) === anoAtual)
-    .reduce((acc, d) => acc + d.valor, 0);
-  const saldoMes = receitasMes - despesasMes;
+  // Finanças — mesma regra do resumo mensal da tela Orçamento (calcularResumoFinanceiroMensal)
+  const { receitas: receitasMes, despesas: despesasMes, saldo: saldoMes } = useMemo(
+    () => calcularResumoFinanceiroMensal(mesAtual, anoAtual, data),
+    [mesAtual, anoAtual, data]
+  );
   const minutosDisponiveis = calcularMinutosDisponiveis(data.blocosTempo);
 
   // Métricas

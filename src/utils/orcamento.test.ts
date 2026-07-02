@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import type { AppData, Cartao, Despesa, FaturaCartao } from '../types';
+import type { AppData, Cartao, Despesa, Divida, FaturaCartao, Receita } from '../types';
 import { obterOuCriarFatura, recalcularFatura } from './faturaCartao';
-import { calcularTotaisDespesasMes, gerarItensPagarMes, removerDespesa, recalcularTodasAsFaturas } from './orcamento';
+import { calcularResumoFinanceiroMensal, calcularTotaisDespesasMes, filtrarReceitasMes, gerarItensPagarMes, removerDespesa, recalcularTodasAsFaturas } from './orcamento';
 
 // Julho/2026 = mes 6 (0-indexed), ano 2026
 const MES = 6;
@@ -239,5 +239,115 @@ describe('correção adicional: normalização centralizada de faturas antigas (
     expect(dataNormalizada.statusPagamentos).toEqual(dataComDadosManuais.statusPagamentos);
     // Só o campo calculado é corrigido
     expect(faturaCorrigida.valorDetalhado).toBeCloseTo(7650, 2);
+  });
+});
+
+describe('bug: divergência entre card "Finanças do mês" (Hoje) e resumo do Orçamento', () => {
+  function criarAppDataComDividaEReceita(): AppData {
+    const dataBase = criarAppDataBase();
+
+    const receita: Receita = {
+      id: 'rec-salario',
+      descricao: 'Salário',
+      valor: 25026.52,
+      data: '2026-07-05',
+      mesReferencia: 7,
+      anoReferencia: 2026,
+      categoria: 'Outros',
+      recorrente: false,
+      dataCriacao: '2026-07-05',
+    };
+
+    const despesaDebito: Despesa = {
+      id: 'desp-debito-1',
+      descricao: 'Aluguel',
+      valor: 2000,
+      data: '2026-07-05',
+      categoria: 'Outros',
+      formaPagamento: 'Débito',
+      recorrente: false,
+      essencial: true,
+      dataCriacao: '2026-07-05',
+    };
+
+    // Dívida ativa iniciada em maio/2026 → parcela 3/12 vence em julho/2026
+    const divida: Divida = {
+      id: 'divida-1',
+      nome: 'Empréstimo',
+      valorTotal: 12000,
+      valorParcela: 1000,
+      totalParcelas: 12,
+      parcelasPagas: 0,
+      taxaJuros: 0,
+      prioridadeQuitacao: 'média',
+      dataInicio: '2026-05-10',
+      diaVencimento: 10,
+      status: 'ativa',
+      dataCriacao: '2026-05-10',
+    };
+
+    return {
+      ...dataBase,
+      receitas: [receita],
+      despesas: [...dataBase.despesas, despesaDebito],
+      dividas: [divida],
+    };
+  }
+
+  it('calcularResumoFinanceiroMensal usa a mesma regra do Orçamento (gerarItensPagarMes + filtrarReceitasMes)', () => {
+    const data = criarAppDataComDividaEReceita();
+
+    const resumo = calcularResumoFinanceiroMensal(MES, ANO, data);
+
+    // Regra do Orçamento: despesas = soma dos itens a pagar do mês; receitas = filtro por competência
+    const despesasOrcamento = gerarItensPagarMes(MES, ANO, data).reduce((acc, item) => acc + item.valor, 0);
+    const receitasOrcamento = filtrarReceitasMes(MES, ANO, data.receitas).reduce((acc, r) => acc + r.valor, 0);
+
+    expect(resumo.despesas).toBeCloseTo(despesasOrcamento, 2);
+    expect(resumo.receitas).toBeCloseTo(receitasOrcamento, 2);
+    expect(resumo.saldo).toBeCloseTo(receitasOrcamento - despesasOrcamento, 2);
+  });
+
+  it('despesas do mês incluem fatura de cartão, despesa comum e parcela de dívida (não só data.despesas)', () => {
+    const data = criarAppDataComDividaEReceita();
+
+    const resumo = calcularResumoFinanceiroMensal(MES, ANO, data);
+
+    // fatura C6 (7650) + aluguel no débito (2000) + parcela da dívida (1000)
+    expect(resumo.despesas).toBeCloseTo(7650 + 2000 + 1000, 2);
+    expect(resumo.receitas).toBeCloseTo(25026.52, 2);
+    expect(resumo.saldo).toBeCloseTo(25026.52 - 10650, 2);
+
+    // A regra antiga da tela Hoje (somar data.despesas pela data) ignorava a parcela da dívida
+    const somaIngenuaDespesas = data.despesas
+      .filter(d => d.data.startsWith('2026-07'))
+      .reduce((acc, d) => acc + d.valor, 0);
+    expect(resumo.despesas).toBeGreaterThan(somaIngenuaDespesas);
+  });
+
+  it('marcar item como pago não altera o total de despesas do mês, apenas o status', () => {
+    const data = criarAppDataComDividaEReceita();
+    const resumoAntes = calcularResumoFinanceiroMensal(MES, ANO, data);
+
+    const itemDivida = gerarItensPagarMes(MES, ANO, data).find(item => item.tipo === 'divida')!;
+    const dataComPagamento: AppData = {
+      ...data,
+      statusPagamentos: [
+        {
+          id: 'status-divida-1',
+          itemId: itemDivida.id,
+          tipo: 'divida',
+          mes: MES,
+          ano: ANO,
+          pago: true,
+          dataPagamento: '2026-07-10',
+          dataCriacao: '2026-07-10',
+        },
+      ],
+    };
+
+    const resumoDepois = calcularResumoFinanceiroMensal(MES, ANO, dataComPagamento);
+    expect(resumoDepois.despesas).toBeCloseTo(resumoAntes.despesas, 2);
+    expect(resumoDepois.saldo).toBeCloseTo(resumoAntes.saldo, 2);
   });
 });
