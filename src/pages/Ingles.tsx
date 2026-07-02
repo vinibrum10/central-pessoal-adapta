@@ -10,6 +10,7 @@ import { EmployabilityDashboard } from '../components/english/EmployabilityDashb
 import { InterviewQuestionBank } from '../components/english/InterviewQuestionBank';
 import { InterviewMissionHeader } from '../components/english/InterviewMissionHeader';
 import { InterviewModuleGrid } from '../components/english/InterviewModuleGrid';
+import { JobTargetsPanel } from '../components/english/JobTargetsPanel';
 import { MonthlyMockInterview } from '../components/english/MonthlyMockInterview';
 import { SectorListeningPanel } from '../components/english/SectorListeningPanel';
 import { StarAnswerBuilder } from '../components/english/StarAnswerBuilder';
@@ -32,7 +33,7 @@ import { isInterviewModeStorageReady, listInterviewQuestions, reviewGlossaryTerm
 import { loadInterviewModeState, reselectDailyEpisode } from '../services/english/interviewModeSession';
 
 type StepKey = 'step_listening_done' | 'step_shadowing_done' | 'step_cards_done' | 'step_question_done';
-type EnglishInterviewTab = 'daily' | 'vocabulary' | 'star' | 'mock' | 'evolution';
+type EnglishInterviewTab = 'daily' | 'vocabulary' | 'star' | 'mock' | 'evolution' | 'jobs';
 
 const EMPTY_METRICS = {
   masteredTerms: 0,
@@ -289,6 +290,7 @@ export function InglesPage() {
     { id: 'star', label: 'Respostas STAR', icon: <Edit3 size={15} /> },
     { id: 'mock', label: 'Mock mensal', icon: <ClipboardList size={15} /> },
     { id: 'evolution', label: 'Evolução', icon: <TrendingUp size={15} /> },
+    { id: 'jobs', label: 'Vagas EUA', icon: <Briefcase size={15} /> },
   ];
 
   return (
@@ -421,6 +423,7 @@ export function InglesPage() {
       {activeTab === 'star' && userId && <StarAnswerBuilder userId={userId} questions={questions} />}
       {activeTab === 'mock' && userId && <MonthlyMockInterview userId={userId} questions={questions} />}
       {activeTab === 'evolution' && userId && <EmployabilityDashboard userId={userId} />}
+      {activeTab === 'jobs' && userId && <JobTargetsPanel userId={userId} />}
 
       <InterviewModuleGrid />
     </div>

@@ -210,6 +210,59 @@ export interface MockSessionQuestion {
   interview_answers?: InterviewAnswer | null;
 }
 
+export type JobTargetStatus = 'researching' | 'to_apply' | 'applied' | 'interview' | 'rejected' | 'offer' | 'archived';
+
+export interface JobTargetAnalysis {
+  summary_pt: string;
+  role_type: string;
+  required_skills: string[];
+  preferred_skills: string[];
+  technical_keywords: string[];
+  missing_vocabulary: string[];
+  likely_interview_questions: string[];
+  star_story_suggestions: string[];
+  match_score: number;
+  strengths_pt: string[];
+  gaps_pt: string[];
+  study_plan_7_days_pt: string[];
+  recommended_mock_focus: string;
+}
+
+export interface JobTarget {
+  id: string;
+  user_id: string;
+  title: string;
+  company: string | null;
+  location: string | null;
+  job_url: string | null;
+  description: string;
+  status: JobTargetStatus;
+  ai_analysis: JobTargetAnalysis | null;
+  match_score: number | null;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+}
+
+export interface JobTargetInput {
+  title: string;
+  company: string;
+  location: string;
+  job_url: string;
+  description: string;
+  status: JobTargetStatus;
+}
+
+export const JOB_TARGET_STATUS_LABELS: Record<JobTargetStatus, string> = {
+  researching: 'Pesquisando',
+  to_apply: 'Aplicar',
+  applied: 'Aplicado',
+  interview: 'Entrevista',
+  rejected: 'Rejeitado',
+  offer: 'Oferta',
+  archived: 'Arquivado',
+};
+
 export interface InterviewMissionMetrics {
   masteredTerms: number;
   totalSeedTerms: number;
