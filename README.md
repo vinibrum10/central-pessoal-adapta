@@ -249,7 +249,8 @@ O app remove automaticamente itens legados de Drive que apontem para pastas anti
 4. Crie uma pasta no Google Drive para materiais de inglês e copie o ID da URL.
 5. Configure `VITE_ENGLISH_DRIVE_FOLDER_ID`. Se não houver uma pasta separada, o app usa `VITE_GOOGLE_DRIVE_FOLDER_ID` como fallback.
 6. Rode a migration `supabase/migrations/20260702_english_interview_mode_phase1.sql`.
-7. Popule os conteúdos compartilhados com service role local:
+7. Rode a migration incremental `supabase/migrations/20260702_english_interview_storage.sql` para criar o bucket privado `interview-answers` e suas policies por dono.
+8. Popule os conteúdos compartilhados com service role local:
 
 ```bash
 $env:SUPABASE_URL="https://xxxx.supabase.co"
@@ -263,13 +264,15 @@ No macOS/Linux:
 SUPABASE_URL="https://xxxx.supabase.co" SUPABASE_SERVICE_ROLE_KEY="eyJ..." npm run seed:english-interview
 ```
 
-8. `SUPABASE_SERVICE_ROLE_KEY` nunca deve ser commitada nem exposta no cliente. Ela é necessária porque `glossary_terms`, `interview_questions` e `listening_sources` são somente leitura para usuários autenticados via RLS.
-9. Para recursos de IA do módulo, use apenas Gemini: configure `GEMINI_API_KEY` como variável server-side. Nunca use `VITE_` para essa chave.
-10. Configure `GEMINI_MODEL=gemini-2.5-flash`.
-11. No app: **Estudo → Inglês — Entrevista**.
+9. `SUPABASE_SERVICE_ROLE_KEY` nunca deve ser commitada nem exposta no cliente. Ela é necessária porque `glossary_terms`, `interview_questions` e `listening_sources` são somente leitura para usuários autenticados via RLS.
+10. Para recursos de IA do módulo, use apenas Gemini: configure `GEMINI_API_KEY` como variável server-side. Nunca use `VITE_` para essa chave.
+11. Configure `GEMINI_MODEL=gemini-2.5-flash`.
+12. No app: **Estudo → Inglês — Entrevista**.
 
 O Modo Entrevista usa tabelas normalizadas: `glossary_terms`, `interview_questions`, `listening_sources`, `listening_episodes`, `glossary_reviews`, `daily_sessions`, `interview_answers` e `mock_sessions`.
 A migration antiga `english_study_data` permanece para compatibilidade, mas a nova página não grava mais nela. Na primeira carga, cards antigos do `localStorage` (`sgp_english_v2`) são importados por RPC para `glossary_terms`/`glossary_reviews` com `source = 'legacy'`, deduplicando termos existentes.
+
+As respostas gravadas usam `MediaRecorder` no cliente com bitrate baixo para voz. O arquivo vai para o bucket privado `interview-answers` em `{user_id}/{answer_id}.{ext}`, com extensão derivada do `mimeType` suportado pelo navegador. O feedback de IA é manual pelo botão **Avaliar com IA** e chama `/api/english/evaluate-answer`, que envia o áudio ao Gemini com JSON mode e salva o retorno em `interview_answers.gemini_feedback`.
 
 ---
 

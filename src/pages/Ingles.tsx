@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, CheckCircle2, HelpCircle, Loader2, MessageSquareText, RefreshCw } from 'lucide-react';
+import { AlertCircle, Loader2, MessageSquareText, RefreshCw } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Card, CardBody, CardHeader } from '../components/Card';
 import { LoadingState } from '../components/DesignSystem';
+import { InterviewAnswerHistory } from '../components/english/InterviewAnswerHistory';
+import { InterviewAnswerRecorder } from '../components/english/InterviewAnswerRecorder';
 import { DailyInterviewSession } from '../components/english/DailyInterviewSession';
+import { InterviewQuestionBank } from '../components/english/InterviewQuestionBank';
 import { InterviewMissionHeader } from '../components/english/InterviewMissionHeader';
 import { InterviewModuleGrid } from '../components/english/InterviewModuleGrid';
 import { SectorListeningPanel } from '../components/english/SectorListeningPanel';
@@ -12,11 +15,16 @@ import { useAuth } from '../contexts/AuthContext';
 import type {
   DailySession,
   EnglishInterviewLevel,
+  InterviewAnswer,
   GlossaryReviewCard,
   InterviewModeState,
+  InterviewQuestion,
 } from '../types/englishInterview';
+import { blobToBase64, MAX_AUDIO_BYTES_FOR_AI, formatBytes } from '../services/english/interviewAudio';
+import { evaluateInterviewAnswer } from '../services/english/interviewAnswerApi';
+import { listInterviewAnswers, saveAnswerFeedback, saveInterviewAnswerWithAudio } from '../services/english/interviewAnswersRepository';
 import { extractYouTubeVideoId } from '../services/english/youtubeListeningService';
-import { isInterviewModeStorageReady, reviewGlossaryTerm, updateDailySession } from '../services/english/interviewModeRepository';
+import { isInterviewModeStorageReady, listInterviewQuestions, reviewGlossaryTerm, updateDailySession } from '../services/english/interviewModeRepository';
 import { loadInterviewModeState, reselectDailyEpisode } from '../services/english/interviewModeSession';
 
 type StepKey = 'step_listening_done' | 'step_shadowing_done' | 'step_cards_done' | 'step_question_done';
@@ -43,6 +51,12 @@ export function InglesPage() {
   const [level, setLevel] = useState<EnglishInterviewLevel | 'all'>('advanced');
   const [manualUrl, setManualUrl] = useState('');
   const [reviewedCards, setReviewedCards] = useState<Set<string>>(new Set());
+  const [questions, setQuestions] = useState<InterviewQuestion[]>([]);
+  const [selectedQuestion, setSelectedQuestion] = useState<InterviewQuestion | null>(null);
+  const [answers, setAnswers] = useState<InterviewAnswer[]>([]);
+  const [questionCategoryFilter, setQuestionCategoryFilter] = useState('all');
+  const [questionThemeFilter, setQuestionThemeFilter] = useState('all');
+  const [evaluatingAnswerId, setEvaluatingAnswerId] = useState<string | null>(null);
   const sessionRef = useRef<HTMLDivElement | null>(null);
 
   const storageReady = isInterviewModeStorageReady(user?.id);
@@ -59,6 +73,13 @@ export function InglesPage() {
     try {
       const next = await loadInterviewModeState({ userId: user.id, theme, level });
       setState(next);
+      const bank = await listInterviewQuestions();
+      setQuestions(bank);
+      const selected = next.question ?? bank[0] ?? null;
+      setSelectedQuestion(selected);
+      if (selected) {
+        setAnswers(await listInterviewAnswers(selected.id));
+      }
     } catch (err) {
       console.error('[EnglishInterview] Failed to load mode', err);
       setError('Não foi possível carregar o Modo Entrevista. Confira a migration e os seeds.');
@@ -143,6 +164,68 @@ export function InglesPage() {
       setError('Não foi possível registrar a revisão do card.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSelectQuestion(question: InterviewQuestion) {
+    setSelectedQuestion(question);
+    setAnswers(await listInterviewAnswers(question.id));
+  }
+
+  async function handleSaveAnswer(params: { audio: Blob; mimeType: string; durationSec: number; selfRating: number }) {
+    if (!user?.id || !selectedQuestion) return;
+    if (params.audio.size > MAX_AUDIO_BYTES_FOR_AI) {
+      setError(`A gravação está grande demais (${formatBytes(params.audio.size)}). Grave uma resposta mais curta.`);
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await saveInterviewAnswerWithAudio({
+        userId: user.id,
+        questionId: selectedQuestion.id,
+        audio: params.audio,
+        mimeType: params.mimeType,
+        durationSec: params.durationSec,
+        selfRating: params.selfRating,
+      });
+      setAnswers(await listInterviewAnswers(selectedQuestion.id));
+      if (state?.session.question_id === selectedQuestion.id && !state.session.step_question_done) {
+        await persistSession({ step_question_done: true });
+      }
+    } catch (err) {
+      console.error('[EnglishInterview] Failed to save answer', err);
+      setError('Não foi possível salvar a resposta gravada.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleEvaluateAnswer(answer: InterviewAnswer) {
+    if (!selectedQuestion || !answer.audioUrl) return;
+    setEvaluatingAnswerId(answer.id);
+    setError('');
+    try {
+      const audioResponse = await fetch(answer.audioUrl);
+      const audioBlob = await audioResponse.blob();
+      if (audioBlob.size > MAX_AUDIO_BYTES_FOR_AI) {
+        setError(`Esta gravação tem ${formatBytes(audioBlob.size)} e excede o limite para avaliação com IA. Grave uma resposta mais curta.`);
+        return;
+      }
+      const feedback = await evaluateInterviewAnswer({
+        audioBase64: await blobToBase64(audioBlob),
+        mimeType: audioBlob.type || 'audio/webm',
+        question_en: selectedQuestion.question_en,
+        como_responder: selectedQuestion.como_responder,
+        duration_sec: answer.duration_sec ?? 1,
+      });
+      await saveAnswerFeedback(answer.id, feedback);
+      setAnswers(await listInterviewAnswers(selectedQuestion.id));
+    } catch (err) {
+      console.error('[EnglishInterview] Failed to evaluate answer', err);
+      setError(err instanceof Error ? err.message : 'Não foi possível avaliar a resposta com IA.');
+    } finally {
+      setEvaluatingAnswerId(null);
     }
   }
 
@@ -232,66 +315,70 @@ export function InglesPage() {
         onManualUrlChange={setManualUrl}
       />
 
-      <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+      <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <TechnicalGlossaryCards cards={currentState.reviewCards} onReview={handleReviewCard} />
 
-        <Card>
-          <CardHeader
-            title="Pergunta de entrevista"
-            subtitle="Treino curto para responder em voz alta."
-            icon={<MessageSquareText size={18} />}
-            action={(
-              <Button type="button" size="sm" variant="secondary" icon={<RefreshCw size={14} />} onClick={loadState}>
-                Atualizar
-              </Button>
-            )}
-          />
-          <CardBody className="space-y-4">
-            {currentState.question ? (
-              <>
-                <div className="rounded-lg border border-surface-200 bg-white/70 p-4 dark:border-primary-300/15 dark:bg-white/[0.03]">
-                  <div className="mb-3 flex flex-wrap items-center gap-2">
-                    <span className="rounded-lg bg-primary-500/10 px-2 py-1 text-xs font-semibold text-primary-700 dark:text-primary-200">
-                      {currentState.question.id}
-                    </span>
-                    <span className="rounded-lg bg-surface-100 px-2 py-1 text-xs font-medium text-surface-600 dark:bg-white/10 dark:text-surface-300">
-                      {currentState.question.category}
-                    </span>
-                    <span className="rounded-lg bg-surface-100 px-2 py-1 text-xs font-medium text-surface-600 dark:bg-white/10 dark:text-surface-300">
-                      {currentState.question.timer_sugerido_min} min
-                    </span>
-                  </div>
-                  <p className="text-base font-semibold leading-7 text-surface-950 dark:text-white">
-                    {currentState.question.question_en}
-                  </p>
-                </div>
-
-                <div className="space-y-3 text-sm leading-6">
-                  <details className="rounded-lg border border-surface-200 bg-white/60 p-3 dark:border-primary-300/15 dark:bg-white/[0.03]">
-                    <summary className="cursor-pointer font-semibold text-surface-800 dark:text-surface-100">O que avaliam</summary>
-                    <p className="mt-2 text-surface-600 dark:text-surface-300">{currentState.question.o_que_avaliam}</p>
-                  </details>
-                  <details className="rounded-lg border border-surface-200 bg-white/60 p-3 dark:border-primary-300/15 dark:bg-white/[0.03]">
-                    <summary className="cursor-pointer font-semibold text-surface-800 dark:text-surface-100">Como responder</summary>
-                    <p className="mt-2 text-surface-600 dark:text-surface-300">{currentState.question.como_responder}</p>
-                  </details>
-                </div>
-
-                <Button
-                  type="button"
-                  variant={currentState.session.step_question_done ? 'success' : 'primary'}
-                  icon={currentState.session.step_question_done ? <CheckCircle2 size={16} /> : <HelpCircle size={16} />}
-                  onClick={() => handleToggleStep('step_question_done')}
-                >
-                  {currentState.session.step_question_done ? 'Pergunta concluída' : 'Marcar pergunta como concluída'}
-                </Button>
-              </>
-            ) : (
-              <p className="text-sm text-surface-500 dark:text-surface-400">Rode o seed do banco de perguntas para ativar esta etapa.</p>
-            )}
-          </CardBody>
-        </Card>
+        <InterviewQuestionBank
+          questions={questions}
+          selectedQuestionId={selectedQuestion?.id ?? null}
+          categoryFilter={questionCategoryFilter}
+          themeFilter={questionThemeFilter}
+          onCategoryFilterChange={setQuestionCategoryFilter}
+          onThemeFilterChange={setQuestionThemeFilter}
+          onSelectQuestion={handleSelectQuestion}
+        />
       </div>
+
+      <Card>
+        <CardHeader
+          title="Resposta gravada"
+          subtitle="Grave, salve no histórico e avalie com IA quando quiser."
+          icon={<MessageSquareText size={18} />}
+          action={(
+            <Button type="button" size="sm" variant="secondary" icon={<RefreshCw size={14} />} onClick={loadState}>
+              Atualizar
+            </Button>
+          )}
+        />
+        <CardBody className="space-y-4">
+          {selectedQuestion ? (
+            <>
+              <div className="rounded-lg border border-surface-200 bg-white/70 p-4 dark:border-primary-300/15 dark:bg-white/[0.03]">
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <span className="rounded-lg bg-primary-500/10 px-2 py-1 text-xs font-semibold text-primary-700 dark:text-primary-200">
+                    {selectedQuestion.id}
+                  </span>
+                  <span className="rounded-lg bg-surface-100 px-2 py-1 text-xs font-medium text-surface-600 dark:bg-white/10 dark:text-surface-300">
+                    {selectedQuestion.category}
+                  </span>
+                  <span className="rounded-lg bg-surface-100 px-2 py-1 text-xs font-medium text-surface-600 dark:bg-white/10 dark:text-surface-300">
+                    {selectedQuestion.timer_sugerido_min} min
+                  </span>
+                </div>
+                <p className="text-base font-semibold leading-7 text-surface-950 dark:text-white">
+                  {selectedQuestion.question_en}
+                </p>
+              </div>
+
+              <div className="space-y-3 text-sm leading-6">
+                <details className="rounded-lg border border-surface-200 bg-white/60 p-3 dark:border-primary-300/15 dark:bg-white/[0.03]">
+                  <summary className="cursor-pointer font-semibold text-surface-800 dark:text-surface-100">O que avaliam</summary>
+                  <p className="mt-2 text-surface-600 dark:text-surface-300">{selectedQuestion.o_que_avaliam}</p>
+                </details>
+                <details className="rounded-lg border border-surface-200 bg-white/60 p-3 dark:border-primary-300/15 dark:bg-white/[0.03]">
+                  <summary className="cursor-pointer font-semibold text-surface-800 dark:text-surface-100">Como responder</summary>
+                  <p className="mt-2 text-surface-600 dark:text-surface-300">{selectedQuestion.como_responder}</p>
+                </details>
+              </div>
+
+              <InterviewAnswerRecorder question={selectedQuestion} saving={saving} onSave={handleSaveAnswer} />
+              <InterviewAnswerHistory answers={answers} evaluatingAnswerId={evaluatingAnswerId} onEvaluate={handleEvaluateAnswer} />
+            </>
+          ) : (
+            <p className="text-sm text-surface-500 dark:text-surface-400">Rode o seed do banco de perguntas para ativar esta etapa.</p>
+          )}
+        </CardBody>
+      </Card>
 
       <InterviewModuleGrid />
     </div>

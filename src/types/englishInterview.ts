@@ -95,6 +95,32 @@ export interface MockSession {
   created_at: string;
 }
 
+export interface InterviewAnswerFeedback {
+  transcript: string;
+  star_structure?: {
+    situation?: boolean;
+    task?: boolean;
+    action?: boolean;
+    result?: boolean;
+  };
+  strengths: string[];
+  improvements: string[];
+  grammar_notes?: string[];
+  score: number;
+}
+
+export interface InterviewAnswer {
+  id: string;
+  user_id: string;
+  question_id: string;
+  audio_path: string | null;
+  duration_sec: number | null;
+  self_rating: number | null;
+  gemini_feedback: InterviewAnswerFeedback | null;
+  created_at: string;
+  audioUrl?: string;
+}
+
 export interface InterviewMissionMetrics {
   masteredTerms: number;
   totalSeedTerms: number;
