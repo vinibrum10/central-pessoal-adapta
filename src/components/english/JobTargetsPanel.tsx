@@ -5,6 +5,7 @@ import { Button } from '../Button';
 import {
   JOB_TARGET_STATUS_LABELS,
   type InterviewQuestion,
+  type JobApplicationTrackingInput,
   type JobTarget,
   type JobTargetInput,
   type JobTargetStatus,
@@ -16,8 +17,11 @@ import {
   saveJobTargetAnalysis,
   updateJobTargetStatus,
 } from '../../services/english/jobTargetsRepository';
+import { updateJobApplicationTracking } from '../../services/english/jobApplicationTrackingRepository';
 import { analyzeJobTarget } from '../../services/english/jobTargetApi';
 import { JobApplicationMaterials } from './JobApplicationMaterials';
+import { JobApplicationTracker } from './JobApplicationTracker';
+import { JobApplicationTrackingForm } from './JobApplicationTrackingForm';
 import { JobTargetActionPlan } from './JobTargetActionPlan';
 import { JobTargetAnalysis } from './JobTargetAnalysis';
 import { JobTargetForm } from './JobTargetForm';
@@ -58,6 +62,7 @@ export function JobTargetsPanel({ userId, questions }: JobTargetsPanelProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [savingTracking, setSavingTracking] = useState(false);
   const [archivingId, setArchivingId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
@@ -134,6 +139,20 @@ export function JobTargetsPanel({ userId, questions }: JobTargetsPanelProps) {
     } catch (err) {
       console.error('[JobTargets] Failed to update job target status', err);
       setError('Não foi possível atualizar o status da vaga.');
+    }
+  }
+
+  async function handleTrackingSave(target: JobTarget, input: JobApplicationTrackingInput) {
+    setSavingTracking(true);
+    setError('');
+    try {
+      upsertLocal(await updateJobApplicationTracking(target.id, input));
+    } catch (err) {
+      console.error('[JobTargets] Failed to update application tracking', err);
+      setError('Não foi possível salvar o acompanhamento da candidatura.');
+      throw err;
+    } finally {
+      setSavingTracking(false);
     }
   }
 
@@ -226,6 +245,21 @@ export function JobTargetsPanel({ userId, questions }: JobTargetsPanelProps) {
           </CardBody>
         </Card>
 
+        <Card>
+          <CardHeader
+            title="Acompanhamento da candidatura"
+            subtitle="Controle manual do funil, follow-ups e contatos desta vaga."
+            icon={<Briefcase size={18} />}
+          />
+          <CardBody>
+            <JobApplicationTrackingForm
+              jobTarget={selected}
+              saving={savingTracking}
+              onSave={input => handleTrackingSave(selected, input)}
+            />
+          </CardBody>
+        </Card>
+
         {selected.ai_analysis && (
           <JobTargetActionPlan userId={userId} jobTarget={selected} questions={questions} />
         )}
@@ -244,6 +278,10 @@ export function JobTargetsPanel({ userId, questions }: JobTargetsPanelProps) {
   return (
     <div className="space-y-4">
       {errorBanner}
+
+      {!loading && targets.length > 0 && (
+        <JobApplicationTracker targets={targets} onSelect={setSelectedId} />
+      )}
 
       <Card>
         <CardHeader

@@ -211,6 +211,8 @@ export interface MockSessionQuestion {
 }
 
 export type JobTargetStatus = 'researching' | 'to_apply' | 'applied' | 'interview' | 'rejected' | 'offer' | 'archived';
+export type JobTargetWorkModel = 'remote' | 'hybrid' | 'onsite';
+export type JobTargetPriority = 'low' | 'medium' | 'high';
 
 export interface JobTargetAnalysis {
   summary_pt: string;
@@ -239,6 +241,17 @@ export interface JobTarget {
   status: JobTargetStatus;
   ai_analysis: JobTargetAnalysis | null;
   match_score: number | null;
+  applied_at: string | null;
+  interview_at: string | null;
+  follow_up_at: string | null;
+  next_action: string | null;
+  application_notes: string | null;
+  recruiter_name: string | null;
+  recruiter_contact: string | null;
+  salary_range: string | null;
+  work_model: JobTargetWorkModel | null;
+  visa_sponsorship: string | null;
+  priority: JobTargetPriority | null;
   created_at: string;
   updated_at: string;
   archived_at: string | null;
@@ -251,6 +264,21 @@ export interface JobTargetInput {
   job_url: string;
   description: string;
   status: JobTargetStatus;
+}
+
+export interface JobApplicationTrackingInput {
+  status: JobTargetStatus;
+  applied_at: string | null;
+  interview_at: string | null;
+  follow_up_at: string | null;
+  next_action: string;
+  application_notes: string;
+  recruiter_name: string;
+  recruiter_contact: string;
+  salary_range: string;
+  work_model: JobTargetWorkModel | '';
+  visa_sponsorship: string;
+  priority: JobTargetPriority | '';
 }
 
 export interface JobApplicationMaterialsContent {
@@ -280,6 +308,18 @@ export const JOB_TARGET_STATUS_LABELS: Record<JobTargetStatus, string> = {
   rejected: 'Rejeitado',
   offer: 'Oferta',
   archived: 'Arquivado',
+};
+
+export const JOB_TARGET_WORK_MODEL_LABELS: Record<JobTargetWorkModel, string> = {
+  remote: 'Remoto',
+  hybrid: 'Híbrido',
+  onsite: 'Presencial',
+};
+
+export const JOB_TARGET_PRIORITY_LABELS: Record<JobTargetPriority, string> = {
+  low: 'Baixa',
+  medium: 'Média',
+  high: 'Alta',
 };
 
 export interface InterviewMissionMetrics {

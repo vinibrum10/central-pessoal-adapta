@@ -298,6 +298,11 @@ SUPABASE_URL="https://xxxx.supabase.co" SUPABASE_SERVICE_ROLE_KEY="<service-role
 
 O seed usa `source = 'job_posting'` e faz upsert em `glossary_terms` para evitar duplicatas. As respostas STAR ficam em `star_answers` com RLS por dono.
 
+### Fase 4D · Controle de candidaturas EUA
+
+Rode a migration incremental `supabase/migrations/20260702_english_job_application_tracking_phase4d.sql`.
+Ela adiciona campos manuais de acompanhamento em `job_targets`, incluindo datas de aplicação, entrevista, follow-up, próxima ação, recrutador, salário, modelo de trabalho, sponsorship/visto e prioridade.
+
 ---
 
 ## 12 · Microsoft Outlook Calendar
