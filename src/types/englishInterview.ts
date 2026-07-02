@@ -322,6 +322,70 @@ export const JOB_TARGET_PRIORITY_LABELS: Record<JobTargetPriority, string> = {
   high: 'Alta',
 };
 
+export type WeeklyPreparationTaskType =
+  | 'speaking'
+  | 'vocabulary'
+  | 'star'
+  | 'mock'
+  | 'job_target'
+  | 'application'
+  | 'follow_up'
+  | 'review';
+
+export type WeeklyPreparationTaskStatus = 'pending' | 'completed' | 'ignored';
+
+export interface WeeklyPreparationPlan {
+  id: string;
+  user_id: string;
+  week_start: string;
+  week_end: string;
+  main_goal: string | null;
+  focus_area: string | null;
+  generated_from_snapshot: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WeeklyPreparationTask {
+  id: string;
+  user_id: string;
+  plan_id: string;
+  task_date: string;
+  title: string;
+  description: string | null;
+  task_type: WeeklyPreparationTaskType;
+  source_type: string | null;
+  source_ref_id: string | null;
+  status: WeeklyPreparationTaskStatus;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WeeklyPreparationPlanWithTasks {
+  plan: WeeklyPreparationPlan;
+  tasks: WeeklyPreparationTask[];
+}
+
+export interface GeneratedWeeklyPreparationTask {
+  task_date: string;
+  title: string;
+  description: string;
+  task_type: WeeklyPreparationTaskType;
+  source_type: string;
+  source_ref_id: string | null;
+  sort_order: number;
+}
+
+export interface GeneratedWeeklyPreparationPlan {
+  week_start: string;
+  week_end: string;
+  main_goal: string;
+  focus_area: string;
+  generated_from_snapshot: Record<string, unknown>;
+  tasks: GeneratedWeeklyPreparationTask[];
+}
+
 export interface InterviewMissionMetrics {
   masteredTerms: number;
   totalSeedTerms: number;
