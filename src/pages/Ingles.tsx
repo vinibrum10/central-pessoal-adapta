@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, BookOpen, Briefcase, ClipboardList, Edit3, Loader2, MessageSquareText, RefreshCw } from 'lucide-react';
+import { AlertCircle, BookOpen, Briefcase, ClipboardList, Edit3, Loader2, MessageSquareText, RefreshCw, TrendingUp } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Card, CardBody, CardHeader } from '../components/Card';
 import { LoadingState } from '../components/DesignSystem';
 import { InterviewAnswerHistory } from '../components/english/InterviewAnswerHistory';
 import { InterviewAnswerRecorder } from '../components/english/InterviewAnswerRecorder';
 import { DailyInterviewSession } from '../components/english/DailyInterviewSession';
+import { EmployabilityDashboard } from '../components/english/EmployabilityDashboard';
 import { InterviewQuestionBank } from '../components/english/InterviewQuestionBank';
 import { InterviewMissionHeader } from '../components/english/InterviewMissionHeader';
 import { InterviewModuleGrid } from '../components/english/InterviewModuleGrid';
@@ -31,7 +32,7 @@ import { isInterviewModeStorageReady, listInterviewQuestions, reviewGlossaryTerm
 import { loadInterviewModeState, reselectDailyEpisode } from '../services/english/interviewModeSession';
 
 type StepKey = 'step_listening_done' | 'step_shadowing_done' | 'step_cards_done' | 'step_question_done';
-type EnglishInterviewTab = 'daily' | 'vocabulary' | 'star' | 'mock';
+type EnglishInterviewTab = 'daily' | 'vocabulary' | 'star' | 'mock' | 'evolution';
 
 const EMPTY_METRICS = {
   masteredTerms: 0,
@@ -287,6 +288,7 @@ export function InglesPage() {
     { id: 'vocabulary', label: 'Vocabulário EUA', icon: <Briefcase size={15} /> },
     { id: 'star', label: 'Respostas STAR', icon: <Edit3 size={15} /> },
     { id: 'mock', label: 'Mock mensal', icon: <ClipboardList size={15} /> },
+    { id: 'evolution', label: 'Evolução', icon: <TrendingUp size={15} /> },
   ];
 
   return (
@@ -418,6 +420,7 @@ export function InglesPage() {
       {activeTab === 'vocabulary' && userId && <UsJobVocabularyPanel userId={userId} />}
       {activeTab === 'star' && userId && <StarAnswerBuilder userId={userId} questions={questions} />}
       {activeTab === 'mock' && userId && <MonthlyMockInterview userId={userId} questions={questions} />}
+      {activeTab === 'evolution' && userId && <EmployabilityDashboard userId={userId} />}
 
       <InterviewModuleGrid />
     </div>
