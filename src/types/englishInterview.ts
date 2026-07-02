@@ -253,6 +253,25 @@ export interface JobTargetInput {
   status: JobTargetStatus;
 }
 
+export interface JobApplicationMaterialsContent {
+  professional_summary_en: string;
+  resume_bullets_en: string[];
+  linkedin_about_en: string;
+  recruiter_message_en: string;
+  cover_letter_en: string;
+  key_terms_to_include: string[];
+  warnings_pt: string[];
+  tailoring_notes_pt: string[];
+}
+
+export interface JobApplicationMaterials extends JobApplicationMaterialsContent {
+  id: string;
+  user_id: string;
+  job_target_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export const JOB_TARGET_STATUS_LABELS: Record<JobTargetStatus, string> = {
   researching: 'Pesquisando',
   to_apply: 'Aplicar',

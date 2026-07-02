@@ -17,6 +17,7 @@ import {
   updateJobTargetStatus,
 } from '../../services/english/jobTargetsRepository';
 import { analyzeJobTarget } from '../../services/english/jobTargetApi';
+import { JobApplicationMaterials } from './JobApplicationMaterials';
 import { JobTargetActionPlan } from './JobTargetActionPlan';
 import { JobTargetAnalysis } from './JobTargetAnalysis';
 import { JobTargetForm } from './JobTargetForm';
@@ -227,6 +228,10 @@ export function JobTargetsPanel({ userId, questions }: JobTargetsPanelProps) {
 
         {selected.ai_analysis && (
           <JobTargetActionPlan userId={userId} jobTarget={selected} questions={questions} />
+        )}
+
+        {selected.ai_analysis && (
+          <JobApplicationMaterials userId={userId} jobTarget={selected} />
         )}
       </div>
     );
