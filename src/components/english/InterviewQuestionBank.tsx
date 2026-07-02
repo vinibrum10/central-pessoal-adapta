@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import { ClipboardList } from 'lucide-react';
+import { Button } from '../Button';
 import { Card, CardBody, CardHeader } from '../Card';
 import type { InterviewQuestion } from '../../types/englishInterview';
 import { INTERVIEW_THEME_LABELS } from '../../types/englishInterview';
@@ -29,6 +31,7 @@ export function InterviewQuestionBank({
   onThemeFilterChange,
   onSelectQuestion,
 }: InterviewQuestionBankProps) {
+  const [currentIndex, setCurrentIndex] = useState(0);
   const themes = Array.from(new Set(questions.flatMap(question => question.temas_relacionados))).sort();
   const categories = ['all', ...Array.from(new Set(questions.map(question => question.category))).sort()];
 
@@ -36,6 +39,25 @@ export function InterviewQuestionBank({
     (categoryFilter === 'all' || question.category === categoryFilter)
     && (themeFilter === 'all' || question.temas_relacionados.includes(themeFilter)),
   );
+
+  useEffect(() => {
+    setCurrentIndex(0);
+  }, [categoryFilter, themeFilter]);
+
+  const safeIndex = filtered.length === 0 ? 0 : Math.min(currentIndex, filtered.length - 1);
+  const current = filtered[safeIndex] ?? null;
+
+  function goTo(index: number) {
+    if (filtered.length === 0) return;
+    setCurrentIndex((index + filtered.length) % filtered.length);
+  }
+
+  function randomQuestion() {
+    if (filtered.length <= 1) return;
+    let next = Math.floor(Math.random() * filtered.length);
+    if (next === safeIndex) next = (next + 1) % filtered.length;
+    setCurrentIndex(next);
+  }
 
   return (
     <Card>
@@ -86,37 +108,52 @@ export function InterviewQuestionBank({
           </div>
         </div>
 
-        <div className="max-h-[680px] space-y-3 overflow-y-auto pr-1">
-          {filtered.map(question => {
-            const selected = selectedQuestionId === question.id;
-            return (
-              <button
-                key={question.id}
-                type="button"
-                onClick={() => onSelectQuestion(question)}
-                className={`w-full rounded-lg border p-3 text-left transition-colors ${
-                  selected
-                    ? 'border-primary-400 bg-primary-500/10'
-                    : 'border-surface-200 bg-white/70 hover:border-primary-300 dark:border-primary-300/15 dark:bg-white/[0.03] dark:hover:border-primary-300/35'
-                }`}
-              >
-                <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <span className="rounded-lg bg-primary-500/10 px-2 py-1 text-xs font-semibold text-primary-700 dark:text-primary-200">{question.id}</span>
-                  <span className="rounded-lg bg-surface-100 px-2 py-1 text-xs font-medium text-surface-600 dark:bg-white/10 dark:text-surface-300">{categoryLabels[question.category] ?? question.category}</span>
-                  <span className="rounded-lg bg-surface-100 px-2 py-1 text-xs font-medium text-surface-600 dark:bg-white/10 dark:text-surface-300">{question.timer_sugerido_min} min</span>
-                </div>
-                <p className="text-sm font-semibold leading-6 text-surface-950 dark:text-white">{question.question_en}</p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {question.temas_relacionados.map(theme => (
-                    <span key={theme} className="rounded-lg bg-white/70 px-2 py-0.5 text-[11px] font-medium text-surface-500 dark:bg-white/10 dark:text-surface-400">
-                      {INTERVIEW_THEME_LABELS[theme] ?? theme}
-                    </span>
-                  ))}
-                </div>
-              </button>
-            );
-          })}
-        </div>
+        {!current ? (
+          <p className="text-sm text-surface-500 dark:text-surface-400">Nenhuma pergunta com estes filtros.</p>
+        ) : (
+          <div className={`rounded-lg border p-4 ${
+            selectedQuestionId === current.id
+              ? 'border-primary-400 bg-primary-500/10'
+              : 'border-surface-200 bg-white/70 dark:border-primary-300/15 dark:bg-white/[0.03]'
+          }`}>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <span className="rounded-lg bg-primary-500/10 px-2 py-1 text-xs font-semibold text-primary-700 dark:text-primary-200">
+                {current.id}
+              </span>
+              <span className="rounded-lg bg-surface-100 px-2 py-1 text-xs font-medium text-surface-600 dark:bg-white/10 dark:text-surface-300">
+                {categoryLabels[current.category] ?? current.category}
+              </span>
+              <span className="rounded-lg bg-surface-100 px-2 py-1 text-xs font-medium text-surface-600 dark:bg-white/10 dark:text-surface-300">
+                {current.timer_sugerido_min} min
+              </span>
+              <span className="rounded-lg bg-surface-100 px-2 py-1 text-xs font-medium text-surface-600 dark:bg-white/10 dark:text-surface-300">
+                Pergunta {safeIndex + 1} de {filtered.length}
+              </span>
+            </div>
+            <p className="text-base font-semibold leading-7 text-surface-950 dark:text-white">{current.question_en}</p>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {current.temas_relacionados.map(theme => (
+                <span key={theme} className="rounded-lg bg-white/70 px-2 py-0.5 text-[11px] font-medium text-surface-500 dark:bg-white/10 dark:text-surface-400">
+                  {INTERVIEW_THEME_LABELS[theme] ?? theme}
+                </span>
+              ))}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button type="button" size="sm" variant="secondary" onClick={() => goTo(safeIndex - 1)}>
+                Anterior
+              </Button>
+              <Button type="button" size="sm" variant="secondary" onClick={() => goTo(safeIndex + 1)}>
+                Próxima
+              </Button>
+              <Button type="button" size="sm" variant="secondary" onClick={randomQuestion}>
+                Aleatória
+              </Button>
+              <Button type="button" size="sm" onClick={() => onSelectQuestion(current)}>
+                Usar esta pergunta na sessão de hoje
+              </Button>
+            </div>
+          </div>
+        )}
       </CardBody>
     </Card>
   );

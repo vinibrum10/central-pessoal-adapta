@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { AlertCircle, BookOpen, Briefcase, CalendarDays, ClipboardList, Edit3, Loader2, MessageSquareText, RefreshCw, TrendingUp } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Card, CardBody, CardHeader } from '../components/Card';
@@ -9,7 +9,7 @@ import { DailyInterviewSession } from '../components/english/DailyInterviewSessi
 import { EmployabilityDashboard } from '../components/english/EmployabilityDashboard';
 import { InterviewQuestionBank } from '../components/english/InterviewQuestionBank';
 import { InterviewMissionHeader } from '../components/english/InterviewMissionHeader';
-import { InterviewModuleGrid } from '../components/english/InterviewModuleGrid';
+import { InterviewModuleGrid, type InterviewModuleShortcut } from '../components/english/InterviewModuleGrid';
 import { JobTargetsPanel } from '../components/english/JobTargetsPanel';
 import { MonthlyMockInterview } from '../components/english/MonthlyMockInterview';
 import { SectorListeningPanel } from '../components/english/SectorListeningPanel';
@@ -66,6 +66,9 @@ export function InglesPage() {
   const [evaluatingAnswerId, setEvaluatingAnswerId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<EnglishInterviewTab>('daily');
   const sessionRef = useRef<HTMLDivElement | null>(null);
+  const listeningRef = useRef<HTMLDivElement | null>(null);
+  const glossaryRef = useRef<HTMLDivElement | null>(null);
+  const questionsRef = useRef<HTMLDivElement | null>(null);
 
   const storageReady = isInterviewModeStorageReady(user?.id);
   const manualEmbedUrl = useMemo(() => buildManualEmbedUrl(manualUrl), [manualUrl]);
@@ -241,6 +244,33 @@ export function InglesPage() {
     sessionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  function scrollToDailySection(ref: RefObject<HTMLDivElement | null>) {
+    setActiveTab('daily');
+    window.setTimeout(() => {
+      ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
+  }
+
+  function handleModuleShortcut(shortcut: InterviewModuleShortcut) {
+    if (shortcut === 'listening') {
+      scrollToDailySection(listeningRef);
+      return;
+    }
+    if (shortcut === 'glossary') {
+      scrollToDailySection(glossaryRef);
+      return;
+    }
+    if (shortcut === 'questions') {
+      scrollToDailySection(questionsRef);
+      return;
+    }
+    if (shortcut === 'mock') {
+      setActiveTab('mock');
+      return;
+    }
+    setActiveTab('vocabulary');
+  }
+
   if (authLoading || loading) {
     return (
       <div className="space-y-4">
@@ -343,29 +373,35 @@ export function InglesPage() {
             />
           </div>
 
-          <SectorListeningPanel
-            episode={currentState.episode}
-            theme={theme}
-            level={level}
-            manualUrl={manualUrl}
-            manualEmbedUrl={manualEmbedUrl}
-            onThemeChange={handleThemeChange}
-            onLevelChange={handleLevelChange}
-            onManualUrlChange={setManualUrl}
-          />
+          <div ref={listeningRef} className="scroll-mt-4">
+            <SectorListeningPanel
+              episode={currentState.episode}
+              theme={theme}
+              level={level}
+              manualUrl={manualUrl}
+              manualEmbedUrl={manualEmbedUrl}
+              onThemeChange={handleThemeChange}
+              onLevelChange={handleLevelChange}
+              onManualUrlChange={setManualUrl}
+            />
+          </div>
 
           <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-            <TechnicalGlossaryCards cards={currentState.reviewCards} onReview={handleReviewCard} />
+            <div ref={glossaryRef} className="scroll-mt-4">
+              <TechnicalGlossaryCards cards={currentState.reviewCards} onReview={handleReviewCard} />
+            </div>
 
-            <InterviewQuestionBank
-              questions={questions}
-              selectedQuestionId={selectedQuestion?.id ?? null}
-              categoryFilter={questionCategoryFilter}
-              themeFilter={questionThemeFilter}
-              onCategoryFilterChange={setQuestionCategoryFilter}
-              onThemeFilterChange={setQuestionThemeFilter}
-              onSelectQuestion={handleSelectQuestion}
-            />
+            <div ref={questionsRef} className="scroll-mt-4">
+              <InterviewQuestionBank
+                questions={questions}
+                selectedQuestionId={selectedQuestion?.id ?? null}
+                categoryFilter={questionCategoryFilter}
+                themeFilter={questionThemeFilter}
+                onCategoryFilterChange={setQuestionCategoryFilter}
+                onThemeFilterChange={setQuestionThemeFilter}
+                onSelectQuestion={handleSelectQuestion}
+              />
+            </div>
           </div>
 
           <Card>
@@ -428,7 +464,7 @@ export function InglesPage() {
       {activeTab === 'jobs' && userId && <JobTargetsPanel userId={userId} questions={questions} />}
       {activeTab === 'weekly' && userId && <WeeklyPreparationPlan userId={userId} />}
 
-      <InterviewModuleGrid />
+      <InterviewModuleGrid onShortcut={handleModuleShortcut} />
     </div>
   );
 }
