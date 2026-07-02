@@ -1,4 +1,8 @@
 {
+  "framework": "vite",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "devCommand": "node scripts/vercel-vite-dev.cjs",
   "rewrites": [
     {
       "source": "/api/:path*",
