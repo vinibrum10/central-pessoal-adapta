@@ -423,7 +423,7 @@ export function InglesPage() {
       {activeTab === 'star' && userId && <StarAnswerBuilder userId={userId} questions={questions} />}
       {activeTab === 'mock' && userId && <MonthlyMockInterview userId={userId} questions={questions} />}
       {activeTab === 'evolution' && userId && <EmployabilityDashboard userId={userId} />}
-      {activeTab === 'jobs' && userId && <JobTargetsPanel userId={userId} />}
+      {activeTab === 'jobs' && userId && <JobTargetsPanel userId={userId} questions={questions} />}
 
       <InterviewModuleGrid />
     </div>
