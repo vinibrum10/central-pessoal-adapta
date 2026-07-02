@@ -4,6 +4,7 @@ import { Card, CardBody, CardHeader } from '../Card';
 import { Button } from '../Button';
 import {
   JOB_TARGET_STATUS_LABELS,
+  type InterviewQuestion,
   type JobTarget,
   type JobTargetInput,
   type JobTargetStatus,
@@ -16,11 +17,13 @@ import {
   updateJobTargetStatus,
 } from '../../services/english/jobTargetsRepository';
 import { analyzeJobTarget } from '../../services/english/jobTargetApi';
+import { JobTargetActionPlan } from './JobTargetActionPlan';
 import { JobTargetAnalysis } from './JobTargetAnalysis';
 import { JobTargetForm } from './JobTargetForm';
 
 interface JobTargetsPanelProps {
   userId: string;
+  questions: InterviewQuestion[];
 }
 
 const STATUS_BADGE_STYLES: Record<JobTargetStatus, string> = {
@@ -46,7 +49,7 @@ function StatusBadge({ status }: { status: JobTargetStatus }) {
   );
 }
 
-export function JobTargetsPanel({ userId }: JobTargetsPanelProps) {
+export function JobTargetsPanel({ userId, questions }: JobTargetsPanelProps) {
   const [targets, setTargets] = useState<JobTarget[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<'all' | JobTargetStatus>('all');
@@ -221,6 +224,10 @@ export function JobTargetsPanel({ userId }: JobTargetsPanelProps) {
             )}
           </CardBody>
         </Card>
+
+        {selected.ai_analysis && (
+          <JobTargetActionPlan userId={userId} jobTarget={selected} questions={questions} />
+        )}
       </div>
     );
   }

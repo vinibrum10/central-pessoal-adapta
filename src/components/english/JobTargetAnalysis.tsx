@@ -70,7 +70,7 @@ export function JobTargetAnalysis({ analysis }: JobTargetAnalysisProps) {
         <ChipList title="Habilidades obrigatórias" items={analysis.required_skills} />
         <ChipList title="Habilidades desejáveis" items={analysis.preferred_skills} />
         <ChipList title="Palavras técnicas" items={analysis.technical_keywords} />
-        <ChipList title="Vocabulário para estudar" items={analysis.missing_vocabulary} comingSoonAction="Adicionar ao vocabulário" />
+        <ChipList title="Vocabulário para estudar" items={analysis.missing_vocabulary} />
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -78,8 +78,8 @@ export function JobTargetAnalysis({ analysis }: JobTargetAnalysisProps) {
         <BulletList title="Lacunas a treinar" items={analysis.gaps_pt} />
       </div>
 
-      <BulletList title="Perguntas prováveis de entrevista" items={analysis.likely_interview_questions} comingSoonAction="Usar no treino" />
-      <BulletList title="Sugestões de respostas STAR" items={analysis.star_story_suggestions} comingSoonAction="Criar STAR" />
+      <BulletList title="Perguntas prováveis de entrevista" items={analysis.likely_interview_questions} />
+      <BulletList title="Sugestões de respostas STAR" items={analysis.star_story_suggestions} />
 
       <div className="rounded-lg bg-white/70 p-3 dark:bg-white/10">
         <p className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
