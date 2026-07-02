@@ -13,6 +13,7 @@ export async function createInterviewAnswer(params: {
   questionId: string;
   durationSec: number;
   selfRating: number;
+  mockSessionId?: string | null;
 }): Promise<InterviewAnswer> {
   return throwIfError<InterviewAnswer>(
     supabase
@@ -22,6 +23,7 @@ export async function createInterviewAnswer(params: {
         question_id: params.questionId,
         duration_sec: params.durationSec,
         self_rating: params.selfRating,
+        mock_session_id: params.mockSessionId ?? null,
       })
       .select('*')
       .single() as never,
@@ -64,12 +66,14 @@ export async function saveInterviewAnswerWithAudio(params: {
   mimeType: string;
   durationSec: number;
   selfRating: number;
+  mockSessionId?: string | null;
 }): Promise<InterviewAnswer> {
   const answer = await createInterviewAnswer({
     userId: params.userId,
     questionId: params.questionId,
     durationSec: params.durationSec,
     selfRating: params.selfRating,
+    mockSessionId: params.mockSessionId,
   });
   const audioPath = await uploadInterviewAnswerAudio({
     userId: params.userId,

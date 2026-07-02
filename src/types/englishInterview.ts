@@ -119,6 +119,7 @@ export interface InterviewAnswer {
   duration_sec: number | null;
   self_rating: number | null;
   gemini_feedback: InterviewAnswerFeedback | null;
+  mock_session_id?: string | null;
   created_at: string;
   audioUrl?: string;
 }
@@ -166,6 +167,47 @@ export interface StarAnswerInput {
   result: string;
   final_answer_en: string;
   notes_pt: string;
+}
+
+export type MockInterviewStatus = 'draft' | 'in_progress' | 'completed';
+
+export interface MockInterviewOverallFeedback {
+  overall_score: number;
+  fluency_score: number;
+  technical_clarity_score: number;
+  star_structure_score: number;
+  grammar_score: number;
+  strengths: string[];
+  weaknesses: string[];
+  recommended_next_steps: string[];
+  best_answer: string;
+  weakest_answer: string;
+  suggested_training_focus: string;
+}
+
+export interface MockInterviewSession {
+  id: string;
+  user_id: string;
+  title: string | null;
+  status: MockInterviewStatus;
+  question_ids: string[];
+  overall_feedback: MockInterviewOverallFeedback | null;
+  total_duration_sec: number | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MockSessionQuestion {
+  id: string;
+  mock_session_id: string;
+  question_id: string;
+  position: number;
+  answer_id: string | null;
+  score: number | null;
+  created_at: string;
+  interview_questions?: InterviewQuestion | null;
+  interview_answers?: InterviewAnswer | null;
 }
 
 export interface InterviewMissionMetrics {
