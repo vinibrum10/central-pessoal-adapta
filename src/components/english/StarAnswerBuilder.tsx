@@ -268,12 +268,12 @@ export function StarAnswerBuilder({ userId, questions }: StarAnswerBuilderProps)
                     </div>
                   </div>
                   <div className="grid gap-2 text-xs md:grid-cols-2">
-                    <p className="rounded-lg bg-surface-50 p-2 text-surface-600 dark:bg-white/5 dark:text-surface-300"><span className="font-semibold">S:</span> {answer.situation || '—'}</p>
-                    <p className="rounded-lg bg-surface-50 p-2 text-surface-600 dark:bg-white/5 dark:text-surface-300"><span className="font-semibold">T:</span> {answer.task || '—'}</p>
-                    <p className="rounded-lg bg-surface-50 p-2 text-surface-600 dark:bg-white/5 dark:text-surface-300"><span className="font-semibold">A:</span> {answer.action || '—'}</p>
-                    <p className="rounded-lg bg-surface-50 p-2 text-surface-600 dark:bg-white/5 dark:text-surface-300"><span className="font-semibold">R:</span> {answer.result || '—'}</p>
+                    <p className="min-w-0 break-words rounded-lg bg-surface-50 p-2 text-surface-600 dark:bg-white/5 dark:text-surface-300"><span className="font-semibold">S:</span> {answer.situation || '—'}</p>
+                    <p className="min-w-0 break-words rounded-lg bg-surface-50 p-2 text-surface-600 dark:bg-white/5 dark:text-surface-300"><span className="font-semibold">T:</span> {answer.task || '—'}</p>
+                    <p className="min-w-0 break-words rounded-lg bg-surface-50 p-2 text-surface-600 dark:bg-white/5 dark:text-surface-300"><span className="font-semibold">A:</span> {answer.action || '—'}</p>
+                    <p className="min-w-0 break-words rounded-lg bg-surface-50 p-2 text-surface-600 dark:bg-white/5 dark:text-surface-300"><span className="font-semibold">R:</span> {answer.result || '—'}</p>
                   </div>
-                  <p className="mt-3 text-sm leading-6 text-surface-700 dark:text-surface-200">{answer.final_answer_en}</p>
+                  <p className="mt-3 break-words text-sm leading-6 text-surface-700 dark:text-surface-200">{answer.final_answer_en}</p>
                 </div>
               );
             })

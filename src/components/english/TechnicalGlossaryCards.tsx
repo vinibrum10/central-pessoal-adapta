@@ -72,7 +72,7 @@ export function TechnicalGlossaryCards({ cards, onReview }: TechnicalGlossaryCar
                     </span>
                   </div>
                   {flipped ? (
-                    <div className="mt-3 space-y-2 text-sm leading-6">
+                    <div className="mt-3 space-y-2 break-words text-sm leading-6">
                       <p className="text-surface-700 dark:text-surface-200"><span className="font-semibold">PT:</span> {current.term.translation_pt}</p>
                       <p className="text-surface-600 dark:text-surface-300"><span className="font-semibold">Definition:</span> {current.term.definition_en}</p>
                       <p className="text-surface-600 dark:text-surface-300"><span className="font-semibold">Example:</span> {current.term.example_en}</p>

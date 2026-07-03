@@ -37,11 +37,11 @@ export function MockInterviewSummary({ feedback }: { feedback: MockInterviewOver
       <div className="grid gap-3 md:grid-cols-2">
         <div className="rounded-lg bg-white/70 p-3 dark:bg-white/10">
           <p className="text-xs font-semibold uppercase tracking-wide text-success-700 dark:text-success-300">Melhor resposta</p>
-          <p className="mt-1 text-sm leading-6 text-surface-700 dark:text-surface-200">{feedback.best_answer}</p>
+          <p className="mt-1 break-words text-sm leading-6 text-surface-700 dark:text-surface-200">{feedback.best_answer}</p>
         </div>
         <div className="rounded-lg bg-white/70 p-3 dark:bg-white/10">
           <p className="text-xs font-semibold uppercase tracking-wide text-danger-700 dark:text-danger-300">Resposta mais fraca</p>
-          <p className="mt-1 text-sm leading-6 text-surface-700 dark:text-surface-200">{feedback.weakest_answer}</p>
+          <p className="mt-1 break-words text-sm leading-6 text-surface-700 dark:text-surface-200">{feedback.weakest_answer}</p>
         </div>
       </div>
 
@@ -49,7 +49,7 @@ export function MockInterviewSummary({ feedback }: { feedback: MockInterviewOver
         <p className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
           <Sparkles size={12} /> Foco de treino sugerido
         </p>
-        <p className="mt-1 text-sm leading-6 text-surface-700 dark:text-surface-200">{feedback.suggested_training_focus}</p>
+        <p className="mt-1 break-words text-sm leading-6 text-surface-700 dark:text-surface-200">{feedback.suggested_training_focus}</p>
       </div>
     </div>
   );

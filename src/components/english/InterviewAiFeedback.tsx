@@ -21,7 +21,7 @@ export function InterviewAiFeedback({ feedback }: { feedback: InterviewAnswerFee
 
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Transcript</p>
-        <p className="mt-1 text-sm leading-6 text-surface-700 dark:text-surface-200">{feedback.transcript}</p>
+        <p className="mt-1 break-words text-sm leading-6 text-surface-700 dark:text-surface-200">{feedback.transcript}</p>
       </div>
 
       {feedback.star_structure && (
@@ -54,7 +54,7 @@ function FeedbackList({ title, items }: { title: string; items: string[] }) {
       {items.length === 0 ? (
         <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">Sem notas.</p>
       ) : (
-        <ul className="mt-1 space-y-1 text-xs leading-5 text-surface-700 dark:text-surface-200">
+        <ul className="mt-1 space-y-1 break-words text-xs leading-5 text-surface-700 dark:text-surface-200">
           {items.map((item, index) => <li key={`${title}-${index}`}>{item}</li>)}
         </ul>
       )}

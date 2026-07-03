@@ -232,7 +232,7 @@ export function JobTargetsPanel({ userId, questions }: JobTargetsPanelProps) {
 
             <details className="rounded-lg border border-surface-200 bg-white/60 p-3 dark:border-primary-300/15 dark:bg-white/[0.03]">
               <summary className="cursor-pointer text-sm font-semibold text-surface-800 dark:text-surface-100">Descrição da vaga</summary>
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-surface-600 dark:text-surface-300">{selected.description}</p>
+              <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-surface-600 dark:text-surface-300">{selected.description}</p>
             </details>
 
             {selected.ai_analysis ? (

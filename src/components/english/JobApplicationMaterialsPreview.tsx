@@ -37,12 +37,12 @@ function CopyBlock({ blockId, title, copyText, copiedBlockId, onCopy, children }
 }
 
 function TextContent({ text }: { text: string }) {
-  return <p className="whitespace-pre-wrap text-sm leading-6 text-surface-700 dark:text-surface-200">{text}</p>;
+  return <p className="whitespace-pre-wrap break-words text-sm leading-6 text-surface-700 dark:text-surface-200">{text}</p>;
 }
 
 function ListContent({ items }: { items: string[] }) {
   return (
-    <ul className="space-y-1 text-sm leading-6 text-surface-700 dark:text-surface-200">
+    <ul className="space-y-1 break-words text-sm leading-6 text-surface-700 dark:text-surface-200">
       {items.map((item, index) => <li key={index}>• {item}</li>)}
     </ul>
   );
