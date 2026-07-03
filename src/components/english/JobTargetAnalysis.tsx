@@ -40,7 +40,7 @@ function BulletList({ title, items, comingSoonAction }: { title: string; items: 
           </span>
         )}
       </div>
-      <ul className="space-y-1 text-sm leading-6 text-surface-700 dark:text-surface-200">
+      <ul className="space-y-1 break-words text-sm leading-6 text-surface-700 dark:text-surface-200">
         {items.map((item, index) => <li key={`${title}-${index}`}>• {item}</li>)}
       </ul>
     </div>
@@ -63,7 +63,7 @@ export function JobTargetAnalysis({ analysis }: JobTargetAnalysisProps) {
 
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Resumo da vaga</p>
-        <p className="mt-1 text-sm leading-6 text-surface-700 dark:text-surface-200">{analysis.summary_pt}</p>
+        <p className="mt-1 break-words text-sm leading-6 text-surface-700 dark:text-surface-200">{analysis.summary_pt}</p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">

@@ -349,7 +349,7 @@ export function InglesPage() {
             key={tab.id}
             type="button"
             onClick={() => setActiveTab(tab.id)}
-            className={`inline-flex min-h-10 items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+            className={`inline-flex min-h-10 items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
               activeTab === tab.id
                 ? 'bg-primary-600 text-white shadow-sm shadow-primary-700/20'
                 : 'border border-surface-200 bg-white/80 text-surface-600 hover:bg-surface-50 dark:border-primary-300/15 dark:bg-white/[0.05] dark:text-surface-300 dark:hover:bg-white/10'

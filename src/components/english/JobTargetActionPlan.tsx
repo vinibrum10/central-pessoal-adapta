@@ -198,13 +198,13 @@ export function JobTargetActionPlan({ userId, jobTarget, questions }: JobTargetA
                 const created = createdStarIndexes.has(index);
                 return (
                   <div key={`star-${index}`} className="flex flex-col gap-2 rounded-lg border border-surface-200 bg-white/70 p-3 dark:border-primary-300/15 dark:bg-white/[0.03] md:flex-row md:items-center md:justify-between">
-                    <p className="min-w-0 flex-1 text-sm text-surface-700 dark:text-surface-200">{suggestion}</p>
-                    <div className="flex shrink-0 flex-wrap items-center gap-2 md:w-[380px]">
+                    <p className="min-w-0 flex-1 break-words text-sm text-surface-700 dark:text-surface-200">{suggestion}</p>
+                    <div className="flex w-full flex-wrap items-center gap-2 md:w-[380px] md:shrink-0">
                       <select
                         value={starQuestionByIndex[index] ?? questions[0]?.id ?? ''}
                         onChange={event => setStarQuestionByIndex(prev => ({ ...prev, [index]: event.target.value }))}
                         disabled={created}
-                        className={`${selectClass} md:flex-1`}
+                        className={`${selectClass} min-w-0 md:flex-1`}
                       >
                         {questions.map(question => (
                           <option key={question.id} value={question.id}>
@@ -242,12 +242,13 @@ export function JobTargetActionPlan({ userId, jobTarget, questions }: JobTargetA
           ) : (
             <div className="space-y-2">
               {analysis.likely_interview_questions.map((question, index) => (
-                <div key={`question-${index}`} className="flex items-center justify-between gap-2 rounded-lg border border-surface-200 bg-white/70 p-3 dark:border-primary-300/15 dark:bg-white/[0.03]">
-                  <p className="min-w-0 flex-1 text-sm text-surface-700 dark:text-surface-200">{question}</p>
+                <div key={`question-${index}`} className="flex items-start justify-between gap-2 rounded-lg border border-surface-200 bg-white/70 p-3 dark:border-primary-300/15 dark:bg-white/[0.03]">
+                  <p className="min-w-0 flex-1 break-words text-sm leading-6 text-surface-700 dark:text-surface-200">{question}</p>
                   <Button
                     type="button"
                     size="sm"
                     variant="ghost"
+                    className="shrink-0"
                     icon={copiedQuestionIndex === index ? <Check size={14} /> : <ClipboardCopy size={14} />}
                     onClick={() => handleCopyQuestion(index, question)}
                   >

@@ -309,7 +309,7 @@ export function UsJobVocabularyPanel({ userId }: UsJobVocabularyPanelProps) {
               role="tab"
               aria-selected={mode === option.value}
               onClick={() => setMode(option.value)}
-              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
                 mode === option.value
                   ? 'bg-primary-600 text-white shadow-sm'
                   : 'text-surface-600 hover:bg-surface-100 dark:text-surface-300 dark:hover:bg-white/10'
@@ -345,11 +345,11 @@ export function UsJobVocabularyPanel({ userId }: UsJobVocabularyPanelProps) {
                   <div className="space-y-2 rounded-lg border border-primary-200/60 bg-primary-500/5 p-4 dark:border-primary-300/20">
                     <div>
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Tradução</p>
-                      <p className="text-sm font-medium text-surface-800 dark:text-surface-100">{currentTerm.term.translation_pt}</p>
+                      <p className="break-words text-sm font-medium text-surface-800 dark:text-surface-100">{currentTerm.term.translation_pt}</p>
                     </div>
                     <div>
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Exemplo</p>
-                      <p className="text-sm leading-6 text-surface-600 dark:text-surface-300">{currentTerm.term.example_en}</p>
+                      <p className="break-words text-sm leading-6 text-surface-600 dark:text-surface-300">{currentTerm.term.example_en}</p>
                     </div>
                   </div>
                 ) : (
@@ -428,7 +428,7 @@ export function UsJobVocabularyPanel({ userId }: UsJobVocabularyPanelProps) {
                         </div>
                         <div>
                           <p className="text-[11px] font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Exemplo</p>
-                          <p className="text-sm leading-6 text-surface-600 dark:text-surface-300">{item.term.example_en}</p>
+                          <p className="break-words text-sm leading-6 text-surface-600 dark:text-surface-300">{item.term.example_en}</p>
                         </div>
                         {termError && (
                           <p className="rounded-lg border border-danger-200 bg-danger-50 px-3 py-2 text-xs font-semibold text-danger-700 dark:border-danger-500/30 dark:bg-danger-500/10 dark:text-danger-200">
