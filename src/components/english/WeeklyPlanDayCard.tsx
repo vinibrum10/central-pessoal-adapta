@@ -6,6 +6,7 @@ interface WeeklyPlanDayCardProps {
   tasks: WeeklyPreparationTask[];
   savingTaskId: string | null;
   onStatusChange: (taskId: string, status: WeeklyPreparationTaskStatus) => void;
+  onTaskAction?: (task: WeeklyPreparationTask) => void;
 }
 
 const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -19,7 +20,7 @@ function shortDate(dateISO: string) {
   return new Date(`${dateISO}T12:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 }
 
-export function WeeklyPlanDayCard({ date, tasks, savingTaskId, onStatusChange }: WeeklyPlanDayCardProps) {
+export function WeeklyPlanDayCard({ date, tasks, savingTaskId, onStatusChange, onTaskAction }: WeeklyPlanDayCardProps) {
   return (
     <div className="rounded-lg border border-surface-200 bg-white/70 p-4 dark:border-primary-300/15 dark:bg-white/[0.03]">
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -44,6 +45,7 @@ export function WeeklyPlanDayCard({ date, tasks, savingTaskId, onStatusChange }:
               task={task}
               saving={savingTaskId === task.id}
               onStatusChange={onStatusChange}
+              onAction={onTaskAction}
             />
           ))}
         </div>

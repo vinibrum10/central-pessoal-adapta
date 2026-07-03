@@ -25,6 +25,8 @@ import type {
   GlossaryReviewCard,
   InterviewModeState,
   InterviewQuestion,
+  WeeklyPreparationTask,
+  WeeklyPreparationTaskType,
 } from '../types/englishInterview';
 import { blobToBase64, MAX_AUDIO_BYTES_FOR_AI, formatBytes } from '../services/english/interviewAudio';
 import { evaluateInterviewAnswer } from '../services/english/interviewAnswerApi';
@@ -35,6 +37,18 @@ import { loadInterviewModeState, reselectDailyEpisode } from '../services/englis
 
 type StepKey = 'step_listening_done' | 'step_shadowing_done' | 'step_cards_done' | 'step_question_done';
 type EnglishInterviewTab = 'daily' | 'vocabulary' | 'star' | 'mock' | 'evolution' | 'jobs' | 'weekly';
+
+// Fase 5.4 — cada tipo de tarefa do plano semanal leva para a aba onde ela é executada
+const WEEKLY_TASK_TAB: Record<WeeklyPreparationTaskType, EnglishInterviewTab> = {
+  speaking: 'daily',
+  vocabulary: 'vocabulary',
+  star: 'star',
+  mock: 'mock',
+  job_target: 'jobs',
+  application: 'jobs',
+  follow_up: 'jobs',
+  review: 'evolution',
+};
 
 const EMPTY_METRICS = {
   masteredTerms: 0,
@@ -251,6 +265,13 @@ export function InglesPage() {
     }, 0);
   }
 
+  function handleWeeklyTaskAction(task: WeeklyPreparationTask) {
+    setActiveTab(WEEKLY_TASK_TAB[task.task_type] ?? 'daily');
+    window.setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 0);
+  }
+
   function handleModuleShortcut(shortcut: InterviewModuleShortcut) {
     if (shortcut === 'listening') {
       scrollToDailySection(listeningRef);
@@ -462,7 +483,7 @@ export function InglesPage() {
       {activeTab === 'mock' && userId && <MonthlyMockInterview userId={userId} questions={questions} />}
       {activeTab === 'evolution' && userId && <EmployabilityDashboard userId={userId} />}
       {activeTab === 'jobs' && userId && <JobTargetsPanel userId={userId} questions={questions} />}
-      {activeTab === 'weekly' && userId && <WeeklyPreparationPlan userId={userId} />}
+      {activeTab === 'weekly' && userId && <WeeklyPreparationPlan userId={userId} onTaskAction={handleWeeklyTaskAction} />}
 
       <InterviewModuleGrid onShortcut={handleModuleShortcut} />
     </div>

@@ -15,6 +15,7 @@ import { WeeklyPlanOverview } from './WeeklyPlanOverview';
 
 interface WeeklyPreparationPlanProps {
   userId: string;
+  onTaskAction?: (task: WeeklyPreparationTask) => void;
 }
 
 function addDaysISO(dateISO: string, days: number): string {
@@ -23,7 +24,7 @@ function addDaysISO(dateISO: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-export function WeeklyPreparationPlan({ userId }: WeeklyPreparationPlanProps) {
+export function WeeklyPreparationPlan({ userId, onTaskAction }: WeeklyPreparationPlanProps) {
   const [{ weekStart }, setWeekRange] = useState(() => getCurrentWeekRange());
   const [planWithTasks, setPlanWithTasks] = useState<WeeklyPreparationPlanWithTasks | null>(null);
   const [loading, setLoading] = useState(true);
@@ -152,6 +153,7 @@ export function WeeklyPreparationPlan({ userId }: WeeklyPreparationPlanProps) {
                 tasks={tasksForDate(date)}
                 savingTaskId={savingTaskId}
                 onStatusChange={handleTaskStatusChange}
+                onTaskAction={onTaskAction}
               />
             ))}
           </div>
