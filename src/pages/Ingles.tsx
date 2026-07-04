@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { AlertCircle, BookOpen, Briefcase, CalendarDays, ClipboardList, Edit3, Loader2, MessageSquareText, RefreshCw, TrendingUp } from 'lucide-react';
+import { AlertCircle, Award, BookOpen, Briefcase, CalendarDays, ClipboardList, Edit3, Loader2, MessageSquareText, RefreshCw, TrendingUp } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Card, CardBody, CardHeader } from '../components/Card';
 import { LoadingState } from '../components/DesignSystem';
@@ -17,6 +17,7 @@ import { StarAnswerBuilder } from '../components/english/StarAnswerBuilder';
 import { TechnicalGlossaryCards } from '../components/english/TechnicalGlossaryCards';
 import { UsJobVocabularyPanel } from '../components/english/UsJobVocabularyPanel';
 import { WeeklyPreparationPlan } from '../components/english/WeeklyPreparationPlan';
+import { FinalInterviewSimulation } from '../components/english/FinalInterviewSimulation';
 import { useAuth } from '../contexts/AuthContext';
 import type {
   DailySession,
@@ -36,7 +37,7 @@ import { isInterviewModeStorageReady, listInterviewQuestions, reviewGlossaryTerm
 import { loadInterviewModeState, reselectDailyEpisode } from '../services/english/interviewModeSession';
 
 type StepKey = 'step_listening_done' | 'step_shadowing_done' | 'step_cards_done' | 'step_question_done';
-type EnglishInterviewTab = 'daily' | 'vocabulary' | 'star' | 'mock' | 'evolution' | 'jobs' | 'weekly';
+type EnglishInterviewTab = 'daily' | 'vocabulary' | 'star' | 'mock' | 'evolution' | 'jobs' | 'weekly' | 'final';
 
 // Fase 5.4 — cada tipo de tarefa do plano semanal leva para a aba onde ela é executada
 const WEEKLY_TASK_TAB: Record<WeeklyPreparationTaskType, EnglishInterviewTab> = {
@@ -344,6 +345,7 @@ export function InglesPage() {
     { id: 'evolution', label: 'Evolução', icon: <TrendingUp size={15} /> },
     { id: 'jobs', label: 'Vagas EUA', icon: <Briefcase size={15} /> },
     { id: 'weekly', label: 'Plano semanal', icon: <CalendarDays size={15} /> },
+    { id: 'final', label: 'Simulado final', icon: <Award size={15} /> },
   ];
 
   return (
@@ -484,6 +486,7 @@ export function InglesPage() {
       {activeTab === 'evolution' && userId && <EmployabilityDashboard userId={userId} />}
       {activeTab === 'jobs' && userId && <JobTargetsPanel userId={userId} questions={questions} />}
       {activeTab === 'weekly' && userId && <WeeklyPreparationPlan userId={userId} onTaskAction={handleWeeklyTaskAction} />}
+      {activeTab === 'final' && userId && <FinalInterviewSimulation userId={userId} questions={questions} />}
 
       <InterviewModuleGrid onShortcut={handleModuleShortcut} />
     </div>
