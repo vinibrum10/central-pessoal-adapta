@@ -386,6 +386,121 @@ export interface GeneratedWeeklyPreparationPlan {
   tasks: GeneratedWeeklyPreparationTask[];
 }
 
+// ---- Fase 6: Simulado final de entrevista de 30 minutos ----
+
+export type FinalInterviewFocusArea =
+  | 'general'
+  | 'priority_job'
+  | 'electrical_engineering'
+  | 'electrical_safety'
+  | 'substations_transmission'
+  | 'behavioral';
+
+export const FINAL_INTERVIEW_FOCUS_LABELS: Record<FinalInterviewFocusArea, string> = {
+  general: 'Entrevista geral',
+  priority_job: 'Vaga prioritária',
+  electrical_engineering: 'Engenharia elétrica',
+  electrical_safety: 'Segurança elétrica',
+  substations_transmission: 'Subestações / Transmissão',
+  behavioral: 'Entrevista comportamental',
+};
+
+export type FinalInterviewStatus = 'draft' | 'in_progress' | 'completed' | 'evaluated' | 'archived';
+
+export const FINAL_INTERVIEW_STATUS_LABELS: Record<FinalInterviewStatus, string> = {
+  draft: 'Rascunho',
+  in_progress: 'Em andamento',
+  completed: 'Concluído',
+  evaluated: 'Avaliado',
+  archived: 'Arquivado',
+};
+
+export type FinalInterviewQuestionCategory =
+  | 'opening'
+  | 'behavioral'
+  | 'technical'
+  | 'job_specific'
+  | 'experience'
+  | 'adaptation'
+  | 'closing';
+
+export const FINAL_INTERVIEW_CATEGORY_LABELS: Record<FinalInterviewQuestionCategory, string> = {
+  opening: 'Abertura',
+  behavioral: 'Comportamental (STAR)',
+  technical: 'Técnica',
+  job_specific: 'Vaga-alvo',
+  experience: 'Experiência',
+  adaptation: 'Adaptação aos EUA',
+  closing: 'Encerramento',
+};
+
+export interface FinalInterviewOverallFeedback {
+  readiness_score: number;
+  overall_level: string;
+  fluency_score: number;
+  technical_clarity_score: number;
+  star_structure_score: number;
+  confidence_score: number;
+  grammar_score: number;
+  vocabulary_score: number;
+  strengths: string[];
+  weaknesses: string[];
+  repeated_mistakes: string[];
+  missing_vocabulary: string[];
+  best_answer_summary: string;
+  weakest_answer_summary: string;
+  recommended_next_week_focus: string[];
+  suggested_interview_strategy: string;
+  final_feedback_pt: string;
+}
+
+export interface FinalInterviewSimulation {
+  id: string;
+  user_id: string;
+  title: string;
+  focus_area: FinalInterviewFocusArea | string | null;
+  job_target_id: string | null;
+  status: FinalInterviewStatus;
+  estimated_duration_min: number;
+  question_count: number;
+  overall_feedback: FinalInterviewOverallFeedback | null;
+  readiness_score: number | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FinalInterviewQuestionRow {
+  id: string;
+  user_id: string;
+  simulation_id: string;
+  question_text: string;
+  question_category: FinalInterviewQuestionCategory | string | null;
+  guidance: string | null;
+  suggested_duration_sec: number;
+  sort_order: number;
+  source_type: string | null;
+  source_ref_id: string | null;
+  answer_id: string | null;
+  audio_path: string | null;
+  duration_sec: number | null;
+  individual_feedback: InterviewAnswerFeedback | null;
+  created_at: string;
+  updated_at: string;
+  audioUrl?: string;
+}
+
+export interface GeneratedFinalInterviewQuestion {
+  question_text: string;
+  question_category: FinalInterviewQuestionCategory;
+  guidance: string;
+  suggested_duration_sec: number;
+  sort_order: number;
+  source_type: string;
+  source_ref_id: string | null;
+}
+
 export interface InterviewMissionMetrics {
   masteredTerms: number;
   totalSeedTerms: number;
