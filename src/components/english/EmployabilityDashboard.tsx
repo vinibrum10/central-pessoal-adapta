@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertCircle, Award, BookOpen, Compass, Edit3, Loader2, MessageSquareText, Mic, Sparkles, Timer } from 'lucide-react';
-import { Card, CardBody, CardHeader } from '../Card';
+import { AlertCircle, Award, BookOpen, Edit3, Loader2, MessageSquareText, Mic, Sparkles, Timer } from 'lucide-react';
 import { formatDuration } from '../../services/english/interviewAudio';
 import { loadEvolutionDashboard, type EvolutionDashboardData } from '../../services/english/employabilityDashboardRepository';
 import { EvolutionMetricCard } from './EvolutionMetricCard';
+import { NextActionCard } from './NextActionCard';
 
 interface EmployabilityDashboardProps {
   userId: string;
@@ -63,16 +63,7 @@ export function EmployabilityDashboard({ userId }: EmployabilityDashboardProps) 
 
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader
-          title="Próxima ação recomendada"
-          subtitle="Sugestão baseada no seu progresso atual."
-          icon={<Compass size={18} />}
-        />
-        <CardBody>
-          <p className="text-base font-semibold leading-7 text-primary-700 dark:text-primary-200">{data.nextAction}</p>
-        </CardBody>
-      </Card>
+      <NextActionCard nextAction={data.nextAction} />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <EvolutionMetricCard
