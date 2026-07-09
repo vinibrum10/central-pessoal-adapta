@@ -617,17 +617,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <span className="text-[9px] font-medium leading-tight text-center">{label.split(' ')[0]}</span>
             </NavLink>
           ))}
-          <button
-            type="button"
-            onClick={() => {
-              setEstudoOpen(true);
-              setSidebarOpen(true);
-            }}
+          {/* Toque único vai direto para Inglês (destino mais usado); Leitura Diária
+              continua acessível pelo menu ☰, que já abre com "Estudo" expandido. */}
+          <NavLink
+            to="/estudo/ingles"
             className={`flex-1 flex flex-col items-center py-2 gap-0.5 ${isEstudoActive ? 'text-primary-600' : 'text-surface-400'}`}
           >
             <BookOpen size={18} />
             <span className="text-[9px] font-medium leading-tight text-center">Estudo</span>
-          </button>
+          </NavLink>
           {bottomNavItems.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
