@@ -3,6 +3,7 @@ import type { User, Session } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured, modoLocalAtivo } from '../lib/supabase';
 import type { RoleUsuario, StatusUsuario, TipoAcesso, PerfilUsuario } from '../types';
 import type { UserPermission } from '../utils/permissions';
+import { carregarPerfil, ensureProfileExists, loadInitialAuthState } from './authSessionLoader';
 
 interface AuthContextType {
   user: User | null;
@@ -32,27 +33,6 @@ const GOOGLE_OAUTH_SCOPES = [
   'https://www.googleapis.com/auth/drive.readonly',
   'https://www.googleapis.com/auth/calendar.readonly',
 ].join(' ');
-
-async function carregarPerfil(userId: string): Promise<PerfilUsuario | null> {
-  const { data } = await supabase
-    .from('profiles')
-    .select('id, email, nome, role, status, tipo_acesso, ultimo_acesso, ultimo_login_provider, created_at, updated_at')
-    .eq('id', userId)
-    .single();
-  if (!data) return null;
-  return {
-    id: data.id,
-    email: data.email ?? '',
-    nome: data.nome ?? '',
-    role: (data.role ?? 'usuario') as RoleUsuario,
-    status: (data.status ?? 'ativo') as StatusUsuario,
-    tipoAcesso: (data.tipo_acesso ?? 'visualizacao') as TipoAcesso,
-    ultimoAcesso: data.ultimo_acesso ?? null,
-    ultimoLoginProvider: data.ultimo_login_provider ?? null,
-    createdAt: data.created_at,
-    updatedAt: data.updated_at,
-  };
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -94,28 +74,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    supabase.auth.getSession().then(async ({ data }) => {
-      setSession(data.session);
-      const u = data.session?.user ?? null;
-      setUser(u);
-      if (u) {
-        let p = await carregarPerfil(u.id);
-        if (!p && u.email) {
-          // Profile não existe — criar como usuario ativo (fallback para OAuth)
-          await supabase.from('profiles').upsert({
-            id: u.id,
-            email: u.email,
-            nome: u.user_metadata?.name ?? u.user_metadata?.nome ?? u.email.split('@')[0],
-            role: 'usuario',
-            status: 'ativo',
-            tipo_acesso: 'visualizacao',
-            updated_at: new Date().toISOString(),
-          });
-          p = await carregarPerfil(u.id);
-        }
-        setPerfil(p);
-        await carregarPermissoes(u.id);
-      }
+    // loadInitialAuthState nunca rejeita (qualquer falha de rede/DB vira "deslogado"),
+    // então este .then() sempre roda e o spinner de carregamento nunca fica preso —
+    // era isso que travava o app na primeira abertura no celular.
+    loadInitialAuthState().then(state => {
+      setSession(state.session);
+      setUser(state.user);
+      setPerfil(state.perfil);
+      setPermissoes(state.permissoes);
       setLoading(false);
     });
 
@@ -127,15 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         let p = await carregarPerfil(u.id);
         if (!p && u.email) {
           // Profile não existe — criar como usuario ativo (fallback para OAuth)
-          await supabase.from('profiles').upsert({
-            id: u.id,
-            email: u.email,
-            nome: u.user_metadata?.name ?? u.user_metadata?.nome ?? u.email.split('@')[0],
-            role: 'usuario',
-            status: 'ativo',
-            tipo_acesso: 'visualizacao',
-            updated_at: new Date().toISOString(),
-          });
+          await ensureProfileExists(u);
           p = await carregarPerfil(u.id);
         }
         setPerfil(p);
