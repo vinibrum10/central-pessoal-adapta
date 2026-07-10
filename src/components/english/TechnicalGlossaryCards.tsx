@@ -4,18 +4,11 @@ import { Card, CardBody, CardHeader } from '../Card';
 import { Button } from '../Button';
 import type { GlossaryReviewCard } from '../../types/englishInterview';
 import { INTERVIEW_THEME_LABELS } from '../../types/englishInterview';
+import { speakEnglish } from '../../utils/textToSpeech';
 
 interface TechnicalGlossaryCardsProps {
   cards: GlossaryReviewCard[];
   onReview: (card: GlossaryReviewCard, result: 'acertou' | 'errou') => void;
-}
-
-function speak(text: string) {
-  if (!('speechSynthesis' in window)) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'en-US';
-  window.speechSynthesis.speak(utterance);
 }
 
 export function TechnicalGlossaryCards({ cards, onReview }: TechnicalGlossaryCardsProps) {
@@ -93,9 +86,10 @@ export function TechnicalGlossaryCards({ cards, onReview }: TechnicalGlossaryCar
                   </Button>
                   <button
                     type="button"
-                    onClick={() => speak(current.term.term)}
+                    onClick={() => speakEnglish(current.term.term)}
                     className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-surface-200 text-surface-600 transition-colors hover:bg-surface-50 dark:border-primary-300/15 dark:text-surface-300 dark:hover:bg-white/10"
                     title="Ouvir pronúncia"
+                    aria-label="Ouvir pronúncia"
                   >
                     <Volume2 size={16} />
                   </button>
