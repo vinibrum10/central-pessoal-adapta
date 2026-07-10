@@ -1,7 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
-import { resolveInitialAuthState, type AuthStateDeps } from './authSessionLoader';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AUTH_TIMEOUT_MS, resolveInitialAuthState, type AuthStateDeps } from './authSessionLoader';
 import type { Session, User } from '@supabase/supabase-js';
 import type { PerfilUsuario } from '../types';
+import type { UserPermission } from '../utils/permissions';
 
 function makeUser(overrides: Partial<User> = {}): User {
   return {
@@ -157,6 +158,78 @@ describe('resolveInitialAuthState', () => {
       user,
       perfil: null,
       permissoes: [],
+    });
+  });
+
+  describe('quando uma dependência nunca resolve (trava um lock/rede, comum no cold-start iOS)', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('não trava para sempre quando getSession() nunca resolve — resolve como deslogado após o timeout', async () => {
+      const deps = makeDeps({
+        getSession: vi.fn(() => new Promise<{ data: { session: Session | null } }>(() => {})), // nunca resolve nem rejeita
+      });
+
+      const promise = resolveInitialAuthState(deps);
+      await vi.advanceTimersByTimeAsync(AUTH_TIMEOUT_MS + 100);
+
+      await expect(promise).resolves.toEqual({ session: null, user: null, perfil: null, permissoes: [] });
+    });
+
+    it('não trava para sempre quando fetchPerfil nunca resolve — preserva a sessão válida após o timeout', async () => {
+      const user = makeUser();
+      const session = makeSession(user);
+      const deps = makeDeps({
+        getSession: vi.fn().mockResolvedValue({ data: { session } }),
+        fetchPerfil: vi.fn(() => new Promise<PerfilUsuario | null>(() => {})), // nunca resolve nem rejeita
+      });
+
+      const promise = resolveInitialAuthState(deps);
+      await vi.advanceTimersByTimeAsync(AUTH_TIMEOUT_MS + 100);
+
+      await expect(promise).resolves.toEqual({ session, user, perfil: null, permissoes: [] });
+    });
+
+    it('não trava para sempre quando fetchPermissoes nunca resolve — preserva a sessão válida após o timeout', async () => {
+      const user = makeUser();
+      const session = makeSession(user);
+      const perfil = makePerfil();
+      const deps = makeDeps({
+        getSession: vi.fn().mockResolvedValue({ data: { session } }),
+        fetchPerfil: vi.fn().mockResolvedValue(perfil),
+        fetchPermissoes: vi.fn(() => new Promise<UserPermission[]>(() => {})), // nunca resolve nem rejeita
+      });
+
+      const promise = resolveInitialAuthState(deps);
+      await vi.advanceTimersByTimeAsync(AUTH_TIMEOUT_MS + 100);
+
+      await expect(promise).resolves.toEqual({ session, user, perfil: null, permissoes: [] });
+    });
+
+    it('não trava para sempre quando ensureProfileExists (fallback de criação de perfil) nunca resolve — preserva a sessão válida após o timeout', async () => {
+      // Nota: isto prova que uma trava em ensureProfileExists é pega pelo timeout da etapa 2
+      // e não derruba a sessão. NÃO prova, por si só, que a etapa 2 usa um orçamento único em
+      // vez de um timeout por sub-chamada — as duas versões resolveriam aqui em ~1x
+      // AUTH_TIMEOUT_MS, já que só uma das chamadas está travando. Essa garantia (orçamento
+      // único = no máximo 2x AUTH_TIMEOUT_MS no total, nunca 4x) está assegurada pela
+      // estrutura do código: um único withTimeout(...) envolve toda a IIFE da etapa 2.
+      const user = makeUser();
+      const session = makeSession(user);
+      const deps = makeDeps({
+        getSession: vi.fn().mockResolvedValue({ data: { session } }),
+        fetchPerfil: vi.fn().mockResolvedValue(null), // força o fallback de criação de perfil
+        ensureProfileExists: vi.fn(() => new Promise<void>(() => {})), // nunca resolve nem rejeita
+      });
+
+      const promise = resolveInitialAuthState(deps);
+      await vi.advanceTimersByTimeAsync(AUTH_TIMEOUT_MS + 100);
+
+      await expect(promise).resolves.toEqual({ session, user, perfil: null, permissoes: [] });
     });
   });
 });
