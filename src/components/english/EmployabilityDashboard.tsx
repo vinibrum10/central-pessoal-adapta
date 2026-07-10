@@ -2,11 +2,32 @@ import { useCallback, useEffect, useState } from 'react';
 import { AlertCircle, Award, BookOpen, Edit3, Loader2, MessageSquareText, Mic, Sparkles, Timer } from 'lucide-react';
 import { formatDuration } from '../../services/english/interviewAudio';
 import { loadEvolutionDashboard, type EvolutionDashboardData } from '../../services/english/employabilityDashboardRepository';
-import { EvolutionMetricCard } from './EvolutionMetricCard';
+import { getCurrentWeekRange, getWeeklyPreparationPlan } from '../../services/english/weeklyPreparationRepository';
+import { listJobTargets } from '../../services/english/jobTargetsRepository';
+import {
+  summarizeJobPipeline,
+  summarizeWeeklyPlanByDay,
+  summarizeWeeklyPlanTasks,
+  type JobPipelineSummary,
+  type WeeklyPlanDaySummary,
+} from '../../services/english/overviewDashboardAggregator';
+import { EvolutionStatCard } from './EvolutionStatCard';
 import { NextActionCard } from './NextActionCard';
+import { WeeklyPlanStrip } from './WeeklyPlanStrip';
+import { JobPipelinePanel } from './JobPipelinePanel';
 
 interface EmployabilityDashboardProps {
   userId: string;
+}
+
+interface EmployabilityPageData {
+  evolution: EvolutionDashboardData;
+  weeklyPlanDays: WeeklyPlanDaySummary[];
+  weeklyPlanGoal: string | null;
+  weeklyPlanCompleted: number;
+  weeklyPlanPending: number;
+  weeklyPlanPercent: number;
+  jobPipeline: JobPipelineSummary;
 }
 
 function formatScore(value: number | null): string {
@@ -19,8 +40,31 @@ function formatDate(value: string | null): string {
 
 const MOCK_STATUS_LABELS = { draft: 'Rascunho', in_progress: 'Em andamento' } as const;
 
+async function loadEmployabilityPageData(userId: string): Promise<EmployabilityPageData> {
+  const { weekStart } = getCurrentWeekRange();
+
+  const [evolution, weeklyPlan, jobTargets] = await Promise.all([
+    loadEvolutionDashboard(userId),
+    getWeeklyPreparationPlan(userId, weekStart),
+    listJobTargets(),
+  ]);
+
+  const tasks = weeklyPlan?.tasks ?? [];
+  const weeklyPlanSummary = summarizeWeeklyPlanTasks(tasks);
+
+  return {
+    evolution,
+    weeklyPlanDays: summarizeWeeklyPlanByDay(tasks, weekStart),
+    weeklyPlanGoal: weeklyPlan?.plan.main_goal ?? null,
+    weeklyPlanCompleted: weeklyPlanSummary.completed,
+    weeklyPlanPending: weeklyPlanSummary.pending,
+    weeklyPlanPercent: weeklyPlanSummary.percentComplete,
+    jobPipeline: summarizeJobPipeline(jobTargets),
+  };
+}
+
 export function EmployabilityDashboard({ userId }: EmployabilityDashboardProps) {
-  const [data, setData] = useState<EvolutionDashboardData | null>(null);
+  const [data, setData] = useState<EmployabilityPageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -28,7 +72,7 @@ export function EmployabilityDashboard({ userId }: EmployabilityDashboardProps) 
     setLoading(true);
     setError('');
     try {
-      setData(await loadEvolutionDashboard(userId));
+      setData(await loadEmployabilityPageData(userId));
     } catch (err) {
       console.error('[EnglishEvolution] Failed to load dashboard', err);
       setError('Não foi possível carregar o dashboard de evolução.');
@@ -59,85 +103,83 @@ export function EmployabilityDashboard({ userId }: EmployabilityDashboardProps) 
     );
   }
 
-  const { answers, speakingTime, aiScores, vocabulary, star, mock } = data;
+  const { answers, speakingTime, aiScores, vocabulary, star, mock } = data.evolution;
 
   return (
     <div className="space-y-4">
-      <NextActionCard nextAction={data.nextAction} />
+      <NextActionCard nextAction={data.evolution.nextAction} />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <EvolutionMetricCard
+        <EvolutionStatCard
           title="Respostas"
-          subtitle="Gravações de perguntas de entrevista"
-          icon={<Mic size={18} />}
-          highlight={String(answers.totalAnswers)}
-          highlightLabel="respostas gravadas no total"
-          lines={[
+          icon={<Mic size={16} />}
+          iconVariant="copper"
+          value={String(answers.totalAnswers)}
+          caption="respostas gravadas no total"
+          delta={{ label: `+${answers.answersLast7Days} essa semana`, tone: answers.answersLast7Days > 0 ? 'up' : 'flat' }}
+          rows={[
             { label: 'Perguntas diferentes', value: String(answers.distinctQuestions) },
-            { label: 'Últimos 7 dias', value: String(answers.answersLast7Days) },
             { label: 'Últimos 30 dias', value: String(answers.answersLast30Days) },
           ]}
         />
 
-        <EvolutionMetricCard
+        <EvolutionStatCard
           title="Tempo falando"
-          subtitle="Duração somada das respostas gravadas"
-          icon={<Timer size={18} />}
-          highlight={formatDuration(speakingTime.totalSec)}
-          highlightLabel="tempo total falando inglês"
-          lines={[
-            { label: 'Últimos 7 dias', value: formatDuration(speakingTime.last7DaysSec) },
+          icon={<Timer size={16} />}
+          iconVariant="blue"
+          value={formatDuration(speakingTime.totalSec)}
+          caption="tempo total falando inglês"
+          delta={{ label: `+${formatDuration(speakingTime.last7DaysSec)} 7d`, tone: speakingTime.last7DaysSec > 0 ? 'up' : 'flat' }}
+          rows={[
             { label: 'Últimos 30 dias', value: formatDuration(speakingTime.last30DaysSec) },
           ]}
         />
 
-        <EvolutionMetricCard
+        <EvolutionStatCard
           title="Nota média IA"
-          subtitle={`${aiScores.evaluatedCount} respostas avaliadas com Gemini`}
-          icon={<Sparkles size={18} />}
-          highlight={formatScore(aiScores.averageOverall)}
-          highlightLabel="média geral das avaliações"
-          lines={[
+          icon={<Sparkles size={16} />}
+          iconVariant="purple"
+          value={formatScore(aiScores.averageOverall)}
+          caption={`${aiScores.evaluatedCount} respostas avaliadas com Gemini`}
+          rows={[
             { label: 'Últimos 7 dias', value: formatScore(aiScores.averageLast7Days) },
-            { label: 'Últimos 30 dias', value: formatScore(aiScores.averageLast30Days) },
             { label: 'Melhor nota', value: formatScore(aiScores.bestScore) },
             { label: 'Última nota', value: formatScore(aiScores.latestScore) },
           ]}
         />
 
-        <EvolutionMetricCard
+        <EvolutionStatCard
           title="Vocabulário EUA"
-          subtitle="Termos de vagas americanas (job_posting)"
-          icon={<BookOpen size={18} />}
-          highlight={`${vocabulary.masteredPercent}%`}
-          highlightLabel={`dominado de ${vocabulary.totalJobPostingTerms} termos`}
-          lines={[
+          icon={<BookOpen size={16} />}
+          iconVariant="copper"
+          value={`${vocabulary.masteredPercent}%`}
+          caption={`dominado de ${vocabulary.totalJobPostingTerms} termos`}
+          rows={[
             { label: 'Domino', value: String(vocabulary.mastered) },
             { label: 'Revisar', value: String(vocabulary.review) },
             { label: 'Ainda não domino', value: String(vocabulary.notMastered) },
           ]}
         />
 
-        <EvolutionMetricCard
+        <EvolutionStatCard
           title="Respostas STAR"
-          subtitle="Histórias estruturadas para entrevistas"
-          icon={<Edit3 size={18} />}
-          highlight={String(star.totalStarAnswers)}
-          highlightLabel="respostas STAR criadas"
-          lines={[
+          icon={<Edit3 size={16} />}
+          iconVariant="warning"
+          value={String(star.totalStarAnswers)}
+          caption="respostas STAR criadas"
+          rows={[
             { label: 'Perguntas com STAR', value: String(star.distinctQuestionsWithStar) },
             { label: 'Última atualização', value: formatDate(star.lastUpdatedAt) },
           ]}
         />
 
-        <EvolutionMetricCard
+        <EvolutionStatCard
           title="Mock mensal"
-          subtitle="Simulações completas de entrevista"
-          icon={<Award size={18} />}
-          highlight={String(mock.completedCount)}
-          highlightLabel="mocks concluídos"
-          lines={[
-            { label: 'Último mock', value: mock.lastCompleted ? formatDate(mock.lastCompleted.completedAt) : '—' },
+          icon={<Award size={16} />}
+          iconVariant="success"
+          value={String(mock.completedCount)}
+          caption="mocks concluídos"
+          rows={[
             { label: 'Nota do último', value: formatScore(mock.lastCompleted?.overallScore ?? null) },
             { label: 'Melhor mock', value: formatScore(mock.bestOverallScore) },
           ]}
@@ -148,7 +190,18 @@ export function EmployabilityDashboard({ userId }: EmployabilityDashboardProps) 
               Mock atual: {mock.currentMock.title?.trim() || `criado em ${formatDate(mock.currentMock.createdAt)}`} · {MOCK_STATUS_LABELS[mock.currentMock.status]}
             </p>
           )}
-        </EvolutionMetricCard>
+        </EvolutionStatCard>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <WeeklyPlanStrip
+          days={data.weeklyPlanDays}
+          goal={data.weeklyPlanGoal}
+          completed={data.weeklyPlanCompleted}
+          pending={data.weeklyPlanPending}
+          percentComplete={data.weeklyPlanPercent}
+        />
+        <JobPipelinePanel byStatus={data.jobPipeline.byStatus} activeCount={data.jobPipeline.activeCount} />
       </div>
     </div>
   );

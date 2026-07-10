@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { summarizeFinalReadiness, summarizeJobPipeline, summarizeWeeklyPlanTasks } from './overviewDashboardAggregator';
+import { summarizeFinalReadiness, summarizeJobPipeline, summarizeWeeklyPlanByDay, summarizeWeeklyPlanTasks } from './overviewDashboardAggregator';
 import type { FinalInterviewSimulation, JobTarget, WeeklyPreparationTask } from '../../types/englishInterview';
 
 function makeTask(overrides: Partial<WeeklyPreparationTask> = {}): WeeklyPreparationTask {
@@ -161,5 +161,33 @@ describe('summarizeFinalReadiness', () => {
     const summary = summarizeFinalReadiness(simulations);
 
     expect(summary).toEqual({ completedCount: 0, bestScore: null, lastScore: null, lastCompletedAt: null });
+  });
+});
+
+describe('summarizeWeeklyPlanByDay', () => {
+  it('agrupa as tarefas por dia da semana, de segunda a domingo, com rótulo e percentual', () => {
+    // 2026-07-06 é uma segunda-feira
+    const tasks = [
+      makeTask({ id: 't1', task_date: '2026-07-06', status: 'completed' }),
+      makeTask({ id: 't2', task_date: '2026-07-06', status: 'completed' }),
+      makeTask({ id: 't3', task_date: '2026-07-07', status: 'pending' }),
+      makeTask({ id: 't4', task_date: '2026-07-12', status: 'pending' }),
+    ];
+
+    const dias = summarizeWeeklyPlanByDay(tasks, '2026-07-06');
+
+    expect(dias).toHaveLength(7);
+    expect(dias.map(d => d.label)).toEqual(['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']);
+    expect(dias[0]).toEqual({ date: '2026-07-06', label: 'Seg', total: 2, completed: 2, percentComplete: 100 });
+    expect(dias[1]).toEqual({ date: '2026-07-07', label: 'Ter', total: 1, completed: 0, percentComplete: 0 });
+    expect(dias[2]).toEqual({ date: '2026-07-08', label: 'Qua', total: 0, completed: 0, percentComplete: 0 });
+    expect(dias[6]).toEqual({ date: '2026-07-12', label: 'Dom', total: 1, completed: 0, percentComplete: 0 });
+  });
+
+  it('retorna 7 dias vazios quando não há nenhuma tarefa', () => {
+    const dias = summarizeWeeklyPlanByDay([], '2026-07-06');
+
+    expect(dias).toHaveLength(7);
+    expect(dias.every(d => d.total === 0 && d.percentComplete === 0)).toBe(true);
   });
 });

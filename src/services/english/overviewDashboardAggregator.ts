@@ -18,6 +18,46 @@ export function summarizeWeeklyPlanTasks(tasks: WeeklyPreparationTask[]): Weekly
   return { completed, pending, ignored, total, percentComplete };
 }
 
+const DIA_SEMANA_LABELS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+export interface WeeklyPlanDaySummary {
+  date: string;
+  label: string;
+  total: number;
+  completed: number;
+  percentComplete: number;
+}
+
+/**
+ * Agrupa as tarefas do plano semanal por dia, começando em weekStart (segunda-feira) e
+ * cobrindo os 7 dias seguintes — inclusive dias sem nenhuma tarefa, para o strip semanal
+ * sempre mostrar os 7 dias corridos independentemente de quantas tarefas existem.
+ */
+export function summarizeWeeklyPlanByDay(tasks: WeeklyPreparationTask[], weekStart: string): WeeklyPlanDaySummary[] {
+  const inicio = new Date(`${weekStart}T12:00:00`);
+  const dias: WeeklyPlanDaySummary[] = [];
+
+  for (let offset = 0; offset < 7; offset += 1) {
+    const dia = new Date(inicio);
+    dia.setDate(dia.getDate() + offset);
+    const date = dia.toISOString().slice(0, 10);
+
+    const tarefasDoDia = tasks.filter(task => task.task_date === date);
+    const completed = tarefasDoDia.filter(task => task.status === 'completed').length;
+    const total = tarefasDoDia.length;
+
+    dias.push({
+      date,
+      label: DIA_SEMANA_LABELS[dia.getDay()],
+      total,
+      completed,
+      percentComplete: total === 0 ? 0 : Math.round((completed / total) * 100),
+    });
+  }
+
+  return dias;
+}
+
 const CLOSED_JOB_STATUSES: JobTargetStatus[] = ['rejected', 'archived'];
 
 export interface JobPipelineSummary {
