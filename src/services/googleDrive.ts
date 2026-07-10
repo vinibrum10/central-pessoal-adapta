@@ -31,6 +31,7 @@ const DRIVE_API = 'https://www.googleapis.com/drive/v3';
 const GOOGLE_FOLDER_MIME = 'application/vnd.google-apps.folder';
 const GOOGLE_DOC_MIME = 'application/vnd.google-apps.document';
 const PDF_MIME = 'application/pdf';
+const TEXT_PLAIN_MIME = 'text/plain';
 
 class DriveFolderError extends Error {
   folderId: string;
@@ -131,6 +132,41 @@ function classificarArquivo(nome: string, mimeType?: string, temUrl = false): Ti
   // Arquivo com URL mas sem palavra-chave reconhecida → link (melhor que geral)
   if (temUrl) return 'link';
   return 'geral';
+}
+
+const URL_ORIGINAL_LABEL_RE = /url\s*original\s*:\s*(\S+)/i;
+const URL_RE = /https?:\/\/\S+/g;
+
+function limparUrlCapturada(url: string): string {
+  return url.replace(/[),.;]+$/, '');
+}
+
+function isUrlHttp(url: string): boolean {
+  return /^https?:\/\//i.test(url);
+}
+
+/**
+ * Extrai o link real de uma vaga/recurso a partir do conteúdo de um relatório sincronizado.
+ * Prioriza a linha "URL original: ..." (o mesmo formato de cabeçalho que o SGP gera em
+ * getSgpDocumentHeader), mas só aceita valores http(s) — qualquer outro esquema (ex.:
+ * "javascript:") é descartado como se a linha não existisse, para não virar um link clicável
+ * na UI. Se não encontrar uma URL original válida, cai para a primeira URL http(s) do corpo do
+ * texto, ignorando links que apontam para o próprio Google Drive/Docs.
+ */
+export function extrairUrlOriginal(contentText?: string): string | undefined {
+  if (!contentText) return undefined;
+
+  const porLabel = contentText.match(URL_ORIGINAL_LABEL_RE);
+  if (porLabel?.[1]) {
+    const limpo = limparUrlCapturada(porLabel[1]);
+    if (isUrlHttp(limpo)) return limpo;
+  }
+
+  const candidatas = contentText.match(URL_RE) ?? [];
+  const primeira = candidatas
+    .map(limparUrlCapturada)
+    .find(url => !/drive\.google\.com|docs\.google\.com/i.test(url));
+  return primeira;
 }
 
 function escapeDriveQueryValue(value: string): string {
@@ -305,22 +341,42 @@ export async function sincronizarLeiturasDrive(folderId?: string): Promise<Leitu
 }
 
 async function carregarConteudoArquivo(file: DriveFile): Promise<string | undefined> {
-  if (file.mimeType !== GOOGLE_DOC_MIME) return undefined;
-  const token = await getToken();
-  const params = new URLSearchParams({ mimeType: 'text/plain' });
-  const res = await fetch(`${DRIVE_API}/files/${encodeURIComponent(file.id)}/export?${params}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  driveLog('conteudo Google Docs exportado', {
-    fileId: file.id,
-    mimeType: file.mimeType,
-    status: res.status,
-  });
-  if (!res.ok) {
-    throw new Error(`Erro ${res.status} ao exportar conteúdo do Google Docs.`);
+  if (file.mimeType === GOOGLE_DOC_MIME) {
+    const token = await getToken();
+    const params = new URLSearchParams({ mimeType: 'text/plain' });
+    const res = await fetch(`${DRIVE_API}/files/${encodeURIComponent(file.id)}/export?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    driveLog('conteudo Google Docs exportado', {
+      fileId: file.id,
+      mimeType: file.mimeType,
+      status: res.status,
+    });
+    if (!res.ok) {
+      throw new Error(`Erro ${res.status} ao exportar conteúdo do Google Docs.`);
+    }
+    const text = await res.text();
+    return text.trim() || undefined;
   }
-  const text = await res.text();
-  return text.trim() || undefined;
+
+  if (file.mimeType === TEXT_PLAIN_MIME) {
+    const token = await getToken();
+    const res = await fetch(`${DRIVE_API}/files/${encodeURIComponent(file.id)}?alt=media`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    driveLog('conteudo texto simples baixado', {
+      fileId: file.id,
+      mimeType: file.mimeType,
+      status: res.status,
+    });
+    if (!res.ok) {
+      throw new Error(`Erro ${res.status} ao baixar conteúdo do arquivo de texto.`);
+    }
+    const text = await res.text();
+    return text.trim() || undefined;
+  }
+
+  return undefined;
 }
 
 async function listarArquivosLeituraDiaria(): Promise<DriveFile[]> {
@@ -392,7 +448,8 @@ async function listarArquivosLeituraDiaria(): Promise<DriveFile[]> {
 }
 
 export function importarArquivoComoLeitura(file: DriveFile): LeituraDiaria {
-  const url = file.webViewLink ?? file.webContentLink;
+  const driveUrl = file.webViewLink ?? file.webContentLink;
+  const url = extrairUrlOriginal(file.contentText) ?? driveUrl;
   const tipo = classificarArquivo(file.name, file.mimeType, Boolean(url));
   const categoriaMap: Record<TipoLeitura, string> = {
     vaga: 'Vagas de emprego',

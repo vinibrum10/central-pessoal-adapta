@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import {
   BookOpen, Search, RefreshCw, CheckCircle, Archive,
   ExternalLink, Plus, AlertCircle, Briefcase, Cpu,
@@ -23,6 +23,7 @@ import {
 import { leituraRepository } from '../repositories/leituraRepository';
 import { useAuth } from '../contexts/AuthContext';
 import { isLeituraDriveLegada } from '../services/leituraLegacy';
+import { encontrarUrls } from '../utils/linkify';
 
 type FiltroLeitura = 'todos' | StatusLeitura | TipoLeitura | 'importante' | 'relatorios';
 type FiltroContador = FiltroLeitura;
@@ -49,6 +50,50 @@ const tipoColors: Record<TipoLeitura, string> = {
   link: 'bg-surface-100 text-surface-600 dark:bg-surface-700 dark:text-surface-300',
   geral: 'bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-400',
 };
+
+/**
+ * Transforma URLs soltas no meio do texto em links clicáveis. Relatórios de vagas listam
+ * várias oportunidades no mesmo documento, cada uma com sua própria linha "Link: https://...",
+ * então em vez de extrair um único link "principal" tornamos toda URL do corpo clicável.
+ */
+function linkifyTexto(texto: string): ReactNode[] {
+  const matches = encontrarUrls(texto);
+  if (matches.length === 0) return [texto];
+
+  const nodes: ReactNode[] = [];
+  let lastIndex = 0;
+  matches.forEach((match, index) => {
+    if (match.start > lastIndex) nodes.push(texto.slice(lastIndex, match.start));
+    nodes.push(
+      <a
+        key={`${index}-${match.url}`}
+        href={match.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-primary-600 underline underline-offset-2 hover:text-primary-700 dark:text-primary-300 dark:hover:text-primary-200"
+      >
+        {match.url}
+      </a>,
+    );
+    if (match.sufixo) nodes.push(match.sufixo);
+    lastIndex = match.end;
+  });
+  if (lastIndex < texto.length) nodes.push(texto.slice(lastIndex));
+  return nodes;
+}
+
+function isLinkDoDrive(url?: string): boolean {
+  return Boolean(url && /drive\.google\.com|docs\.google\.com/i.test(url));
+}
+
+function driveViewUrl(item: LeituraDiaria): string | undefined {
+  if (item.driveFileId) return `https://drive.google.com/file/d/${item.driveFileId}/view`;
+  return isLinkDoDrive(item.url) ? item.url : undefined;
+}
+
+function linkExterno(item: LeituraDiaria): string | undefined {
+  return item.url && !isLinkDoDrive(item.url) ? item.url : undefined;
+}
 
 function normalizarTexto(value: unknown): string {
   return String(value ?? '')
@@ -777,17 +822,30 @@ export function LeituraDiariaPage() {
                     {leituraAberta.pastaOrigem && <span>{leituraAberta.pastaOrigem}</span>}
                   </div>
                 </div>
-                {leituraAberta.url && (
-                  <a
-                    href={leituraAberta.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-surface-200 px-3 py-2 text-xs font-semibold text-surface-600 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800 sm:w-auto sm:flex-shrink-0"
-                  >
-                    <ExternalLink size={13} />
-                    Abrir no Google Drive
-                  </a>
-                )}
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-shrink-0 sm:flex-row">
+                  {linkExterno(leituraAberta) && (
+                    <a
+                      href={linkExterno(leituraAberta)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-primary-700 sm:w-auto"
+                    >
+                      <ExternalLink size={13} />
+                      {leituraAberta.tipo === 'vaga' ? 'Candidatar-se' : 'Abrir link'}
+                    </a>
+                  )}
+                  {driveViewUrl(leituraAberta) && (
+                    <a
+                      href={driveViewUrl(leituraAberta)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-surface-200 px-3 py-2 text-xs font-semibold text-surface-600 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800 sm:w-auto"
+                    >
+                      <ExternalLink size={13} />
+                      Abrir no Google Drive
+                    </a>
+                  )}
+                </div>
               </div>
 
               {leituraAberta.tags && leituraAberta.tags.length > 0 && (
@@ -803,8 +861,8 @@ export function LeituraDiariaPage() {
 
             <div className="overflow-x-hidden rounded-lg border border-surface-200 bg-surface-50 p-4 dark:border-surface-700 dark:bg-surface-800/60">
               {leituraAberta.contentText ? (
-                <article className="reader-content prose prose-sm max-w-none whitespace-pre-wrap leading-relaxed text-surface-800 dark:prose-invert dark:text-surface-100">
-                  {leituraAberta.contentText}
+                <article className="reader-content prose prose-sm max-w-none whitespace-pre-wrap break-words leading-relaxed text-surface-800 dark:prose-invert dark:text-surface-100">
+                  {linkifyTexto(leituraAberta.contentText)}
                 </article>
               ) : leituraAberta.mimeType === 'application/pdf' && leituraAberta.url ? (
                 <div className="space-y-3">
