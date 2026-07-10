@@ -22,7 +22,7 @@ export function EvolutionMetricCard({ title, subtitle, icon, highlight, highligh
       <CardHeader title={title} subtitle={subtitle} icon={icon} />
       <CardBody className="space-y-3">
         <div>
-          <p className="text-2xl font-bold text-surface-950 dark:text-white">{highlight}</p>
+          <p className="font-mono text-2xl font-bold tracking-tight text-surface-950 dark:text-white">{highlight}</p>
           <p className="text-xs text-surface-500 dark:text-surface-400">{highlightLabel}</p>
         </div>
 
@@ -31,7 +31,7 @@ export function EvolutionMetricCard({ title, subtitle, icon, highlight, highligh
             {lines.map(line => (
               <div key={line.label} className="flex items-baseline justify-between gap-2">
                 <dt className="text-xs text-surface-500 dark:text-surface-400">{line.label}</dt>
-                <dd className="text-sm font-semibold text-surface-800 dark:text-surface-100">{line.value}</dd>
+                <dd className="font-mono text-sm font-semibold text-surface-800 dark:text-surface-100">{line.value}</dd>
               </div>
             ))}
           </dl>
