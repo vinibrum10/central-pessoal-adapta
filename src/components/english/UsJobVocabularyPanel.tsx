@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle, Briefcase, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight,
-  GraduationCap, List, Loader2, Repeat, RotateCcw, Search, Shuffle, Star,
+  GraduationCap, List, Loader2, Repeat, RotateCcw, Search, Shuffle, Star, Volume2,
 } from 'lucide-react';
 import { Card, CardBody, CardHeader } from '../Card';
 import { Button } from '../Button';
@@ -11,6 +11,7 @@ import {
   listUsJobVocabularyTerms,
   setUsJobVocabularyStatus,
 } from '../../services/english/employabilityRepository';
+import { speakEnglish } from '../../utils/textToSpeech';
 
 interface UsJobVocabularyPanelProps {
   userId: string;
@@ -339,7 +340,18 @@ export function UsJobVocabularyPanel({ userId }: UsJobVocabularyPanelProps) {
             <div className="rounded-xl border border-surface-200 bg-white/75 p-5 dark:border-primary-300/15 dark:bg-white/[0.03]">
               <div className="space-y-3">
                 {renderTermBadges(currentTerm)}
-                <p className="text-2xl font-bold text-surface-950 dark:text-white">{currentTerm.term.term}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-2xl font-bold text-surface-950 dark:text-white">{currentTerm.term.term}</p>
+                  <button
+                    type="button"
+                    onClick={() => speakEnglish(currentTerm.term.term)}
+                    className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-surface-200 text-surface-600 transition-colors hover:bg-surface-50 dark:border-primary-300/15 dark:text-surface-300 dark:hover:bg-white/10"
+                    title="Ouvir pronúncia"
+                    aria-label="Ouvir pronúncia"
+                  >
+                    <Volume2 size={16} />
+                  </button>
+                </div>
 
                 {flipped ? (
                   <div className="space-y-2 rounded-lg border border-primary-200/60 bg-primary-500/5 p-4 dark:border-primary-300/20">
@@ -425,6 +437,15 @@ export function UsJobVocabularyPanel({ userId }: UsJobVocabularyPanelProps) {
                             <Star size={12} />
                             Dificuldade {item.term.importance_level ?? 3}/5
                           </span>
+                          <button
+                            type="button"
+                            onClick={() => speakEnglish(item.term.term)}
+                            className="inline-flex h-7 items-center gap-1 rounded-lg border border-surface-200 px-2 text-xs font-semibold text-surface-600 transition-colors hover:bg-surface-50 dark:border-primary-300/15 dark:text-surface-300 dark:hover:bg-white/10"
+                            title="Ouvir pronúncia"
+                          >
+                            <Volume2 size={12} />
+                            Ouvir pronúncia
+                          </button>
                         </div>
                         <div>
                           <p className="text-[11px] font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Exemplo</p>
