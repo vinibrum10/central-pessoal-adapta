@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { AlertCircle, Award, BookOpen, Briefcase, CalendarDays, ClipboardList, Edit3, LayoutDashboard, Loader2, MessageSquareText, RefreshCw, TrendingUp } from 'lucide-react';
+import { AlertCircle, Award, BookOpen, Briefcase, CalendarDays, ClipboardList, Edit3, Loader2, MessageSquareText, RefreshCw, TrendingUp } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Card, CardBody, CardHeader } from '../components/Card';
 import { LoadingState } from '../components/DesignSystem';
@@ -7,7 +7,6 @@ import { InterviewAnswerHistory } from '../components/english/InterviewAnswerHis
 import { InterviewAnswerRecorder } from '../components/english/InterviewAnswerRecorder';
 import { DailyInterviewSession } from '../components/english/DailyInterviewSession';
 import { EmployabilityDashboard } from '../components/english/EmployabilityDashboard';
-import { EnglishOverviewDashboard } from '../components/english/EnglishOverviewDashboard';
 import { InterviewQuestionBank } from '../components/english/InterviewQuestionBank';
 import { InterviewMissionHeader } from '../components/english/InterviewMissionHeader';
 import { InterviewModuleGrid, type InterviewModuleShortcut } from '../components/english/InterviewModuleGrid';
@@ -38,7 +37,7 @@ import { isInterviewModeStorageReady, listInterviewQuestions, reviewGlossaryTerm
 import { loadInterviewModeState, reselectDailyEpisode } from '../services/english/interviewModeSession';
 
 type StepKey = 'step_listening_done' | 'step_shadowing_done' | 'step_cards_done' | 'step_question_done';
-type EnglishInterviewTab = 'overview' | 'daily' | 'vocabulary' | 'star' | 'mock' | 'evolution' | 'jobs' | 'weekly' | 'final';
+type EnglishInterviewTab = 'daily' | 'vocabulary' | 'star' | 'mock' | 'evolution' | 'jobs' | 'weekly' | 'final';
 
 // Fase 5.4 — cada tipo de tarefa do plano semanal leva para a aba onde ela é executada
 const WEEKLY_TASK_TAB: Record<WeeklyPreparationTaskType, EnglishInterviewTab> = {
@@ -339,7 +338,6 @@ export function InglesPage() {
   const userId = user?.id ?? '';
 
   const tabs: Array<{ id: EnglishInterviewTab; label: string; icon: JSX.Element }> = [
-    { id: 'overview', label: 'Visão geral', icon: <LayoutDashboard size={15} /> },
     { id: 'daily', label: 'Sessão diária', icon: <BookOpen size={15} /> },
     { id: 'vocabulary', label: 'Vocabulário EUA', icon: <Briefcase size={15} /> },
     { id: 'star', label: 'Respostas STAR', icon: <Edit3 size={15} /> },
@@ -482,7 +480,6 @@ export function InglesPage() {
         </>
       )}
 
-      {activeTab === 'overview' && userId && <EnglishOverviewDashboard userId={userId} />}
       {activeTab === 'vocabulary' && userId && <UsJobVocabularyPanel userId={userId} />}
       {activeTab === 'star' && userId && <StarAnswerBuilder userId={userId} questions={questions} />}
       {activeTab === 'mock' && userId && <MonthlyMockInterview userId={userId} questions={questions} />}
