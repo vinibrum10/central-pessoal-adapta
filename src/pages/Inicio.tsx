@@ -21,10 +21,9 @@ import {
   obterResumoDashboard, obterRankingMetas, obterMetasEmAtencao,
   obterAcoesPorStatus, obterAcoesPorFaixa, obterMetasPorCategoria,
   obterFocoRecomendado, bgSaude, labelSaude, corGrau,
-  siglaFaixaDash, corFaixaDash, type SaudeMeta,
+  siglaFaixaDash, corFaixaDash, type SaudeMeta, type MetricaMeta,
 } from '../utils/dashboardMetrics';
 import { Button } from '../components/Button';
-import { BrandHeader } from '../components/BrandHeader';
 
 // ============================================================
 // TIPOS
@@ -79,9 +78,9 @@ function KpiCard({
 }
 
 // ============================================================
-// GAUGE DE EFICIÊNCIA
+// PAINEL HERO — FOCO DO DIA
 // ============================================================
-function EficienciaCard({ eficiencia, qtd }: { eficiencia: number; qtd: number }) {
+function FocoDoDiaHero({ eficiencia, qtd, metas }: { eficiencia: number; qtd: number; metas: MetricaMeta[] }) {
   const strokeColor =
     eficiencia >= 85 ? '#86efac' :
     eficiencia >= 60 ? '#fde68a' :
@@ -91,35 +90,71 @@ function EficienciaCard({ eficiencia, qtd }: { eficiencia: number; qtd: number }
     eficiencia >= 60 ? 'Atenção' :
     'Risco de dispersão';
 
-  const r = 26;
+  const r = 46;
   const circ = 2 * Math.PI * r;
   const offset = circ * (1 - eficiencia / 100);
+  const destaques = metas.slice(0, 4);
 
   return (
-    <div className="mobile-card relative overflow-hidden rounded-2xl border border-surface-200/80 border-l-[3px] border-l-primary-500 bg-white/90 px-4 py-3 shadow-sm shadow-surface-200/50 backdrop-blur-sm dark:border-white/[0.08] dark:border-l-primary-300 dark:bg-white/[0.05] dark:shadow-black/25">
-      <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400">Foco do dia</p>
-      <div className="flex items-center gap-2 mt-1">
-        <div className="relative flex-shrink-0 w-10 h-10 sm:w-14 sm:h-14">
-          <svg style={{ width: '100%', height: '100%' }} viewBox="0 0 56 56" className="-rotate-90">
-            <circle cx="28" cy="28" r={r} fill="none" stroke="rgba(148,163,184,0.22)" strokeWidth="7" />
+    <div className="mobile-card relative overflow-hidden rounded-2xl border border-surface-200/80 bg-white/90 p-5 shadow-sm shadow-surface-200/50 backdrop-blur-sm dark:border-white/[0.08] dark:bg-white/[0.05] dark:shadow-black/25 sm:p-6">
+      <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-primary-600 dark:text-primary-400">
+        Foco do dia
+      </p>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="font-mono text-5xl font-bold leading-none tracking-tight text-surface-950 dark:text-white sm:text-6xl">
+            {eficiencia}%
+          </p>
+          <p className="mobile-clamp-2 mt-2 max-w-[26ch] text-sm text-surface-500 dark:text-surface-400">
+            {label} — {qtd} meta{qtd !== 1 ? 's' : ''} ativa{qtd !== 1 ? 's' : ''}, ideal ≤3
+          </p>
+        </div>
+        <div className="relative h-24 w-24 flex-shrink-0 sm:h-28 sm:w-28">
+          <svg style={{ width: '100%', height: '100%' }} viewBox="0 0 108 108" className="-rotate-90">
+            <circle cx="54" cy="54" r={r} fill="none" stroke="rgba(148,163,184,0.22)" strokeWidth="8" />
             <circle
-              cx="28" cy="28" r={r} fill="none"
+              cx="54" cy="54" r={r} fill="none"
               stroke={strokeColor}
-              strokeWidth="7"
+              strokeWidth="8"
               strokeDasharray={circ}
               strokeDashoffset={offset}
               strokeLinecap="round"
             />
           </svg>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="font-mono text-xs sm:text-base font-bold text-surface-950 dark:text-white">{eficiencia}%</span>
-          </div>
-        </div>
-        <div className="min-w-0">
-          <p className="mobile-clamp-2 text-sm font-semibold leading-tight text-surface-950 dark:text-white">{label}</p>
-          <p className="mobile-clamp-2 text-[10px] text-surface-500 dark:text-surface-400 mt-0.5">{qtd} ativa{qtd !== 1 ? 's' : ''} · ideal ≤3</p>
         </div>
       </div>
+
+      {destaques.length > 0 && (
+        <div className="mt-5 border-t border-surface-200/70 pt-4 dark:border-white/[0.08]">
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-surface-400 dark:text-surface-500">
+            Metas ativas — {qtd}
+          </p>
+          <div className="mt-2.5 space-y-2">
+            {destaques.map(mm => (
+              <div
+                key={mm.meta.id}
+                className="flex items-center justify-between gap-3 rounded-lg border border-surface-200/70 bg-surface-50/70 px-3 py-2 dark:border-white/[0.06] dark:bg-white/[0.03]"
+              >
+                <p className="min-w-0 flex-1 truncate text-sm font-medium text-surface-800 dark:text-surface-100">
+                  {mm.meta.nome}
+                </p>
+                <div className="flex flex-shrink-0 items-center gap-2">
+                  <div className="h-1.5 w-14 overflow-hidden rounded-full bg-surface-200 dark:bg-white/10">
+                    <span
+                      className="block h-full rounded-full bg-primary-500"
+                      style={{ width: `${Math.min(100, mm.percentualAtendimento)}%` }}
+                    />
+                  </div>
+                  <span className="font-mono text-xs font-semibold text-surface-500 dark:text-surface-400">
+                    {mm.percentualAtendimento}%
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -230,36 +265,51 @@ export function InicioPage() {
     { v: 'sem ações', label: 'Sem ações' },
   ];
 
+  const hora = hoje.getHours();
+  const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
+  const primeiroNome = (data.configuracoes.nomeUsuario || '').trim().split(' ')[0] || 'você';
+
   return (
     <div className="page-stack max-w-screen-2xl mx-auto animate-fade-in pb-10">
 
       {/* ── CABEÇALHO ── */}
-      <BrandHeader
-        title="Sistema de Gestão Pessoal"
-        subtitle={`Gestão integrada de rotina, estudos, agenda, orçamento e metas. ${format(hoje, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}.`}
-        actions={
-          <>
-          <Button size="sm" variant="secondary" onClick={() => navigate('/metas')} icon={<Target size={14} />}>
-            Metas
-          </Button>
-          <Button size="sm" onClick={() => navigate('/plano')} icon={<ListChecks size={14} />}>
-            Ver tarefas
-          </Button>
-          </>
-        }
-      />
+      <div>
+        <p className="font-mono text-xs font-semibold uppercase tracking-[0.14em] text-primary-600 dark:text-primary-400">
+          Painel · Hoje
+        </p>
+        <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-3xl font-bold tracking-tight text-surface-950 dark:text-white sm:text-4xl">
+              {saudacao}, {primeiroNome}.
+            </h1>
+            <p className="mt-2 text-sm text-surface-500 dark:text-surface-400">
+              {format(hoje, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="secondary" onClick={() => navigate('/metas')} icon={<Target size={14} />}>
+              Metas
+            </Button>
+            <Button size="sm" onClick={() => navigate('/plano')} icon={<ListChecks size={14} />}>
+              Ver tarefas
+            </Button>
+          </div>
+        </div>
+      </div>
 
       {/* ── KPIs — 4 GRUPOS ── */}
       <div className="space-y-3">
         {/* Grupo 1: Foco e Metas */}
         <div>
           <p className="text-[10px] font-bold uppercase tracking-widest text-surface-400 dark:text-surface-500 mb-2 px-0.5">Foco e Metas</p>
-          <div className="grid grid-cols-1 min-[390px]:grid-cols-2 lg:grid-cols-3 gap-3">
-            <div className="min-[390px]:col-span-2 lg:col-span-1">
-              <EficienciaCard eficiencia={resumo.eficienciaFoco} qtd={resumo.metasAtivas} />
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+            <div className="lg:col-span-2">
+              <FocoDoDiaHero eficiencia={resumo.eficienciaFoco} qtd={resumo.metasAtivas} metas={rankingCompleto} />
             </div>
-            <KpiCard label="Metas ativas" value={resumo.metasAtivas} sub="Em andamento agora" cor="blue" icon={<Target size={36} />} accent="meta" />
-            <KpiCard label="Metas futuras" value={resumo.metasFuturo} sub="Fora do foco atual" cor="purple" icon={<Lightbulb size={36} />} accent="meta" />
+            <div className="grid grid-cols-1 min-[390px]:grid-cols-2 lg:grid-cols-1 gap-3">
+              <KpiCard label="Metas ativas" value={resumo.metasAtivas} sub="Em andamento agora" cor="blue" icon={<Target size={36} />} accent="meta" />
+              <KpiCard label="Metas futuras" value={resumo.metasFuturo} sub="Fora do foco atual" cor="purple" icon={<Lightbulb size={36} />} accent="meta" />
+            </div>
           </div>
         </div>
 
