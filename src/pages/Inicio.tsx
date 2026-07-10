@@ -65,11 +65,11 @@ function KpiCard({
   const accentClass = accentBorder[accent ?? 'none'] ?? '';
 
   return (
-    <div className={`mobile-card relative overflow-hidden rounded-lg border border-surface-200/80 bg-white/90 px-4 py-3 shadow-sm shadow-surface-200/50 backdrop-blur-sm dark:border-primary-300/15 dark:bg-surface-950/55 dark:shadow-black/25 ${accentClass}`}>
+    <div className={`mobile-card relative overflow-hidden rounded-2xl border border-surface-200/80 bg-white/90 px-4 py-3 shadow-sm shadow-surface-200/50 backdrop-blur-sm dark:border-white/[0.08] dark:bg-white/[0.05] dark:shadow-black/25 ${accentClass}`}>
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="mobile-clamp-2 text-[10px] font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400 leading-tight">{label}</p>
-          <p className="mt-1 money-responsive font-semibold tracking-tight leading-none text-surface-950 dark:text-white">{value}</p>
+          <p className="mobile-clamp-2 font-mono text-[10px] font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400 leading-tight">{label}</p>
+          <p className="mt-1 money-responsive font-mono font-semibold tracking-tight leading-none text-surface-950 dark:text-white">{value}</p>
           {sub && <p className="mobile-clamp-2 mt-1 text-[10px] text-surface-500 dark:text-surface-400 leading-tight">{sub}</p>}
         </div>
         {icon && <div className={`hidden sm:flex flex-shrink-0 rounded-lg p-2 ring-1 ${tone}`}>{icon}</div>}
@@ -96,8 +96,8 @@ function EficienciaCard({ eficiencia, qtd }: { eficiencia: number; qtd: number }
   const offset = circ * (1 - eficiencia / 100);
 
   return (
-    <div className="mobile-card relative overflow-hidden rounded-lg border border-surface-200/80 border-l-[3px] border-l-primary-500 bg-white/90 px-4 py-3 shadow-sm shadow-surface-200/50 backdrop-blur-sm dark:border-primary-300/15 dark:border-l-primary-300 dark:bg-surface-950/55 dark:shadow-black/25">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400">Foco do dia</p>
+    <div className="mobile-card relative overflow-hidden rounded-2xl border border-surface-200/80 border-l-[3px] border-l-primary-500 bg-white/90 px-4 py-3 shadow-sm shadow-surface-200/50 backdrop-blur-sm dark:border-white/[0.08] dark:border-l-primary-300 dark:bg-white/[0.05] dark:shadow-black/25">
+      <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400">Foco do dia</p>
       <div className="flex items-center gap-2 mt-1">
         <div className="relative flex-shrink-0 w-10 h-10 sm:w-14 sm:h-14">
           <svg style={{ width: '100%', height: '100%' }} viewBox="0 0 56 56" className="-rotate-90">
@@ -112,7 +112,7 @@ function EficienciaCard({ eficiencia, qtd }: { eficiencia: number; qtd: number }
             />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-xs sm:text-base font-bold text-surface-950 dark:text-white">{eficiencia}%</span>
+            <span className="font-mono text-xs sm:text-base font-bold text-surface-950 dark:text-white">{eficiencia}%</span>
           </div>
         </div>
         <div className="min-w-0">
