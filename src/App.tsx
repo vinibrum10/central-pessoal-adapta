@@ -11,6 +11,7 @@ import { AgendaTempoPage } from './pages/AgendaTempo';
 import { OrcamentoPage } from './pages/Orcamento';
 import { LeituraDiariaPage } from './pages/LeituraDiaria';
 import { InglesPage } from './pages/Ingles';
+import { InglesDiarioPage } from './pages/InglesDiario';
 import { ConfiguracoesPage } from './pages/Configuracoes';
 import { UsuariosPage } from './pages/Usuarios';
 import { RedefinirSenhaPage } from './pages/RedefinirSenha';
@@ -45,6 +46,7 @@ function App() {
                     <Route path="/leitura" element={<LeituraDiariaPage />} />
                     <Route path="/estudo/leitura" element={<LeituraDiariaPage />} />
                     <Route path="/estudo/ingles" element={<InglesPage />} />
+                    <Route path="/estudo/ingles-diario" element={<InglesDiarioPage />} />
                     <Route path="/configuracoes" element={<ConfiguracoesPage />} />
                     <Route path="/usuarios" element={<UsuariosPage />} />
                   </Routes>

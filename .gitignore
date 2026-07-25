@@ -34,3 +34,7 @@ pnpm-debug.log*
 
 .vercel
 .env*
+
+# Cache local do Supabase CLI (project-ref, pooler-url, versões) — específico
+# da máquina/sessão, nunca deve ser versionado.
+supabase/.temp/

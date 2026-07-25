@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Target, ListChecks, Clock,
   Wallet, Settings, Menu, X, Moon, Sun, BookOpen, LogOut,
-  ChevronLeft, ChevronRight, Users, Layers, ChevronDown, Languages,
+  ChevronLeft, ChevronRight, Users, Layers, ChevronDown, Languages, Video,
   type LucideIcon,
 } from 'lucide-react';
 import { useApp } from '../hooks/useApp';
@@ -30,6 +30,7 @@ const gestaoNavItems: NavItem[] = [
 const estudoNavItems: NavItem[] = [
   { to: '/estudo/leitura', label: 'Leitura Diária', icon: BookOpen, aliases: ['/leitura'] },
   { to: '/estudo/ingles', label: 'Inglês — Entrevista', icon: Languages },
+  { to: '/estudo/ingles-diario', label: 'Inglês Diário', icon: Video },
 ];
 
 const topNavItems = [

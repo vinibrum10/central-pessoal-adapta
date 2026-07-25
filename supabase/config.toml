@@ -1,0 +1,21 @@
+project_id = "muatkgwmljaqeifgwwno"
+
+# youtube-oauth-callback é o ÚNICO endpoint público deste conjunto: recebe o
+# redirecionamento do Google (uma navegação de navegador, sem
+# Authorization: Bearer <jwt>) e valida a segurança inteiramente pelo `state`
+# OAuth de uso único (ver supabase/functions/youtube-oauth-callback/index.ts).
+# Todas as demais exigem um usuário Supabase autenticado.
+[functions.youtube-oauth-start]
+verify_jwt = true
+
+[functions.youtube-oauth-callback]
+verify_jwt = false
+
+[functions.youtube-oauth-status]
+verify_jwt = true
+
+[functions.youtube-playlist]
+verify_jwt = true
+
+[functions.youtube-oauth-disconnect]
+verify_jwt = true

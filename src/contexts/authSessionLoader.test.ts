@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AUTH_TIMEOUT_MS, resolveInitialAuthState, type AuthStateDeps } from './authSessionLoader';
+import {
+  AUTH_TIMEOUT_MS,
+  createAuthStateChangeHandler,
+  resolveInitialAuthState,
+  type AuthStateChangeDeps,
+  type AuthStateDeps,
+} from './authSessionLoader';
 import type { Session, User } from '@supabase/supabase-js';
 import type { PerfilUsuario } from '../types';
 import type { UserPermission } from '../utils/permissions';
@@ -231,5 +237,130 @@ describe('resolveInitialAuthState', () => {
 
       await expect(promise).resolves.toEqual({ session, user, perfil: null, permissoes: [] });
     });
+  });
+});
+
+describe('createAuthStateChangeHandler', () => {
+  function makeChangeDeps(overrides: Partial<AuthStateChangeDeps> = {}): AuthStateChangeDeps {
+    return {
+      fetchPerfil: vi.fn().mockResolvedValue(null),
+      fetchPermissoes: vi.fn().mockResolvedValue([]),
+      ensureProfileExists: vi.fn().mockResolvedValue(undefined),
+      updateUltimoAcesso: vi.fn().mockResolvedValue('2026-07-25T00:00:00.000Z'),
+      ...overrides,
+    };
+  }
+
+  it('o listener retornado NUNCA é async — chamá-lo não produz uma Promise (é isso que evita o deadlock do GoTrueClient)', () => {
+    const deps = makeChangeDeps();
+    const handler = createAuthStateChangeHandler(deps, { onSessionChange: vi.fn(), onSecondaryDataLoaded: vi.fn() });
+
+    const result: unknown = handler('SIGNED_IN', makeSession(makeUser()));
+
+    expect(result).toBeUndefined();
+    expect(result instanceof Promise).toBe(false);
+  });
+
+  it('onSessionChange é chamado de forma síncrona, antes do trabalho assíncrono ser sequer agendado', () => {
+    const deps = makeChangeDeps();
+    const callOrder: string[] = [];
+    const onSessionChange = vi.fn(() => callOrder.push('onSessionChange'));
+    const scheduleDeferred = vi.fn(() => callOrder.push('scheduleDeferred'));
+    const handler = createAuthStateChangeHandler(deps, { onSessionChange, onSecondaryDataLoaded: vi.fn() }, scheduleDeferred);
+    const user = makeUser();
+    const session = makeSession(user);
+
+    handler('SIGNED_IN', session);
+
+    expect(onSessionChange).toHaveBeenCalledWith(session, user);
+    expect(callOrder).toEqual(['onSessionChange', 'scheduleDeferred']);
+  });
+
+  it('nunca chama getSession/consultas do Supabase diretamente dentro do listener — só agenda via scheduleDeferred', () => {
+    const deps = makeChangeDeps();
+    const scheduleDeferred = vi.fn();
+    const handler = createAuthStateChangeHandler(deps, { onSessionChange: vi.fn(), onSecondaryDataLoaded: vi.fn() }, scheduleDeferred);
+
+    handler('SIGNED_IN', makeSession(makeUser()));
+
+    expect(deps.fetchPerfil).not.toHaveBeenCalled();
+    expect(scheduleDeferred).toHaveBeenCalledTimes(1);
+  });
+
+  it('o trabalho adiado carrega perfil, permissões e último acesso, e entrega tudo via onSecondaryDataLoaded', async () => {
+    const user = makeUser();
+    const perfil = makePerfil();
+    const permissoes = [{ modulo: 'metas' as const, acao: 'visualizar' as const, permitido: true }];
+    const deps = makeChangeDeps({
+      fetchPerfil: vi.fn().mockResolvedValue(perfil),
+      fetchPermissoes: vi.fn().mockResolvedValue(permissoes),
+      updateUltimoAcesso: vi.fn().mockResolvedValue('2026-07-25T10:00:00.000Z'),
+    });
+    const onSecondaryDataLoaded = vi.fn();
+    let deferredRun: (() => void) | null = null;
+    const handler = createAuthStateChangeHandler(deps, { onSessionChange: vi.fn(), onSecondaryDataLoaded }, run => { deferredRun = run; });
+
+    handler('SIGNED_IN', makeSession(user));
+    expect(onSecondaryDataLoaded).not.toHaveBeenCalled();
+
+    deferredRun!();
+    await vi.waitFor(() => expect(onSecondaryDataLoaded).toHaveBeenCalledWith({
+      perfil,
+      permissoes,
+      ultimoAcesso: '2026-07-25T10:00:00.000Z',
+    }));
+  });
+
+  it('cria o perfil (fallback OAuth) quando fetchPerfil retorna null na primeira vez', async () => {
+    const user = makeUser();
+    const perfil = makePerfil();
+    const fetchPerfil = vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(perfil);
+    const deps = makeChangeDeps({ fetchPerfil });
+    const onSecondaryDataLoaded = vi.fn();
+    let deferredRun: (() => void) | null = null;
+    const handler = createAuthStateChangeHandler(deps, { onSessionChange: vi.fn(), onSecondaryDataLoaded }, run => { deferredRun = run; });
+
+    handler('SIGNED_IN', makeSession(user));
+    deferredRun!();
+
+    await vi.waitFor(() => expect(deps.ensureProfileExists).toHaveBeenCalledWith(user));
+    await vi.waitFor(() => expect(onSecondaryDataLoaded).toHaveBeenCalledWith(expect.objectContaining({ perfil })));
+  });
+
+  it('evento INITIAL_SESSION: atualiza a sessão mas NÃO dispara a busca de dados secundários (evita consulta duplicada com loadInitialAuthState)', () => {
+    const deps = makeChangeDeps();
+    const onSessionChange = vi.fn();
+    const scheduleDeferred = vi.fn();
+    const handler = createAuthStateChangeHandler(deps, { onSessionChange, onSecondaryDataLoaded: vi.fn() }, scheduleDeferred);
+    const user = makeUser();
+    const session = makeSession(user);
+
+    handler('INITIAL_SESSION', session);
+
+    expect(onSessionChange).toHaveBeenCalledWith(session, user);
+    expect(scheduleDeferred).not.toHaveBeenCalled();
+  });
+
+  it('sessão nula (logout): limpa os dados secundários de forma síncrona, sem agendar nada', () => {
+    const deps = makeChangeDeps();
+    const onSecondaryDataLoaded = vi.fn();
+    const scheduleDeferred = vi.fn();
+    const handler = createAuthStateChangeHandler(deps, { onSessionChange: vi.fn(), onSecondaryDataLoaded }, scheduleDeferred);
+
+    handler('SIGNED_OUT', null);
+
+    expect(onSecondaryDataLoaded).toHaveBeenCalledWith({ perfil: null, permissoes: [], ultimoAcesso: null });
+    expect(scheduleDeferred).not.toHaveBeenCalled();
+  });
+
+  it('por padrão usa setTimeout(..., 0) real para adiar — sai do call stack síncrono do listener', async () => {
+    const deps = makeChangeDeps({ fetchPerfil: vi.fn().mockResolvedValue(makePerfil()) });
+    const onSecondaryDataLoaded = vi.fn();
+    const handler = createAuthStateChangeHandler(deps, { onSessionChange: vi.fn(), onSecondaryDataLoaded });
+
+    handler('SIGNED_IN', makeSession(makeUser()));
+    expect(onSecondaryDataLoaded).not.toHaveBeenCalled(); // ainda não rodou — foi adiado de verdade
+
+    await vi.waitFor(() => expect(onSecondaryDataLoaded).toHaveBeenCalled());
   });
 });

@@ -3,7 +3,14 @@ import type { User, Session } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured, modoLocalAtivo } from '../lib/supabase';
 import type { RoleUsuario, StatusUsuario, TipoAcesso, PerfilUsuario } from '../types';
 import type { UserPermission } from '../utils/permissions';
-import { carregarPerfil, ensureProfileExists, loadInitialAuthState } from './authSessionLoader';
+import {
+  carregarPerfil,
+  createAuthStateChangeHandler,
+  ensureProfileExists,
+  fetchPermissoes,
+  loadInitialAuthState,
+  updateUltimoAcesso,
+} from './authSessionLoader';
 
 interface AuthContextType {
   user: User | null;
@@ -51,16 +58,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setPermissoes((data ?? []) as UserPermission[]);
   }, []);
 
-  const atualizarUltimoAcesso = useCallback(async (userId: string) => {
-    if (!isSupabaseConfigured) return;
-    const agora = new Date().toISOString();
-    await supabase
-      .from('profiles')
-      .update({ ultimo_acesso: agora, updated_at: agora })
-      .eq('id', userId);
-    setUltimoAcesso(agora);
-  }, []);
-
   const recarregarPerfil = useCallback(async () => {
     if (!isSupabaseConfigured || !user) return;
     const p = await carregarPerfil(user.id);
@@ -85,28 +82,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
-      setSession(newSession);
-      const u = newSession?.user ?? null;
-      setUser(u);
-      if (u) {
-        let p = await carregarPerfil(u.id);
-        if (!p && u.email) {
-          // Profile não existe — criar como usuario ativo (fallback para OAuth)
-          await ensureProfileExists(u);
-          p = await carregarPerfil(u.id);
-        }
-        setPerfil(p);
-        if (u) {
-          await carregarPermissoes(u.id);
-          await atualizarUltimoAcesso(u.id);
-        }
-      } else {
-        setPerfil(null);
-        setPermissoes([]);
-        setUltimoAcesso(null);
-      }
-    });
+    // O listener NUNCA é async e nunca faz `await` diretamente — ver o
+    // comentário completo em createAuthStateChangeHandler (authSessionLoader.ts)
+    // sobre por que um callback async aqui pode travar o cliente Supabase
+    // inteiro (inclusive chamadas getSession() feitas em outros lugares do
+    // app, como a do Inglês Diário).
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      createAuthStateChangeHandler(
+        { fetchPerfil: carregarPerfil, fetchPermissoes, ensureProfileExists, updateUltimoAcesso },
+        {
+          onSessionChange: (newSession, u) => {
+            setSession(newSession);
+            setUser(u);
+          },
+          onSecondaryDataLoaded: ({ perfil, permissoes, ultimoAcesso }) => {
+            setPerfil(perfil);
+            setPermissoes(permissoes);
+            setUltimoAcesso(ultimoAcesso);
+          },
+        },
+      ),
+    );
 
     return () => subscription.unsubscribe();
   }, []);
