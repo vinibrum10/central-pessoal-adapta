@@ -1,0 +1,1757 @@
+=====================================================================
+ETAPA 3 — INGLÊS DIÁRIO — EVIDÊNCIAS DA CORREÇÃO
+Gerado em: 2026-07-24
+=====================================================================
+
+---------------------------------------------------------------------
+1. RELATÓRIO
+---------------------------------------------------------------------
+
+1.1 Rota adicionada
+    /estudo/ingles-diario -> InglesDiarioPage (src/pages/InglesDiario.tsx)
+    Registrada em src/App.tsx, dentro do mesmo bloco <Routes> protegido
+    (Layout + ProtectedRoute) usado por todas as outras páginas internas.
+
+1.2 Item de menu adicionado
+    "Inglês Diário" (ícone Video, lucide-react), adicionado ao array
+    estudoNavItems em src/layouts/Layout.tsx, imediatamente após o item
+    existente "Inglês — Entrevista". Esse array é o único usado nos três
+    pontos de renderização do menu (sidebar desktop colapsada, sidebar
+    desktop expandida, gaveta mobile) — não foi criado nenhum segundo
+    sistema de navegação.
+
+1.3 Confirmação de preservação do Modo Entrevista
+    - src/pages/Ingles.tsx: NÃO MODIFICADO.
+    - Rota /estudo/ingles: mantida, apontando para InglesPage, sem
+      Navigate/redirect.
+    - Item de menu "Inglês — Entrevista": mantido, mesma posição,
+      mesmo ícone (Languages), mesmo label.
+    - Verificado por teste de texto-fonte (src/App.test.ts,
+      src/layouts/Layout.test.ts) E por navegação real no navegador de
+      preview (ver seção 2).
+
+1.4 Rótulo "Reconectar" corrigido
+    Extraída a lógica pura do rótulo do botão principal de
+    ConnectYoutubeStep.tsx para um novo arquivo
+    src/components/english/daily/connectYoutubeStepLabels.ts, testável
+    sem renderizar componente:
+      - RECONNECT_STATUSES = { token_invalid, popup_closed,
+        popup_failed_to_open, authorization_timeout } -> "Reconectar ao
+        YouTube" (reconexão de verdade: token que existiu nesta execução
+        e expirou/foi interrompido).
+      - authorization_denied / unknown_error -> "Tentar novamente" (não é
+        reconexão, é nova tentativa).
+      - 'ready' (nunca autorizado nesta execução) -> sempre "Conectar ao
+        YouTube", INDEPENDENTE de existir playlist salva em
+        youtube_playlist_settings.
+    ConnectYoutubeStep.tsx foi atualizado para usar essa função e não
+    recebe mais a prop hasSavedPlaylist (removida). A configuração salva
+    (settings) e o estado de autorização (authState) continuam
+    logicamente e visualmente separados no controller/hook/componentes.
+
+1.5 Segurança da Etapa 2 reconfirmada (nenhuma regressão)
+    Buscas feitas nos arquivos desta entrega (Etapa 3):
+      - Nenhuma importação de getInMemoryYoutubeAccessToken() fora de
+        src/services/youtubeApiClient.ts.
+      - Nenhum componente/hook/controller recebe prop accessToken.
+      - Nenhum estado React (useState) contém token — DailyVideoConnectionState
+        não tem campo de token; authState (YoutubeAuthState) também não.
+      - Nenhuma escrita em Supabase/localStorage/sessionStorage/IndexedDB/
+        localForage/cookie/arquivo/log/URL contendo token nos arquivos
+        novos ou alterados.
+      - Teste explícito no controller (dailyVideoConnectionController.test.ts):
+        "nenhum campo do estado público é ou contém um token" — verifica
+        JSON.stringify(state) contra /access[_-]?token/i.
+
+1.6 Testes
+    Ver contagens reais na seção 3 (resultados de comandos).
+    Novos arquivos de teste desta correção:
+      - src/App.test.ts (rotas)
+      - src/layouts/Layout.test.ts (menu)
+      - src/components/english/daily/connectYoutubeStepLabels.test.ts (rótulo)
+    Teste pré-existente da Etapa 3 mantido e ainda passando:
+      - src/services/english/dailyVideoConnectionController.test.ts (17 testes)
+
+1.7 Limitações que dependem de navegador real e Supabase
+    - Este ambiente de preview NÃO tem uma sessão Supabase autenticada
+      real (.env.local aponta para um projeto Supabase real, então
+      modoLocalAtivo é false — não há bypass local). Por isso:
+        * Não foi possível verificar visualmente os botões de conexão,
+          o clique real em "Conectar ao YouTube"/"Reconectar ao YouTube",
+          a abertura do popup do Google, nem o fluxo completo de
+          descoberta/validação de playlist com dados reais do YouTube.
+        * Não foi possível confirmar visualmente a aparição do item
+          "Inglês Diário" no menu renderizado (a tela de login aparece
+          antes do menu).
+      O que FOI verificado de forma real (não simulada) nesta correção:
+        * Navegação direta do navegador para /estudo/ingles-diario e para
+          /estudo/ingles (incluindo o equivalente a um refresh, já que
+          cada navigate() é uma carga completa da página) — ambas as
+          rotas resolvem sem erro, sem crash, sem tela em branco, e sem
+          nenhum erro no console.
+        * window.location.pathname confirma que a URL correta permanece
+          após o carregamento, ou seja, nenhuma das duas rotas redireciona
+          para a outra nem para uma rota de erro.
+        * A tela exibida (formulário de login) é o comportamento correto
+          e esperado do ProtectedRoute para um visitante não autenticado —
+          não uma migração de dados fictícios nem uma simulação de sucesso.
+      - A migration (supabase/migrations/20260723_english_daily_video.sql)
+        NÃO foi aplicada nesta correção (instrução explícita do usuário).
+      - Comportamentos como "o popup não abre ao montar a página" e
+        "somente os botões chamam authorizeYoutube()/
+        authorizeYoutubeWithConsent()" foram comprovados por teste de
+        lógica no controller (dailyVideoConnectionController.test.ts),
+        não por clique real em um popup do Google — isso exigiria uma
+        sessão autenticada real e uma conta Google real, fora do alcance
+        deste ambiente.
+
+
+---------------------------------------------------------------------
+2. VERIFICAÇÃO REAL DE NAVEGAÇÃO (navegador de preview, localhost:5173)
+---------------------------------------------------------------------
+
+Passo 1 — navigate para http://localhost:5173/estudo/ingles-diario
+  window.location.pathname -> "/estudo/ingles-diario"
+  console (onlyErrors) -> "No console logs."
+  Resultado: rota resolvida, sem erro, sem redirecionamento.
+
+Passo 2 — navigate para http://localhost:5173/estudo/ingles
+  (após aguardar o carregamento inicial do app — estado "CARREGANDO…")
+  window.location.pathname -> "/estudo/ingles"
+  get_page_text -> tela de login exibida ("Entrar na sua conta",
+    "Entrar com Google", "Sem conta Supabase? O app funciona localmente
+    sem login.") — comportamento correto do ProtectedRoute para visitante
+    não autenticado, NÃO um erro/crash.
+  console (onlyErrors) -> "No console logs."
+  Resultado: rota preservada, Modo Entrevista continua sendo o destino
+  de /estudo/ingles, sem conflito com a rota nova.
+
+
+---------------------------------------------------------------------
+3. RESULTADOS REAIS DOS COMANDOS (§6)
+---------------------------------------------------------------------
+
+$ npx tsc --noEmit -p tsconfig.json
+(sem saída — exit code 0)
+EXIT: 0
+
+$ npx vitest run src/services/english/dailyVideoConnectionController.test.ts
+ RUN  v4.1.9 C:/Users/Vinicius/Documents/1.0-Desenvolvimentos_Projetos/2.GestaoVinicius
+ Test Files  1 passed (1)
+      Tests  17 passed (17)
+   Duration  630ms
+
+$ npx vitest run src/services/youtubeApiClient.test.ts src/services/youtubeAuth.test.ts src/services/youtubePlaylistDiscovery.test.ts src/services/english/youtubePlaylistSettingsRepository.test.ts
+ RUN  v4.1.9 C:/Users/Vinicius/Documents/1.0-Desenvolvimentos_Projetos/2.GestaoVinicius
+ Test Files  4 passed (4)
+      Tests  85 passed (85)
+   Duration  713ms
+
+$ npx vitest run
+ RUN  v4.1.9 C:/Users/Vinicius/Documents/1.0-Desenvolvimentos_Projetos/2.GestaoVinicius
+ Test Files  24 passed (24)
+      Tests  272 passed (272)
+   Duration  2.04s
+
+$ npm run build
+> adapta-central-pessoal@1.0.0 build
+> tsc && vite build
+
+vite v5.4.21 building for production...
+3188 modules transformed.
+(!) [plugin vite:reporter] src/services/googleCalendar.ts is dynamically
+    imported by calendarSuggestionService.ts but also statically imported
+    by AgendaTempo.tsx, Configuracoes.tsx — dynamic import will not move
+    module into another chunk.
+    [aviso pré-existente, não relacionado a esta correção]
+dist/index.html                     1.26 kB │ gzip:   0.59 kB
+dist/assets/index-DvMNTDEz.css      83.51 kB │ gzip:  13.69 kB
+dist/assets/icsParser-BOfjGN40.js    1.21 kB │ gzip:   0.74 kB
+dist/assets/index-CMvytctK.js    2,066.65 kB │ gzip: 569.24 kB
+(!) Some chunks are larger than 500 kB after minification.
+    [aviso pré-existente, não relacionado a esta correção]
+✓ built in 4.14s
+EXIT: 0
+
+$ git diff --check
+warning: in the working copy of '.claude/launch.json', LF will be
+replaced by CRLF the next time Git touches it
+[aviso pré-existente de line-ending, não é um erro de conflito/whitespace
+ introduzido por esta correção]
+EXIT: 0
+
+$ git status --short
+ M .claude/launch.json
+ M src/App.tsx
+ M src/layouts/Layout.tsx
+?? src/App.test.ts
+?? src/components/english/daily/
+?? src/hooks/useDailyVideoConnection.ts
+?? src/layouts/Layout.test.ts
+?? src/pages/InglesDiario.tsx
+?? src/services/english/dailyVideoConnectionController.test.ts
+?? src/services/english/dailyVideoConnectionController.ts
+?? src/services/english/youtubePlaylistSettingsRepository.test.ts
+?? src/services/english/youtubePlaylistSettingsRepository.ts
+?? src/services/youtubeApiClient.test.ts
+?? src/services/youtubeApiClient.ts
+?? src/services/youtubeAuth.test.ts
+?? src/services/youtubeAuth.ts
+?? src/services/youtubePlaylistDiscovery.test.ts
+?? src/services/youtubePlaylistDiscovery.ts
+?? src/types/dailyVideoEnglish.ts
+?? supabase/migrations/20260723_english_daily_video.sql
+
+Nada foi commitado, feito deploy ou push nesta correção — apenas
+alterações no working directory, conforme instruído.
+
+
+---------------------------------------------------------------------
+4. DIFFS REAIS DOS ARQUIVOS MODIFICADOS NESTA CORREÇÃO
+---------------------------------------------------------------------
+
+--- src/App.tsx (git diff) ---
+diff --git a/src/App.tsx b/src/App.tsx
+index 1533d6f..89dc70d 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -11,6 +11,7 @@ import { AgendaTempoPage } from './pages/AgendaTempo';
+ import { OrcamentoPage } from './pages/Orcamento';
+ import { LeituraDiariaPage } from './pages/LeituraDiaria';
+ import { InglesPage } from './pages/Ingles';
++import { InglesDiarioPage } from './pages/InglesDiario';
+ import { ConfiguracoesPage } from './pages/Configuracoes';
+ import { UsuariosPage } from './pages/Usuarios';
+ import { RedefinirSenhaPage } from './pages/RedefinirSenha';
+@@ -45,6 +46,7 @@ function App() {
+                     <Route path="/leitura" element={<LeituraDiariaPage />} />
+                     <Route path="/estudo/leitura" element={<LeituraDiariaPage />} />
+                     <Route path="/estudo/ingles" element={<InglesPage />} />
++                    <Route path="/estudo/ingles-diario" element={<InglesDiarioPage />} />
+                     <Route path="/configuracoes" element={<ConfiguracoesPage />} />
+                     <Route path="/usuarios" element={<UsuariosPage />} />
+                   </Routes>
+
+--- src/layouts/Layout.tsx (git diff) ---
+diff --git a/src/layouts/Layout.tsx b/src/layouts/Layout.tsx
+index 9d45cae..3b88861 100644
+--- a/src/layouts/Layout.tsx
++++ b/src/layouts/Layout.tsx
+@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
+ import {
+   LayoutDashboard, Target, ListChecks, Clock,
+   Wallet, Settings, Menu, X, Moon, Sun, BookOpen, LogOut,
+-  ChevronLeft, ChevronRight, Users, Layers, ChevronDown, Languages,
++  ChevronLeft, ChevronRight, Users, Layers, ChevronDown, Languages, Video,
+   type LucideIcon,
+ } from 'lucide-react';
+ import { useApp } from '../hooks/useApp';
+@@ -30,6 +30,7 @@ const gestaoNavItems: NavItem[] = [
+ const estudoNavItems: NavItem[] = [
+   { to: '/estudo/leitura', label: 'Leitura Diária', icon: BookOpen, aliases: ['/leitura'] },
+   { to: '/estudo/ingles', label: 'Inglês — Entrevista', icon: Languages },
++  { to: '/estudo/ingles-diario', label: 'Inglês Diário', icon: Video },
+ ];
+
+ const topNavItems = [
+
+NOTA: src/components/english/daily/ConnectYoutubeStep.tsx e
+src/pages/InglesDiario.tsx aparecem como arquivos NOVOS (??) no
+git status, não como modificados — a Etapa 3 inteira nunca havia sido
+commitada, então "git diff" não produz um diff tradicional para eles.
+Por isso o conteúdo INTEGRAL de ambos é apresentado na seção 5 (e essa
+é justamente a forma correta de mostrar "o que mudou": o arquivo inteiro,
+já que antes desta branch eles não existiam).
+
+
+---------------------------------------------------------------------
+5. CONTEÚDO INTEGRAL DOS ARQUIVOS EXIGIDOS (§7)
+---------------------------------------------------------------------
+
+=====================================================================
+5.1 src/pages/InglesDiario.tsx
+=====================================================================
+import { PlayCircle } from 'lucide-react';
+import { PageHeader } from '../components/DesignSystem';
+import { ConnectYoutubeStep } from '../components/english/daily/ConnectYoutubeStep';
+import { PlaylistResolutionPanel } from '../components/english/daily/PlaylistResolutionPanel';
+import { RecentVideosPanel } from '../components/english/daily/RecentVideosPanel';
+import { useAuth } from '../contexts/AuthContext';
+import { useDailyVideoConnection } from '../hooks/useDailyVideoConnection';
+
+// Página da Etapa 3 da V1 "Inglês Diário" — registrada em /estudo/ingles-diario
+// (rota nova e independente, ver src/App.tsx e src/layouts/Layout.tsx). Não
+// substitui nem altera src/pages/Ingles.tsx (Modo Entrevista), que continua
+// intocado em /estudo/ingles.
+export function InglesDiarioPage() {
+  const { user } = useAuth();
+  const connection = useDailyVideoConnection(user?.id ?? null);
+
+  const isConnected = connection.authState.status === 'authorized';
+
+  // Só mostra a lista de vídeos depois que uma playlist está confirmada
+  // (validação bem-sucedida ou descoberta com exatamente uma encontrada).
+  const playlistConfirmed =
+    connection.validation?.kind === 'valid' || connection.discovery?.kind === 'found';
+
+  const selectedVideo = connection.videos?.kind === 'videos'
+    ? connection.videos.videos.find(video => video.videoId === connection.selectedVideoId) ?? null
+    : null;
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Inglês Diário"
+        title="Vídeo de hoje"
+        subtitle="Conecte sua conta do YouTube, localize a playlist 'SGP — Inglês' e escolha o vídeo que você estudou hoje."
+      />
+
+      {!isConnected && (
+        <ConnectYoutubeStep
+          authState={connection.authState}
+          onConnect={connection.connect}
+          onConnectWithConsent={connection.connectWithConsent}
+        />
+      )}
+
+      {isConnected && !playlistConfirmed && (
+        <PlaylistResolutionPanel
+          settingsStatus={connection.settingsStatus}
+          settingsError={connection.settingsError}
+          validation={connection.validation}
+          validationLoading={connection.validationLoading}
+          discovery={connection.discovery}
+          discoveryLoading={connection.discoveryLoading}
+          onFindPlaylistAgain={connection.findPlaylistAgain}
+          onRetryValidation={connection.retryValidation}
+          onRetryDiscovery={connection.retryDiscovery}
+          onContinueDiscovery={connection.continueDiscovery}
+        />
+      )}
+
+      {isConnected && playlistConfirmed && (
+        <RecentVideosPanel
+          videos={connection.videos}
+          videosLoading={connection.videosLoading}
+          selectedVideoId={connection.selectedVideoId}
+          onSelectVideo={connection.selectVideo}
+          onRetryLoadVideos={connection.retryLoadVideos}
+        />
+      )}
+
+      {selectedVideo && (
+        <div className="flex items-center gap-2 rounded-lg border border-primary-200 bg-primary-50/60 p-3 text-sm text-primary-800 dark:border-primary-300/20 dark:bg-primary-500/10 dark:text-primary-200">
+          <PlayCircle size={16} />
+          Vídeo selecionado para hoje: <strong>{selectedVideo.title}</strong>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+=====================================================================
+5.2 src/hooks/useDailyVideoConnection.ts
+=====================================================================
+// Adaptador React fino sobre src/services/english/dailyVideoConnectionController.ts.
+// Toda a lógica de orquestração (quando autorizar, validar, descobrir, carregar
+// vídeos) já está no controller e é testada lá sem precisar renderizar nada —
+// este hook só liga o controller ao ciclo de vida do componente (useEffect) e
+// republica o estado via useState.
+
+import { useEffect, useRef, useState } from 'react';
+import {
+  authorizeYoutube,
+  authorizeYoutubeWithConsent,
+  getYoutubeAuthState,
+  preloadGoogleIdentityServices,
+  subscribeToYoutubeAuthState,
+} from '../services/youtubeAuth';
+import {
+  discoverPlaylistByTitle,
+  getRecentPlaylistVideos,
+  validatePersistedPlaylist,
+} from '../services/youtubePlaylistDiscovery';
+import {
+  getYoutubePlaylistSettings,
+  saveYoutubePlaylistSettings,
+  touchYoutubePlaylistLastVerifiedAt,
+} from '../services/english/youtubePlaylistSettingsRepository';
+import {
+  createDailyVideoConnectionController,
+  type DailyVideoConnectionController,
+  type DailyVideoConnectionState,
+} from '../services/english/dailyVideoConnectionController';
+
+const PRODUCTION_DEPS = {
+  getYoutubeAuthState,
+  subscribeToYoutubeAuthState,
+  authorizeYoutube,
+  authorizeYoutubeWithConsent,
+  getYoutubePlaylistSettings,
+  saveYoutubePlaylistSettings,
+  touchYoutubePlaylistLastVerifiedAt,
+  discoverPlaylistByTitle,
+  validatePersistedPlaylist,
+  getRecentPlaylistVideos,
+};
+
+export interface UseDailyVideoConnectionResult extends DailyVideoConnectionState {
+  connect: () => Promise<void>;
+  connectWithConsent: () => Promise<void>;
+  retryDiscovery: () => Promise<void>;
+  continueDiscovery: () => Promise<void>;
+  findPlaylistAgain: () => Promise<void>;
+  retryValidation: () => Promise<void>;
+  retryLoadVideos: () => Promise<void>;
+  selectVideo: (videoId: string) => void;
+}
+
+export function useDailyVideoConnection(userId: string | null): UseDailyVideoConnectionResult {
+  const controllerRef = useRef<DailyVideoConnectionController | null>(null);
+  if (!controllerRef.current) {
+    // Criação do controller é pura (sem side effects) — a inscrição no estado
+    // de autorização e o carregamento inicial só acontecem dentro do
+    // useEffect abaixo, nunca durante a renderização.
+    controllerRef.current = createDailyVideoConnectionController(PRODUCTION_DEPS);
+  }
+  const controller = controllerRef.current;
+  const [state, setState] = useState<DailyVideoConnectionState>(() => controller.getState());
+
+  useEffect(() => {
+    // Carrega o script do GIS de forma passiva (sem popup, sem consentimento)
+    // para deixar o botão de conectar pronto mais rápido — nunca abre a
+    // janela de autorização sozinho.
+    preloadGoogleIdentityServices().catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = controller.subscribe(setState);
+    if (userId) void controller.initialize(userId);
+    return () => {
+      unsubscribe();
+      controller.dispose();
+    };
+  }, [controller, userId]);
+
+  return {
+    ...state,
+    connect: controller.connect,
+    connectWithConsent: controller.connectWithConsent,
+    retryDiscovery: controller.retryDiscovery,
+    continueDiscovery: controller.continueDiscovery,
+    findPlaylistAgain: controller.findPlaylistAgain,
+    retryValidation: controller.retryValidation,
+    retryLoadVideos: controller.retryLoadVideos,
+    selectVideo: controller.selectVideo,
+  };
+}
+
+
+=====================================================================
+5.3 src/services/english/dailyVideoConnectionController.ts
+=====================================================================
+// Orquestração da Etapa 3 (Inglês Diário — V1): autorização do YouTube,
+// configuração/descoberta da playlist "SGP — Inglês" e vídeos recentes.
+//
+// Deliberadamente NÃO é um hook React — é um controlador simples (estado +
+// ações) que recebe suas dependências por injeção (`DailyVideoConnectionDeps`).
+// Isso existe porque o projeto não tem infraestrutura de teste de componentes
+// React (não há @testing-library/react nas devDependencies, e nenhum teste
+// existente no repositório renderiza um componente) — então toda a lógica que
+// precisa ser testada (quando o popup pode abrir, quando a validação/descoberta
+// roda, o que acontece em cada resultado) vive aqui, testável diretamente com
+// funções e mocks, sem precisar renderizar nada. O hook React
+// (src/hooks/useDailyVideoConnection.ts) é apenas um adaptador fino por cima
+// deste controlador.
+//
+// Regra de segurança mais importante deste arquivo: NUNCA chama
+// getInMemoryYoutubeAccessToken() nem aceita/repassa um accessToken — as
+// funções injetadas (discoverPlaylistByTitle, validatePersistedPlaylist,
+// getRecentPlaylistVideos) já resolvem o token internamente (Etapa 2). Este
+// controlador só decide QUANDO chamá-las.
+
+import type {
+  DiscoveredPlaylist,
+  PlaylistDiscoveryResult,
+  PlaylistValidationResult,
+  RecentVideosResult,
+  YoutubeAuthState,
+  YoutubePlaylistSettingsRow,
+} from '../../types/dailyVideoEnglish';
+
+export interface DailyVideoConnectionDeps {
+  getYoutubeAuthState: () => YoutubeAuthState;
+  subscribeToYoutubeAuthState: (listener: (state: YoutubeAuthState) => void) => () => void;
+  authorizeYoutube: () => Promise<YoutubeAuthState>;
+  authorizeYoutubeWithConsent: () => Promise<YoutubeAuthState>;
+  getYoutubePlaylistSettings: (userId: string) => Promise<YoutubePlaylistSettingsRow | null>;
+  saveYoutubePlaylistSettings: (
+    userId: string,
+    playlist: { playlistId: string; playlistTitle: string },
+  ) => Promise<YoutubePlaylistSettingsRow>;
+  touchYoutubePlaylistLastVerifiedAt: (userId: string) => Promise<YoutubePlaylistSettingsRow>;
+  discoverPlaylistByTitle: (options?: {
+    maxPages?: number;
+    startPageToken?: string;
+    previousMatches?: DiscoveredPlaylist[];
+  }) => Promise<PlaylistDiscoveryResult>;
+  validatePersistedPlaylist: (
+    playlistId: string | null | undefined,
+    options?: { maxPages?: number },
+  ) => Promise<PlaylistValidationResult>;
+  getRecentPlaylistVideos: (
+    playlistId: string,
+    options?: { maxPages?: number; limit?: number },
+  ) => Promise<RecentVideosResult>;
+}
+
+export interface DailyVideoConnectionState {
+  /** Estado público de autorização (src/services/youtubeAuth.ts) — nunca contém o token. */
+  authState: YoutubeAuthState;
+  settingsStatus: 'idle' | 'loading' | 'loaded' | 'error';
+  /** Configuração da playlist já salva no Supabase — só metadados, nunca token. */
+  settings: YoutubePlaylistSettingsRow | null;
+  settingsError: string | null;
+  validation: PlaylistValidationResult | null;
+  validationLoading: boolean;
+  discovery: PlaylistDiscoveryResult | null;
+  discoveryLoading: boolean;
+  videos: RecentVideosResult | null;
+  videosLoading: boolean;
+  selectedVideoId: string | null;
+}
+
+export interface DailyVideoConnectionController {
+  getState: () => DailyVideoConnectionState;
+  subscribe: (listener: (state: DailyVideoConnectionState) => void) => () => void;
+  /** Deve ser chamada uma vez, ao montar a página — nunca abre popup por conta própria. */
+  initialize: (userId: string) => Promise<void>;
+  /** Só deve ser chamada a partir de um clique explícito do usuário. */
+  connect: () => Promise<void>;
+  /** Só deve ser chamada a partir de um NOVO clique explícito (ex.: "Solicitar permissão novamente"). */
+  connectWithConsent: () => Promise<void>;
+  retryDiscovery: () => Promise<void>;
+  continueDiscovery: () => Promise<void>;
+  findPlaylistAgain: () => Promise<void>;
+  retryValidation: () => Promise<void>;
+  retryLoadVideos: () => Promise<void>;
+  selectVideo: (videoId: string) => void;
+  dispose: () => void;
+}
+
+function initialState(deps: DailyVideoConnectionDeps): DailyVideoConnectionState {
+  return {
+    authState: deps.getYoutubeAuthState(),
+    settingsStatus: 'idle',
+    settings: null,
+    settingsError: null,
+    validation: null,
+    validationLoading: false,
+    discovery: null,
+    discoveryLoading: false,
+    videos: null,
+    videosLoading: false,
+    selectedVideoId: null,
+  };
+}
+
+export function createDailyVideoConnectionController(
+  deps: DailyVideoConnectionDeps,
+): DailyVideoConnectionController {
+  let userId: string | null = null;
+  let state = initialState(deps);
+  let unsubscribeAuth: (() => void) | null = null;
+  const listeners = new Set<(state: DailyVideoConnectionState) => void>();
+
+  function setState(patch: Partial<DailyVideoConnectionState>): void {
+    state = { ...state, ...patch };
+    for (const listener of listeners) listener(state);
+  }
+
+  async function loadVideosFor(playlistId: string): Promise<void> {
+    setState({ videosLoading: true });
+    const videos = await deps.getRecentPlaylistVideos(playlistId);
+    setState({ videos, videosLoading: false });
+    if (userId && videos.kind === 'videos') {
+      // Melhor-esforço: não deve travar a tela de vídeos já carregada se falhar.
+      deps.touchYoutubePlaylistLastVerifiedAt(userId).catch(() => undefined);
+    }
+  }
+
+  async function runDiscovery(continuation?: {
+    startPageToken: string;
+    previousMatches: DiscoveredPlaylist[];
+  }): Promise<void> {
+    if (!userId) return;
+    setState({ discoveryLoading: true, discovery: continuation ? state.discovery : null });
+    const discovery = await deps.discoverPlaylistByTitle(
+      continuation
+        ? { startPageToken: continuation.startPageToken, previousMatches: continuation.previousMatches }
+        : {},
+    );
+    setState({ discovery, discoveryLoading: false });
+
+    if (discovery.kind === 'found') {
+      // Só salva a configuração quando existir exatamente uma playlist
+      // encontrada — nunca escolhe silenciosamente em caso de duplicidade.
+      const saved = await deps.saveYoutubePlaylistSettings(userId, discovery.playlist);
+      setState({ settings: saved });
+      await loadVideosFor(saved.playlist_id);
+    }
+    // not_found / duplicate / incomplete / error: só exibidos, sem ação automática.
+  }
+
+  async function validateAndLoad(): Promise<void> {
+    if (!userId) return;
+    const playlistId = state.settings?.playlist_id;
+    if (!playlistId) {
+      await runDiscovery();
+      return;
+    }
+
+    setState({ validationLoading: true, validation: null });
+    const validation = await deps.validatePersistedPlaylist(playlistId);
+    setState({ validation, validationLoading: false });
+
+    if (validation.kind === 'valid') {
+      await loadVideosFor(validation.playlist.playlistId);
+    }
+    // invalid_or_missing / inaccessible / auth_error / temporary_failure: a
+    // configuração salva NÃO é apagada aqui — a interface oferece "Localizar
+    // playlist novamente" (findPlaylistAgain) para o usuário decidir.
+  }
+
+  function onAuthStateChange(next: YoutubeAuthState): void {
+    const wasAuthorized = state.authState.status === 'authorized';
+    setState({ authState: next });
+    if (!wasAuthorized && next.status === 'authorized') {
+      void validateAndLoad();
+    }
+  }
+
+  return {
+    getState: () => state,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+
+    async initialize(forUserId: string) {
+      userId = forUserId;
+      if (!unsubscribeAuth) {
+        unsubscribeAuth = deps.subscribeToYoutubeAuthState(onAuthStateChange);
+      }
+
+      setState({ settingsStatus: 'loading', settingsError: null });
+      try {
+        const settings = await deps.getYoutubePlaylistSettings(forUserId);
+        setState({ settings, settingsStatus: 'loaded' });
+      } catch (err) {
+        setState({
+          settingsStatus: 'error',
+          settingsError: err instanceof Error ? err.message : 'Erro ao carregar a configuração da playlist.',
+        });
+      }
+
+      // "Playlist configurada" nunca é tratada como prova de autorização: só
+      // validamos/descobrimos se JÁ existir uma sessão autorizada em memória
+      // neste exato momento (ex.: o escopo já havia sido concedido antes,
+      // nesta mesma execução da página).
+      if (deps.getYoutubeAuthState().status === 'authorized') {
+        await validateAndLoad();
+      }
+    },
+
+    async connect() {
+      await deps.authorizeYoutube();
+    },
+
+    async connectWithConsent() {
+      await deps.authorizeYoutubeWithConsent();
+    },
+
+    async retryDiscovery() {
+      await runDiscovery();
+    },
+
+    async continueDiscovery() {
+      if (state.discovery?.kind !== 'incomplete' || !state.discovery.resumePageToken) return;
+      await runDiscovery({
+        startPageToken: state.discovery.resumePageToken,
+        previousMatches: state.discovery.playlistsSeenSoFar,
+      });
+    },
+
+    async findPlaylistAgain() {
+      setState({ validation: null });
+      await runDiscovery();
+    },
+
+    async retryValidation() {
+      await validateAndLoad();
+    },
+
+    async retryLoadVideos() {
+      const playlistId = state.validation?.kind === 'valid'
+        ? state.validation.playlist.playlistId
+        : state.settings?.playlist_id;
+      if (playlistId) await loadVideosFor(playlistId);
+    },
+
+    selectVideo(videoId: string) {
+      setState({ selectedVideoId: videoId });
+    },
+
+    dispose() {
+      unsubscribeAuth?.();
+      unsubscribeAuth = null;
+      listeners.clear();
+    },
+  };
+}
+
+
+=====================================================================
+5.4 src/components/english/daily/ConnectYoutubeStep.tsx
+=====================================================================
+import { AlertCircle, CheckCircle2, Loader2, PlugZap, ShieldAlert, XCircle } from 'lucide-react';
+import { Card, CardBody, CardHeader } from '../../Card';
+import { Button } from '../../Button';
+import type { YoutubeAuthState, YoutubeAuthStatus } from '../../../types/dailyVideoEnglish';
+import { getPrimaryActionLabel } from './connectYoutubeStepLabels';
+
+interface ConnectYoutubeStepProps {
+  authState: YoutubeAuthState;
+  onConnect: () => void;
+  onConnectWithConsent: () => void;
+}
+
+// Nenhuma destas ações pode ser chamada automaticamente por este componente —
+// elas só existem para serem passadas a um onClick de botão. O componente não
+// importa youtubeAuth.ts, não recebe accessToken e não guarda token em nenhum
+// estado/prop.
+export function ConnectYoutubeStep({ authState, onConnect, onConnectWithConsent }: ConnectYoutubeStepProps) {
+  const primaryActionLabel = getPrimaryActionLabel(authState.status);
+
+  if (authState.status === 'gis_loading') {
+    return (
+      <Card>
+        <CardBody className="flex items-center gap-2 py-6 text-sm text-surface-500 dark:text-surface-400">
+          <Loader2 size={16} className="animate-spin" />
+          Carregando integração com o Google...
+        </CardBody>
+      </Card>
+    );
+  }
+
+  if (authState.status === 'authorizing') {
+    return (
+      <Card>
+        <CardBody className="flex items-center gap-2 py-6 text-sm text-surface-500 dark:text-surface-400">
+          <Loader2 size={16} className="animate-spin" />
+          Abrindo a janela de autorização do Google...
+        </CardBody>
+      </Card>
+    );
+  }
+
+  if (authState.status === 'authorized') {
+    return (
+      <Card>
+        <CardBody className="flex items-center gap-2 py-4 text-sm text-success-700 dark:text-success-300">
+          <CheckCircle2 size={16} />
+          YouTube conectado nesta sessão.
+        </CardBody>
+      </Card>
+    );
+  }
+
+  if (authState.status === 'insufficient_scope') {
+    return (
+      <Card>
+        <CardHeader title="Permissão insuficiente" icon={<ShieldAlert size={18} />} />
+        <CardBody className="space-y-3">
+          <p className="text-sm leading-6 text-surface-600 dark:text-surface-300">
+            {authState.errorMessage ?? 'A permissão de leitura do YouTube não foi concedida.'}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="secondary" onClick={onConnect}>
+              Conectar novamente
+            </Button>
+            <Button type="button" variant="primary" icon={<PlugZap size={16} />} onClick={onConnectWithConsent}>
+              Solicitar permissão novamente
+            </Button>
+          </div>
+        </CardBody>
+      </Card>
+    );
+  }
+
+  const errorStatuses = new Set<YoutubeAuthStatus>([
+    'authorization_denied',
+    'token_invalid',
+    'popup_closed',
+    'popup_failed_to_open',
+    'authorization_timeout',
+    'config_error',
+    'unknown_error',
+  ]);
+
+  if (errorStatuses.has(authState.status)) {
+    const canRetry = authState.status !== 'config_error';
+    return (
+      <Card>
+        <CardHeader title="Não foi possível conectar ao YouTube" icon={<XCircle size={18} />} />
+        <CardBody className="space-y-3">
+          <p className="text-sm leading-6 text-surface-600 dark:text-surface-300">
+            {authState.errorMessage ?? 'Não foi possível concluir a conexão com o YouTube.'}
+          </p>
+          {canRetry && (
+            <Button type="button" variant="primary" icon={<PlugZap size={16} />} onClick={onConnect}>
+              {primaryActionLabel}
+            </Button>
+          )}
+        </CardBody>
+      </Card>
+    );
+  }
+
+  // 'ready' — nunca autorizado nesta execução do navegador. Sempre "Conectar",
+  // nunca "Reconectar" — independente de já existir playlist configurada.
+  return (
+    <Card>
+      <CardHeader
+        title="Conectar ao YouTube"
+        subtitle="Autoriza a leitura da sua playlist privada 'SGP — Inglês' (somente leitura)."
+        icon={<AlertCircle size={18} />}
+      />
+      <CardBody>
+        <Button type="button" variant="primary" icon={<PlugZap size={16} />} onClick={onConnect}>
+          {primaryActionLabel}
+        </Button>
+      </CardBody>
+    </Card>
+  );
+}
+
+
+=====================================================================
+5.4b src/components/english/daily/connectYoutubeStepLabels.ts (NOVO)
+=====================================================================
+// Lógica pura (sem JSX) do rótulo do botão principal de ConnectYoutubeStep.tsx —
+// extraída para cá para ser testável sem renderizar o componente (o projeto
+// não tem @testing-library/react instalado).
+import type { YoutubeAuthStatus } from '../../../types/dailyVideoEnglish';
+
+// Estados que representam uma reconexão de verdade — token que já existiu
+// nesta execução e ficou inválido/expirado, ou uma tentativa de autorização
+// que foi interrompida. Nenhum deles depende de haver ou não uma playlist
+// salva no Supabase: a existência de youtube_playlist_settings NUNCA prova
+// que existe (ou existiu) uma autorização ativa nesta página.
+export const RECONNECT_STATUSES = new Set<YoutubeAuthStatus>([
+  'token_invalid',
+  'popup_closed',
+  'popup_failed_to_open',
+  'authorization_timeout',
+]);
+
+export function getPrimaryActionLabel(status: YoutubeAuthStatus): string {
+  if (RECONNECT_STATUSES.has(status)) return 'Reconectar ao YouTube';
+  if (status === 'authorization_denied' || status === 'unknown_error') return 'Tentar novamente';
+  // 'ready' (nunca autorizado nesta execução) e qualquer outro caso residual.
+  return 'Conectar ao YouTube';
+}
+
+
+=====================================================================
+5.4c src/components/english/daily/connectYoutubeStepLabels.test.ts (NOVO)
+=====================================================================
+import { describe, expect, it } from 'vitest';
+import { getPrimaryActionLabel } from './connectYoutubeStepLabels';
+import type { YoutubeAuthStatus } from '../../../types/dailyVideoEnglish';
+
+describe('getPrimaryActionLabel', () => {
+  it('usa "Conectar ao YouTube" para \'ready\' — nunca "Reconectar", mesmo que exista playlist salva', () => {
+    // A função nem recebe informação de playlist salva: o rótulo depende
+    // somente do status de autorização, nunca de youtube_playlist_settings.
+    expect(getPrimaryActionLabel('ready')).toBe('Conectar ao YouTube');
+  });
+
+  it.each<YoutubeAuthStatus>(['token_invalid', 'popup_closed', 'popup_failed_to_open', 'authorization_timeout'])(
+    'usa "Reconectar ao YouTube" para o status "%s" (reconexão de verdade)',
+    status => {
+      expect(getPrimaryActionLabel(status)).toBe('Reconectar ao YouTube');
+    },
+  );
+
+  it.each<YoutubeAuthStatus>(['authorization_denied', 'unknown_error'])(
+    'usa "Tentar novamente" para o status "%s" (não é uma reconexão, é uma nova tentativa)',
+    status => {
+      expect(getPrimaryActionLabel(status)).toBe('Tentar novamente');
+    },
+  );
+
+  it('nunca usa "Reconectar" para status que não indicam token expirado/inválido/interrompido', () => {
+    const nonReconnectStatuses: YoutubeAuthStatus[] = [
+      'ready',
+      'gis_loading',
+      'authorizing',
+      'authorized',
+      'insufficient_scope',
+      'authorization_denied',
+      'config_error',
+      'unknown_error',
+    ];
+    for (const status of nonReconnectStatuses) {
+      expect(getPrimaryActionLabel(status)).not.toBe('Reconectar ao YouTube');
+    }
+  });
+});
+
+
+=====================================================================
+5.5 src/components/english/daily/PlaylistResolutionPanel.tsx
+=====================================================================
+import { AlertTriangle, ListVideo, RefreshCw, Search } from 'lucide-react';
+import { Card, CardBody, CardHeader } from '../../Card';
+import { Button } from '../../Button';
+import { LoadingState } from '../../DesignSystem';
+import type {
+  PlaylistDiscoveryResult,
+  PlaylistValidationResult,
+  YoutubeApiError,
+} from '../../../types/dailyVideoEnglish';
+import { DAILY_VIDEO_TARGET_PLAYLIST_TITLE } from '../../../types/dailyVideoEnglish';
+
+interface PlaylistResolutionPanelProps {
+  settingsStatus: 'idle' | 'loading' | 'loaded' | 'error';
+  settingsError: string | null;
+  validation: PlaylistValidationResult | null;
+  validationLoading: boolean;
+  discovery: PlaylistDiscoveryResult | null;
+  discoveryLoading: boolean;
+  onFindPlaylistAgain: () => void;
+  onRetryValidation: () => void;
+  onRetryDiscovery: () => void;
+  onContinueDiscovery: () => void;
+}
+
+function describeApiError(error: YoutubeApiError): string {
+  switch (error.kind) {
+    case 'unauthorized':
+      return 'Sua conexão com o YouTube expirou. Reconecte para continuar.';
+    case 'quota_exceeded':
+      return 'O limite de uso da API do YouTube foi atingido. Tente novamente mais tarde.';
+    case 'api_not_enabled':
+      return 'A API do YouTube não está habilitada para este projeto no Google Cloud Console.';
+    case 'insufficient_permissions':
+      return 'A autorização concedida não permite acessar suas playlists.';
+    case 'forbidden_other':
+      return 'Acesso negado ao consultar suas playlists.';
+    case 'network_error':
+      return 'Falha de conexão ao consultar o YouTube.';
+    case 'invalid_response':
+      return 'O YouTube respondeu de forma inesperada.';
+    case 'not_found':
+      return 'Recurso não encontrado no YouTube.';
+    default:
+      return error.message;
+  }
+}
+
+export function PlaylistResolutionPanel({
+  settingsStatus,
+  settingsError,
+  validation,
+  validationLoading,
+  discovery,
+  discoveryLoading,
+  onFindPlaylistAgain,
+  onRetryValidation,
+  onRetryDiscovery,
+  onContinueDiscovery,
+}: PlaylistResolutionPanelProps) {
+  if (settingsStatus === 'loading' || settingsStatus === 'idle') {
+    return (
+      <Card>
+        <CardBody className="py-6">
+          <LoadingState label="Carregando configuração da playlist..." />
+        </CardBody>
+      </Card>
+    );
+  }
+
+  if (settingsStatus === 'error') {
+    return (
+      <Card>
+        <CardHeader title="Erro ao carregar configuração" icon={<AlertTriangle size={18} />} />
+        <CardBody>
+          <p className="text-sm text-surface-600 dark:text-surface-300">
+            {settingsError ?? 'Não foi possível carregar a configuração salva da playlist.'}
+          </p>
+        </CardBody>
+      </Card>
+    );
+  }
+
+  if (validationLoading) {
+    return (
+      <Card>
+        <CardBody className="py-6">
+          <LoadingState label="Verificando a playlist salva..." />
+        </CardBody>
+      </Card>
+    );
+  }
+
+  if (validation && validation.kind !== 'valid') {
+    if (validation.kind === 'invalid_or_missing' || validation.kind === 'inaccessible') {
+      return (
+        <Card>
+          <CardHeader title="A playlist salva não está mais acessível" icon={<AlertTriangle size={18} />} />
+          <CardBody className="space-y-3">
+            <p className="text-sm leading-6 text-surface-600 dark:text-surface-300">
+              A configuração salva não representa mais uma playlist válida (pode ter sido excluída, ou o acesso mudou).
+              A configuração não foi apagada automaticamente.
+            </p>
+            <Button type="button" variant="primary" icon={<Search size={16} />} onClick={onFindPlaylistAgain}>
+              Localizar playlist novamente
+            </Button>
+          </CardBody>
+        </Card>
+      );
+    }
+    if (validation.kind === 'temporary_failure') {
+      return (
+        <Card>
+          <CardHeader title="Falha temporária ao verificar a playlist" icon={<AlertTriangle size={18} />} />
+          <CardBody className="space-y-3">
+            <p className="text-sm leading-6 text-surface-600 dark:text-surface-300">{describeApiError(validation.error)}</p>
+            <Button type="button" variant="secondary" icon={<RefreshCw size={16} />} onClick={onRetryValidation}>
+              Tentar novamente
+            </Button>
+          </CardBody>
+        </Card>
+      );
+    }
+    // 'auth_error' — o estado de autorização (ConnectYoutubeStep) já mostra a
+    // reconexão necessária; aqui só confirmamos o motivo.
+    return (
+      <Card>
+        <CardBody className="py-4 text-sm text-surface-600 dark:text-surface-300">
+          Não foi possível verificar a playlist salva porque a conexão com o YouTube expirou.
+        </CardBody>
+      </Card>
+    );
+  }
+
+  if (discoveryLoading) {
+    return (
+      <Card>
+        <CardBody className="py-6">
+          <LoadingState label={`Procurando a playlist "${DAILY_VIDEO_TARGET_PLAYLIST_TITLE}"...`} />
+        </CardBody>
+      </Card>
+    );
+  }
+
+  if (discovery) {
+    if (discovery.kind === 'not_found') {
+      return (
+        <Card>
+          <CardHeader title="Playlist não encontrada" icon={<Search size={18} />} />
+          <CardBody className="space-y-3">
+            <p className="text-sm leading-6 text-surface-600 dark:text-surface-300">
+              Não encontramos, na sua conta do YouTube, uma playlist com o nome exato{' '}
+              <strong>&ldquo;{DAILY_VIDEO_TARGET_PLAYLIST_TITLE}&rdquo;</strong>. Crie a playlist com esse nome exato
+              (marcada como privada) no YouTube Studio e busque novamente.
+            </p>
+            <Button type="button" variant="secondary" icon={<RefreshCw size={16} />} onClick={onRetryDiscovery}>
+              Buscar novamente
+            </Button>
+          </CardBody>
+        </Card>
+      );
+    }
+
+    if (discovery.kind === 'duplicate') {
+      return (
+        <Card>
+          <CardHeader title="Mais de uma playlist com o mesmo nome" icon={<AlertTriangle size={18} />} />
+          <CardBody className="space-y-3">
+            <p className="text-sm leading-6 text-surface-600 dark:text-surface-300">
+              Encontramos {discovery.playlists.length} playlists chamadas exatamente{' '}
+              <strong>&ldquo;{DAILY_VIDEO_TARGET_PLAYLIST_TITLE}&rdquo;</strong>. Nenhuma foi escolhida automaticamente.
+              Renomeie as duplicatas na sua conta do YouTube até restar apenas uma e busque novamente.
+            </p>
+            <ul className="list-inside list-disc text-xs text-surface-500 dark:text-surface-400">
+              {discovery.playlists.map(playlist => (
+                <li key={playlist.playlistId}>{playlist.playlistTitle} ({playlist.playlistId})</li>
+              ))}
+            </ul>
+            <Button type="button" variant="secondary" icon={<RefreshCw size={16} />} onClick={onRetryDiscovery}>
+              Buscar novamente
+            </Button>
+          </CardBody>
+        </Card>
+      );
+    }
+
+    if (discovery.kind === 'incomplete') {
+      return (
+        <Card>
+          <CardHeader title="Busca ainda incompleta" icon={<Search size={18} />} />
+          <CardBody className="space-y-3">
+            <p className="text-sm leading-6 text-surface-600 dark:text-surface-300">
+              Você tem muitas playlists e ainda não terminamos de verificar todas. Isto ainda não é um resultado
+              definitivo.
+            </p>
+            <Button type="button" variant="primary" icon={<RefreshCw size={16} />} onClick={onContinueDiscovery}>
+              Continuar busca
+            </Button>
+          </CardBody>
+        </Card>
+      );
+    }
+
+    if (discovery.kind === 'error') {
+      return (
+        <Card>
+          <CardHeader title="Não foi possível buscar sua playlist" icon={<AlertTriangle size={18} />} />
+          <CardBody className="space-y-3">
+            <p className="text-sm leading-6 text-surface-600 dark:text-surface-300">{describeApiError(discovery.error)}</p>
+            <Button type="button" variant="secondary" icon={<RefreshCw size={16} />} onClick={onRetryDiscovery}>
+              Tentar novamente
+            </Button>
+          </CardBody>
+        </Card>
+      );
+    }
+
+    // 'found' — transitório: os vídeos já devem estar carregando/carregados.
+    return (
+      <Card>
+        <CardBody className="flex items-center gap-2 py-4 text-sm text-success-700 dark:text-success-300">
+          <ListVideo size={16} />
+          Playlist &ldquo;{discovery.playlist.playlistTitle}&rdquo; encontrada e configurada.
+        </CardBody>
+      </Card>
+    );
+  }
+
+  return null;
+}
+
+
+=====================================================================
+5.6 src/components/english/daily/RecentVideosPanel.tsx
+=====================================================================
+import { format, parseISO } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { AlertTriangle, CheckCircle2, Clapperboard, RefreshCw, Video } from 'lucide-react';
+import { Card, CardBody, CardHeader } from '../../Card';
+import { Button } from '../../Button';
+import { EmptyState } from '../../DesignSystem';
+import type { DailyVideoItem, RecentVideosResult, YoutubeApiError } from '../../../types/dailyVideoEnglish';
+
+interface RecentVideosPanelProps {
+  videos: RecentVideosResult | null;
+  videosLoading: boolean;
+  selectedVideoId: string | null;
+  onSelectVideo: (videoId: string) => void;
+  onRetryLoadVideos: () => void;
+}
+
+function describeApiError(error: YoutubeApiError): string {
+  switch (error.kind) {
+    case 'unauthorized':
+      return 'Sua conexão com o YouTube expirou. Reconecte para continuar.';
+    case 'quota_exceeded':
+      return 'O limite de uso da API do YouTube foi atingido. Tente novamente mais tarde.';
+    case 'api_not_enabled':
+      return 'A API do YouTube não está habilitada para este projeto.';
+    case 'insufficient_permissions':
+    case 'forbidden_other':
+      return 'Acesso negado ao carregar os vídeos desta playlist.';
+    case 'network_error':
+      return 'Falha de conexão ao carregar os vídeos.';
+    case 'invalid_response':
+      return 'O YouTube respondeu de forma inesperada ao carregar os vídeos.';
+    default:
+      return error.message;
+  }
+}
+
+function formatAddedAt(iso: string): string {
+  try {
+    return format(parseISO(iso), "d 'de' MMMM 'de' yyyy", { locale: ptBR });
+  } catch {
+    return iso;
+  }
+}
+
+function SkeletonGrid() {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      {Array.from({ length: 6 }).map((_, index) => (
+        <div
+          // eslint-disable-next-line react/no-array-index-key -- placeholders puramente visuais, sem identidade própria
+          key={index}
+          className="h-40 animate-pulse rounded-xl border border-surface-200 bg-surface-100 dark:border-primary-300/15 dark:bg-white/5"
+        />
+      ))}
+    </div>
+  );
+}
+
+interface VideoCardProps {
+  video: DailyVideoItem;
+  selected: boolean;
+  onSelect: (videoId: string) => void;
+}
+
+function VideoCard({ video, selected, onSelect }: VideoCardProps) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(video.videoId)}
+      aria-pressed={selected}
+      className={`
+        flex flex-col overflow-hidden rounded-xl border text-left transition-all duration-150
+        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2
+        dark:focus-visible:ring-offset-surface-950
+        ${selected
+          ? 'border-primary-500 bg-primary-50/60 shadow-md shadow-primary-900/10 dark:border-primary-300 dark:bg-primary-500/10'
+          : 'border-surface-200 bg-white/90 hover:border-primary-300 hover:shadow-sm dark:border-primary-300/15 dark:bg-white/[0.04] dark:hover:border-primary-300/30'}
+      `}
+    >
+      <div className="relative aspect-video w-full bg-surface-200 dark:bg-white/10">
+        {video.thumbnailUrl ? (
+          <img src={video.thumbnailUrl} alt={video.title} className="h-full w-full object-cover" loading="lazy" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-surface-400 dark:text-surface-500">
+            <Clapperboard size={28} />
+          </div>
+        )}
+        <span className="absolute bottom-1.5 right-1.5 rounded bg-black/75 px-1.5 py-0.5 text-xs font-semibold text-white">
+          {video.durationFormatted}
+        </span>
+        {selected && (
+          <span className="absolute left-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-primary-600 text-white shadow">
+            <CheckCircle2 size={14} />
+          </span>
+        )}
+      </div>
+      <div className="flex-1 space-y-1 p-3">
+        <p className="line-clamp-2 text-sm font-semibold leading-5 text-surface-950 dark:text-white">{video.title}</p>
+        <p className="text-xs text-surface-500 dark:text-surface-400">
+          Adicionado à playlist em {formatAddedAt(video.addedAt)}
+        </p>
+      </div>
+    </button>
+  );
+}
+
+export function RecentVideosPanel({
+  videos,
+  videosLoading,
+  selectedVideoId,
+  onSelectVideo,
+  onRetryLoadVideos,
+}: RecentVideosPanelProps) {
+  if (videosLoading) {
+    return (
+      <Card>
+        <CardHeader title="Vídeos recentes" icon={<Video size={18} />} />
+        <CardBody>
+          <SkeletonGrid />
+        </CardBody>
+      </Card>
+    );
+  }
+
+  if (!videos) return null;
+
+  if (videos.kind === 'empty') {
+    return (
+      <Card>
+        <CardHeader title="Vídeos recentes" icon={<Video size={18} />} />
+        <CardBody>
+          <EmptyState
+            title="Sua playlist ainda não tem vídeos utilizáveis"
+            description="Adicione um vídeo à playlist 'SGP — Inglês' no YouTube e volte aqui."
+          />
+        </CardBody>
+      </Card>
+    );
+  }
+
+  if (videos.kind === 'incomplete') {
+    return (
+      <Card>
+        <CardHeader title="Vídeos recentes" icon={<Video size={18} />} />
+        <CardBody className="space-y-3">
+          <p className="text-sm leading-6 text-surface-600 dark:text-surface-300">
+            Ainda estamos carregando os vídeos desta playlist (ela tem muitos itens) — este ainda não é um resultado
+            definitivo.
+          </p>
+          <Button type="button" variant="secondary" icon={<RefreshCw size={16} />} onClick={onRetryLoadVideos}>
+            Tentar novamente
+          </Button>
+        </CardBody>
+      </Card>
+    );
+  }
+
+  if (videos.kind === 'error') {
+    return (
+      <Card>
+        <CardHeader title="Não foi possível carregar os vídeos" icon={<AlertTriangle size={18} />} />
+        <CardBody className="space-y-3">
+          <p className="text-sm leading-6 text-surface-600 dark:text-surface-300">{describeApiError(videos.error)}</p>
+          <Button type="button" variant="secondary" icon={<RefreshCw size={16} />} onClick={onRetryLoadVideos}>
+            Tentar novamente
+          </Button>
+        </CardBody>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        title="Vídeos recentes"
+        subtitle="Selecione o vídeo que você estudou hoje. Ordenados pela data em que foram adicionados à playlist."
+        icon={<Video size={18} />}
+      />
+      <CardBody>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {videos.videos.map(video => (
+            <VideoCard
+              key={video.videoId}
+              video={video}
+              selected={video.videoId === selectedVideoId}
+              onSelect={onSelectVideo}
+            />
+          ))}
+        </div>
+      </CardBody>
+    </Card>
+  );
+}
+
+
+=====================================================================
+5.7 src/services/english/dailyVideoConnectionController.test.ts (COMPLETO — 17 testes)
+=====================================================================
+import { describe, expect, it, vi } from 'vitest';
+import {
+  createDailyVideoConnectionController,
+  type DailyVideoConnectionDeps,
+} from './dailyVideoConnectionController';
+import type {
+  DiscoveredPlaylist,
+  YoutubeAuthState,
+  YoutubePlaylistSettingsRow,
+} from '../../types/dailyVideoEnglish';
+
+function makeAuthState(status: YoutubeAuthState['status'], overrides: Partial<YoutubeAuthState> = {}): YoutubeAuthState {
+  return { status, expiresAt: null, grantedScopes: [], errorMessage: null, ...overrides };
+}
+
+function makeSettingsRow(overrides: Partial<YoutubePlaylistSettingsRow> = {}): YoutubePlaylistSettingsRow {
+  return {
+    id: 'row-1',
+    user_id: 'user-1',
+    playlist_id: 'PL123',
+    playlist_title: 'SGP — Inglês',
+    configured_at: '2026-01-01T00:00:00.000Z',
+    last_verified_at: null,
+    last_synced_at: null,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+const SAMPLE_PLAYLIST: DiscoveredPlaylist = { playlistId: 'PL123', playlistTitle: 'SGP — Inglês' };
+
+function createTestDeps(initialAuthStatus: YoutubeAuthState['status'] = 'ready') {
+  let authState = makeAuthState(initialAuthStatus);
+  let authListener: ((state: YoutubeAuthState) => void) | null = null;
+
+  const deps: DailyVideoConnectionDeps = {
+    getYoutubeAuthState: vi.fn(() => authState),
+    subscribeToYoutubeAuthState: vi.fn((listener: (state: YoutubeAuthState) => void) => {
+      authListener = listener;
+      return () => {
+        authListener = null;
+      };
+    }),
+    authorizeYoutube: vi.fn().mockResolvedValue(authState),
+    authorizeYoutubeWithConsent: vi.fn().mockResolvedValue(authState),
+    getYoutubePlaylistSettings: vi.fn().mockResolvedValue(null),
+    saveYoutubePlaylistSettings: vi.fn().mockResolvedValue(makeSettingsRow()),
+    touchYoutubePlaylistLastVerifiedAt: vi.fn().mockResolvedValue(makeSettingsRow()),
+    discoverPlaylistByTitle: vi.fn().mockResolvedValue({ kind: 'not_found' }),
+    validatePersistedPlaylist: vi.fn().mockResolvedValue({ kind: 'invalid_or_missing' }),
+    getRecentPlaylistVideos: vi.fn().mockResolvedValue({ kind: 'empty' }),
+  };
+
+  return {
+    deps,
+    emitAuthState(next: YoutubeAuthState) {
+      authState = next;
+      authListener?.(next);
+    },
+  };
+}
+
+describe('dailyVideoConnectionController', () => {
+  it('nunca chama authorizeYoutube/authorizeYoutubeWithConsent durante initialize() — o "popup" não abre ao montar a página', async () => {
+    const { deps } = createTestDeps('ready');
+    const controller = createDailyVideoConnectionController(deps);
+
+    await controller.initialize('user-1');
+
+    expect(deps.authorizeYoutube).not.toHaveBeenCalled();
+    expect(deps.authorizeYoutubeWithConsent).not.toHaveBeenCalled();
+  });
+
+  it('a autorização normal só ocorre quando connect() é chamado (ação explícita)', async () => {
+    const { deps } = createTestDeps('ready');
+    const controller = createDailyVideoConnectionController(deps);
+    await controller.initialize('user-1');
+
+    expect(deps.authorizeYoutube).not.toHaveBeenCalled();
+    await controller.connect();
+    expect(deps.authorizeYoutube).toHaveBeenCalledTimes(1);
+    expect(deps.authorizeYoutubeWithConsent).not.toHaveBeenCalled();
+  });
+
+  it('o consentimento forçado só ocorre quando connectWithConsent() é chamado — connect() nunca o aciona', async () => {
+    const { deps } = createTestDeps('ready');
+    const controller = createDailyVideoConnectionController(deps);
+    await controller.initialize('user-1');
+
+    await controller.connect();
+    expect(deps.authorizeYoutubeWithConsent).not.toHaveBeenCalled();
+
+    await controller.connectWithConsent();
+    expect(deps.authorizeYoutubeWithConsent).toHaveBeenCalledTimes(1);
+  });
+
+  it('uma playlist salva (settings) não é tratada como conexão ativa — sem autorização, nada é validado', async () => {
+    const { deps } = createTestDeps('ready');
+    deps.getYoutubePlaylistSettings = vi.fn().mockResolvedValue(makeSettingsRow());
+    const controller = createDailyVideoConnectionController(deps);
+
+    await controller.initialize('user-1');
+
+    expect(controller.getState().settings).not.toBeNull();
+    expect(controller.getState().authState.status).toBe('ready'); // não é 'authorized'
+    expect(deps.validatePersistedPlaylist).not.toHaveBeenCalled();
+    expect(deps.discoverPlaylistByTitle).not.toHaveBeenCalled();
+  });
+
+  it('a validação do ID salvo só ocorre depois que o estado de autorização se torna authorized', async () => {
+    const { deps, emitAuthState } = createTestDeps('ready');
+    deps.getYoutubePlaylistSettings = vi.fn().mockResolvedValue(makeSettingsRow());
+    deps.validatePersistedPlaylist = vi.fn().mockResolvedValue({ kind: 'valid', playlist: SAMPLE_PLAYLIST });
+    deps.getRecentPlaylistVideos = vi.fn().mockResolvedValue({ kind: 'empty' });
+    const controller = createDailyVideoConnectionController(deps);
+
+    await controller.initialize('user-1');
+    expect(deps.validatePersistedPlaylist).not.toHaveBeenCalled();
+
+    emitAuthState(makeAuthState('authorized'));
+    await vi.waitFor(() => expect(deps.validatePersistedPlaylist).toHaveBeenCalledTimes(1));
+    expect(deps.validatePersistedPlaylist).toHaveBeenCalledWith('PL123');
+  });
+
+  it('found: salva os metadados da playlist e carrega os vídeos em seguida', async () => {
+    const { deps, emitAuthState } = createTestDeps('authorized');
+    deps.discoverPlaylistByTitle = vi.fn().mockResolvedValue({ kind: 'found', playlist: SAMPLE_PLAYLIST });
+    deps.getRecentPlaylistVideos = vi.fn().mockResolvedValue({ kind: 'empty' });
+    const controller = createDailyVideoConnectionController(deps);
+
+    await controller.initialize('user-1');
+    emitAuthState(makeAuthState('authorized'));
+
+    await vi.waitFor(() => expect(deps.saveYoutubePlaylistSettings).toHaveBeenCalledTimes(1));
+    expect(deps.saveYoutubePlaylistSettings).toHaveBeenCalledWith('user-1', SAMPLE_PLAYLIST);
+    await vi.waitFor(() => expect(deps.getRecentPlaylistVideos).toHaveBeenCalledWith('PL123'));
+  });
+
+  it('duplicate: NÃO escolhe nenhuma playlist automaticamente (saveYoutubePlaylistSettings nunca é chamado)', async () => {
+    const { deps, emitAuthState } = createTestDeps('authorized');
+    deps.discoverPlaylistByTitle = vi.fn().mockResolvedValue({
+      kind: 'duplicate',
+      playlists: [SAMPLE_PLAYLIST, { playlistId: 'PL999', playlistTitle: 'SGP — Inglês' }],
+    });
+    const controller = createDailyVideoConnectionController(deps);
+
+    await controller.initialize('user-1');
+    emitAuthState(makeAuthState('authorized'));
+
+    await vi.waitFor(() => expect(controller.getState().discovery?.kind).toBe('duplicate'));
+    expect(deps.saveYoutubePlaylistSettings).not.toHaveBeenCalled();
+    expect(deps.getRecentPlaylistVideos).not.toHaveBeenCalled();
+  });
+
+  it('not_found: expõe o estado not_found sem ação automática', async () => {
+    const { deps, emitAuthState } = createTestDeps('authorized');
+    deps.discoverPlaylistByTitle = vi.fn().mockResolvedValue({ kind: 'not_found' });
+    const controller = createDailyVideoConnectionController(deps);
+
+    await controller.initialize('user-1');
+    emitAuthState(makeAuthState('authorized'));
+
+    await vi.waitFor(() => expect(controller.getState().discovery).toEqual({ kind: 'not_found' }));
+    expect(deps.saveYoutubePlaylistSettings).not.toHaveBeenCalled();
+  });
+
+  it('incomplete: NUNCA salva nem carrega vídeos a partir de um resultado parcial', async () => {
+    const { deps, emitAuthState } = createTestDeps('authorized');
+    deps.discoverPlaylistByTitle = vi.fn().mockResolvedValue({
+      kind: 'incomplete',
+      playlistsSeenSoFar: [],
+      resumePageToken: 'p2',
+    });
+    const controller = createDailyVideoConnectionController(deps);
+
+    await controller.initialize('user-1');
+    emitAuthState(makeAuthState('authorized'));
+
+    await vi.waitFor(() => expect(controller.getState().discovery?.kind).toBe('incomplete'));
+    expect(deps.saveYoutubePlaylistSettings).not.toHaveBeenCalled();
+    expect(deps.getRecentPlaylistVideos).not.toHaveBeenCalled();
+  });
+
+  it('continueDiscovery() retoma com o resumePageToken e os playlistsSeenSoFar de um resultado incomplete', async () => {
+    const { deps, emitAuthState } = createTestDeps('authorized');
+    deps.discoverPlaylistByTitle = vi.fn().mockResolvedValue({
+      kind: 'incomplete',
+      playlistsSeenSoFar: [SAMPLE_PLAYLIST],
+      resumePageToken: 'p2',
+    });
+    const controller = createDailyVideoConnectionController(deps);
+    await controller.initialize('user-1');
+    emitAuthState(makeAuthState('authorized'));
+    await vi.waitFor(() => expect(controller.getState().discovery?.kind).toBe('incomplete'));
+
+    deps.discoverPlaylistByTitle = vi.fn().mockResolvedValue({ kind: 'found', playlist: SAMPLE_PLAYLIST });
+    await controller.continueDiscovery();
+
+    expect(deps.discoverPlaylistByTitle).toHaveBeenCalledWith({
+      startPageToken: 'p2',
+      previousMatches: [SAMPLE_PLAYLIST],
+    });
+  });
+
+  it('unauthorized na validação não carrega vídeos (a reconexão é responsabilidade do estado de autorização)', async () => {
+    const { deps, emitAuthState } = createTestDeps('authorized');
+    deps.getYoutubePlaylistSettings = vi.fn().mockResolvedValue(makeSettingsRow());
+    deps.validatePersistedPlaylist = vi.fn().mockResolvedValue({
+      kind: 'auth_error',
+      error: { kind: 'unauthorized', message: 'expirado' },
+    });
+    const controller = createDailyVideoConnectionController(deps);
+
+    await controller.initialize('user-1');
+    emitAuthState(makeAuthState('authorized'));
+
+    await vi.waitFor(() => expect(controller.getState().validation?.kind).toBe('auth_error'));
+    expect(deps.getRecentPlaylistVideos).not.toHaveBeenCalled();
+  });
+
+  it('quota_exceeded é propagado tal qual no estado (a interface decide a mensagem específica)', async () => {
+    const { deps, emitAuthState } = createTestDeps('authorized');
+    deps.discoverPlaylistByTitle = vi.fn().mockResolvedValue({
+      kind: 'error',
+      error: { kind: 'quota_exceeded', message: 'limite atingido' },
+    });
+    const controller = createDailyVideoConnectionController(deps);
+
+    await controller.initialize('user-1');
+    emitAuthState(makeAuthState('authorized'));
+
+    await vi.waitFor(() => {
+      const { discovery } = controller.getState();
+      expect(discovery?.kind === 'error' && discovery.error.kind).toBe('quota_exceeded');
+    });
+  });
+
+  it('playlist vazia: getState().videos reflete kind "empty" (estado próprio, distinto de erro/incompleto)', async () => {
+    const { deps, emitAuthState } = createTestDeps('authorized');
+    deps.discoverPlaylistByTitle = vi.fn().mockResolvedValue({ kind: 'found', playlist: SAMPLE_PLAYLIST });
+    deps.getRecentPlaylistVideos = vi.fn().mockResolvedValue({ kind: 'empty' });
+    const controller = createDailyVideoConnectionController(deps);
+
+    await controller.initialize('user-1');
+    emitAuthState(makeAuthState('authorized'));
+
+    await vi.waitFor(() => expect(controller.getState().videos).toEqual({ kind: 'empty' }));
+  });
+
+  it('preserva a ordenação dos vídeos exatamente como devolvida por getRecentPlaylistVideos', async () => {
+    const videos = {
+      kind: 'videos' as const,
+      videos: [
+        { videoId: 'v2', title: 'B', thumbnailUrl: null, addedAt: '2026-01-02', durationIso: 'PT1M', durationSeconds: 60, durationFormatted: '01:00' },
+        { videoId: 'v1', title: 'A', thumbnailUrl: null, addedAt: '2026-01-01', durationIso: 'PT1M', durationSeconds: 60, durationFormatted: '01:00' },
+      ],
+      skippedInvalidCount: 0,
+    };
+    const { deps, emitAuthState } = createTestDeps('authorized');
+    deps.discoverPlaylistByTitle = vi.fn().mockResolvedValue({ kind: 'found', playlist: SAMPLE_PLAYLIST });
+    deps.getRecentPlaylistVideos = vi.fn().mockResolvedValue(videos);
+    const controller = createDailyVideoConnectionController(deps);
+
+    await controller.initialize('user-1');
+    emitAuthState(makeAuthState('authorized'));
+
+    await vi.waitFor(() => expect(controller.getState().videos?.kind).toBe('videos'));
+    const state = controller.getState();
+    expect(state.videos?.kind === 'videos' && state.videos.videos.map(v => v.videoId)).toEqual(['v2', 'v1']);
+  });
+
+  it('selectVideo() atualiza selectedVideoId sem afetar o resto do estado', async () => {
+    const { deps } = createTestDeps('ready');
+    const controller = createDailyVideoConnectionController(deps);
+    await controller.initialize('user-1');
+
+    controller.selectVideo('v42');
+
+    expect(controller.getState().selectedVideoId).toBe('v42');
+  });
+
+  it('nenhum campo do estado público é ou contém um token — nem accessToken, nem chaves parecidas', async () => {
+    const { deps, emitAuthState } = createTestDeps('ready');
+    const controller = createDailyVideoConnectionController(deps);
+    await controller.initialize('user-1');
+    emitAuthState(makeAuthState('authorized', { expiresAt: Date.now() + 1000 }));
+
+    const state = controller.getState();
+    expect(state).not.toHaveProperty('accessToken');
+    expect(state.authState).not.toHaveProperty('accessToken');
+    expect(JSON.stringify(state)).not.toMatch(/access[_-]?token/i);
+  });
+
+  it('dispose() cancela a inscrição no estado de autorização e limpa os listeners', async () => {
+    const { deps, emitAuthState } = createTestDeps('ready');
+    const controller = createDailyVideoConnectionController(deps);
+    await controller.initialize('user-1');
+    const listener = vi.fn();
+    const unsubscribe = controller.subscribe(listener);
+
+    controller.dispose();
+    emitAuthState(makeAuthState('authorized'));
+
+    // Depois de dispose(), nem o controller nem o listener externo devem reagir.
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+});
+
+
+=====================================================================
+5.8 src/App.test.ts (NOVO)
+=====================================================================
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+// O projeto não tem infraestrutura para renderizar componentes React em teste
+// (sem @testing-library/react — ver nota na Etapa 3). Por isso este teste
+// verifica a fiação real do roteador por texto-fonte, em vez de simular
+// navegação. A verificação de navegação de fato (menu clicável, refresh direto
+// na URL, ausência de erro no console) foi feita manualmente no navegador de
+// preview durante esta correção — ver relatório da entrega.
+const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
+
+describe('App — roteamento do Inglês', () => {
+  it('registra a rota /estudo/ingles-diario para InglesDiarioPage', () => {
+    expect(appSource).toMatch(/<Route\s+path="\/estudo\/ingles-diario"\s+element=\{<InglesDiarioPage \/>\}\s*\/>/);
+    expect(appSource).toMatch(/import \{ InglesDiarioPage \} from '\.\/pages\/InglesDiario';/);
+  });
+
+  it('preserva a rota /estudo/ingles para InglesPage (Modo Entrevista), sem substituição/redirecionamento', () => {
+    expect(appSource).toMatch(/<Route\s+path="\/estudo\/ingles"\s+element=\{<InglesPage \/>\}\s*\/>/);
+    expect(appSource).toMatch(/import \{ InglesPage \} from '\.\/pages\/Ingles';/);
+    expect(appSource).not.toMatch(/estudo\/ingles.*Navigate/);
+  });
+
+  it('as duas rotas de Inglês são caminhos distintos (sem conflito/sobreposição)', () => {
+    const matches = [...appSource.matchAll(/path="(\/estudo\/ingles[^"]*)"/g)].map(m => m[1]);
+    expect(matches).toContain('/estudo/ingles');
+    expect(matches).toContain('/estudo/ingles-diario');
+    expect(new Set(matches).size).toBe(matches.length); // nenhum path duplicado
+  });
+});
+
+
+=====================================================================
+5.9 src/layouts/Layout.test.ts (NOVO)
+=====================================================================
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+// Mesma limitação de infraestrutura do src/App.test.ts: sem
+// @testing-library/react, este teste verifica o array de navegação por texto
+// -fonte. A aparição real do item no menu (desktop colapsado/expandido, gaveta
+// mobile) foi conferida manualmente no navegador de preview, já que os três
+// pontos de renderização (linhas ~250, ~486 e a gaveta mobile) usam o mesmo
+// array `estudoNavItems.map(...)` — ver relatório da entrega.
+const layoutSource = readFileSync(resolve(process.cwd(), 'src/layouts/Layout.tsx'), 'utf-8');
+
+describe('Layout — navegação do Inglês', () => {
+  it('adiciona o item "Inglês Diário" apontando para /estudo/ingles-diario', () => {
+    expect(layoutSource).toMatch(/\{\s*to:\s*'\/estudo\/ingles-diario',\s*label:\s*'Inglês Diário'/);
+  });
+
+  it('preserva o item "Inglês — Entrevista" apontando para /estudo/ingles', () => {
+    expect(layoutSource).toMatch(/\{\s*to:\s*'\/estudo\/ingles',\s*label:\s*'Inglês — Entrevista'/);
+  });
+
+  it('os dois itens vivem no mesmo grupo estudoNavItems (mesma estrutura/ícones/responsividade já existentes)', () => {
+    const estudoBlockMatch = layoutSource.match(/const estudoNavItems: NavItem\[\] = \[([\s\S]*?)\];/);
+    expect(estudoBlockMatch).not.toBeNull();
+    const estudoBlock = estudoBlockMatch?.[1] ?? '';
+    expect(estudoBlock).toContain("'/estudo/ingles'");
+    expect(estudoBlock).toContain("'/estudo/ingles-diario'");
+  });
+
+  it('não cria um segundo sistema de navegação — só um array estudoNavItems existe no arquivo', () => {
+    const occurrences = layoutSource.match(/const estudoNavItems/g) ?? [];
+    expect(occurrences).toHaveLength(1);
+  });
+});
+
+
+=====================================================================
+5.10 TRECHOS DO ROTEADOR E DO MENU (visão consolidada, com as duas
+     opções de inglês lado a lado)
+=====================================================================
+
+--- src/App.tsx (trecho relevante do <Routes>) ---
+                    <Route path="/leitura" element={<LeituraDiariaPage />} />
+                    <Route path="/estudo/leitura" element={<LeituraDiariaPage />} />
+                    <Route path="/estudo/ingles" element={<InglesPage />} />
+                    <Route path="/estudo/ingles-diario" element={<InglesDiarioPage />} />
+                    <Route path="/configuracoes" element={<ConfiguracoesPage />} />
+                    <Route path="/usuarios" element={<UsuariosPage />} />
+
+--- src/layouts/Layout.tsx (trecho relevante do array estudoNavItems) ---
+const estudoNavItems: NavItem[] = [
+  { to: '/estudo/leitura', label: 'Leitura Diária', icon: BookOpen, aliases: ['/leitura'] },
+  { to: '/estudo/ingles', label: 'Inglês — Entrevista', icon: Languages },
+  { to: '/estudo/ingles-diario', label: 'Inglês Diário', icon: Video },
+];
+
+
+=====================================================================
+FIM DO ARQUIVO
+=====================================================================

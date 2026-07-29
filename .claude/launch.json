@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 5173
+    },
+    {
+      "name": "sgesst-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "C:\\Users\\Vinicius\\Documents\\1.0-Desenvolvimentos_Projetos\\4.SGESST", "--", "--port", "5174"],
+      "port": 5174
     }
   ]
 }

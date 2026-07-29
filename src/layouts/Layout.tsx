@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Target, ListChecks, Clock,
   Wallet, Settings, Menu, X, Moon, Sun, BookOpen, LogOut,
-  ChevronLeft, ChevronRight, Users, Layers, ChevronDown, Languages, Video,
+  ChevronLeft, ChevronRight, Users, Layers, ChevronDown, Languages, Video, Briefcase,
   type LucideIcon,
 } from 'lucide-react';
 import { useApp } from '../hooks/useApp';
@@ -39,6 +39,7 @@ const topNavItems = [
 
 const mainNavItems = [
   { to: '/orcamento', label: 'Orçamento', icon: Wallet },
+  { to: '/vagas', label: 'Vagas', icon: Briefcase },
 ];
 
 const bottomNavItems = [

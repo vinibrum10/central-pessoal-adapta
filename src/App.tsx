@@ -10,6 +10,7 @@ import { PlanoAcaoPage } from './pages/PlanoAcao';
 import { AgendaTempoPage } from './pages/AgendaTempo';
 import { OrcamentoPage } from './pages/Orcamento';
 import { LeituraDiariaPage } from './pages/LeituraDiaria';
+import { VagasPage } from './pages/Vagas';
 import { InglesPage } from './pages/Ingles';
 import { InglesDiarioPage } from './pages/InglesDiario';
 import { ConfiguracoesPage } from './pages/Configuracoes';
@@ -43,6 +44,7 @@ function App() {
                     <Route path="/plano-acao" element={<PlanoAcaoPage />} />
                     <Route path="/agenda" element={<AgendaTempoPage />} />
                     <Route path="/orcamento" element={<OrcamentoPage />} />
+                    <Route path="/vagas" element={<VagasPage />} />
                     <Route path="/leitura" element={<LeituraDiariaPage />} />
                     <Route path="/estudo/leitura" element={<LeituraDiariaPage />} />
                     <Route path="/estudo/ingles" element={<InglesPage />} />
