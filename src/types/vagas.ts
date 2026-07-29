@@ -15,6 +15,17 @@ export interface VagaCandidatura {
   updatedAt: string;
 }
 
+export interface PerfilFixo {
+  escola: string;
+  curso: string;
+  anoInicio: number | null;
+  anoTermino: number | null;
+  linkedinUrl: string;
+  nivelIngles: string;
+  autorizadoTrabalharBrasil: boolean;
+  pisoSalarial: number | null;
+}
+
 export interface VagaRespostaBanco {
   id: string;
   pergunta: string;

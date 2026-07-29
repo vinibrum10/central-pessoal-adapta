@@ -3,10 +3,23 @@ import { Briefcase } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, CardBody, CardHeader } from '../components/Card';
 import { CandidaturasList } from '../components/vagas/CandidaturasList';
+import { PerfilFixoForm } from '../components/vagas/PerfilFixoForm';
 import { RespostasBancoList } from '../components/vagas/RespostasBancoList';
 import { candidaturasRepository } from '../services/vagas/candidaturasRepository';
+import { perfilFixoRepository } from '../services/vagas/perfilFixoRepository';
 import { respostasBancoRepository } from '../services/vagas/respostasBancoRepository';
-import type { VagaCandidatura, VagaRespostaBanco } from '../types/vagas';
+import type { PerfilFixo, VagaCandidatura, VagaRespostaBanco } from '../types/vagas';
+
+const PERFIL_FIXO_VAZIO: PerfilFixo = {
+  escola: '',
+  curso: '',
+  anoInicio: null,
+  anoTermino: null,
+  linkedinUrl: '',
+  nivelIngles: '',
+  autorizadoTrabalharBrasil: false,
+  pisoSalarial: null,
+};
 
 interface AtualizarRespostaInput {
   resposta?: string;
@@ -17,6 +30,7 @@ export function VagasPage() {
   const { user, supabaseAtivo } = useAuth();
   const [candidaturas, setCandidaturas] = useState<VagaCandidatura[]>([]);
   const [respostas, setRespostas] = useState<VagaRespostaBanco[]>([]);
+  const [perfilFixo, setPerfilFixo] = useState<PerfilFixo>(PERFIL_FIXO_VAZIO);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -28,12 +42,14 @@ export function VagasPage() {
     setLoading(true);
     setErro(null);
     try {
-      const [listaCandidaturas, listaRespostas] = await Promise.all([
+      const [listaCandidaturas, listaRespostas, perfil] = await Promise.all([
         candidaturasRepository.listar(user.id),
         respostasBancoRepository.listar(user.id),
+        perfilFixoRepository.buscar(user.id),
       ]);
       setCandidaturas(listaCandidaturas);
       setRespostas(listaRespostas);
+      setPerfilFixo(perfil);
     } catch (error: unknown) {
       setErro(error instanceof Error ? error.message : 'Erro ao carregar dados de Vagas.');
     } finally {
@@ -49,6 +65,12 @@ export function VagasPage() {
     const atualizado = await respostasBancoRepository.atualizar(id, campos);
     setRespostas(prev => prev.map(resposta => (resposta.id === id ? atualizado : resposta)));
   }, []);
+
+  const salvarPerfilFixo = useCallback(async (perfil: PerfilFixo) => {
+    if (!user) return;
+    const salvo = await perfilFixoRepository.salvar(user.id, perfil);
+    setPerfilFixo(salvo);
+  }, [user]);
 
   if (!supabaseAtivo) {
     return (
@@ -83,6 +105,20 @@ export function VagasPage() {
           </CardBody>
         </Card>
       )}
+
+      <Card>
+        <CardHeader
+          title="Meu Perfil de Candidatura"
+          subtitle="Fatos fixos e verificados — o agente checa aqui primeiro antes de perguntar de novo"
+        />
+        <CardBody>
+          {loading ? (
+            <p className="py-6 text-center text-sm text-surface-400 dark:text-surface-500">Carregando perfil…</p>
+          ) : (
+            <PerfilFixoForm perfil={perfilFixo} onSalvar={salvarPerfilFixo} />
+          )}
+        </CardBody>
+      </Card>
 
       <Card>
         <CardHeader title="Candidaturas" subtitle={`${candidaturas.length} vaga(s) registrada(s) pelo agente`} />
