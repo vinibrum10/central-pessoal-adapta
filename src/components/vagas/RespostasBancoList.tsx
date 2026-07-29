@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { Badge } from '../Badge';
-import { Checkbox, Textarea } from '../FormFields';
+import { useMemo, useState } from 'react';
+import { CheckCircle, Layers } from 'lucide-react';
+import { AJUDA_BLOCO, classificarBloco, type BlocoPergunta } from '../../services/vagas/blocoClassificacao';
+import { PerguntaPendenteCard } from './PerguntaPendenteCard';
 import type { VagaRespostaBanco } from '../../types/vagas';
 
 interface AtualizarRespostaInput {
@@ -14,31 +15,80 @@ interface RespostasBancoListProps {
   onAtualizar: (id: string, campos: AtualizarRespostaInput) => Promise<void>;
 }
 
+interface Rascunho {
+  resposta: string;
+  sempreUsar: boolean;
+}
+
+interface Grupo {
+  chave: string;
+  titulo: BlocoPergunta;
+  itens: VagaRespostaBanco[];
+}
+
+function rascunhoInicial(resposta: VagaRespostaBanco): Rascunho {
+  return { resposta: resposta.resposta, sempreUsar: resposta.sempreUsar };
+}
+
+/** Agrupa visualmente perguntas da mesma vaga cujo texto sugere o mesmo bloco
+ * do formulario (ex. Escola/Escolaridade/Disciplina = mesma entrada de
+ * curriculo) — puramente cosmetico, nunca afeta correspondencia ou reuso
+ * automatico de resposta. */
+function agruparPorBloco(respostas: VagaRespostaBanco[]): Grupo[] {
+  const grupos: Grupo[] = [];
+  const indicePorChave = new Map<string, number>();
+
+  for (const resposta of respostas) {
+    const bloco = classificarBloco(resposta.pergunta);
+    if (!bloco) {
+      grupos.push({ chave: `solo-${resposta.id}`, titulo: null, itens: [resposta] });
+      continue;
+    }
+    const chave = `${resposta.vagaOrigem}::${bloco}`;
+    const indiceExistente = indicePorChave.get(chave);
+    if (indiceExistente === undefined) {
+      indicePorChave.set(chave, grupos.length);
+      grupos.push({ chave, titulo: bloco, itens: [resposta] });
+    } else {
+      grupos[indiceExistente].itens.push(resposta);
+    }
+  }
+  return grupos;
+}
+
 export function RespostasBancoList({ respostas, loading, onAtualizar }: RespostasBancoListProps) {
   const [salvandoId, setSalvandoId] = useState<string | null>(null);
-  const [rascunhos, setRascunhos] = useState<Record<string, string>>({});
+  const [rascunhos, setRascunhos] = useState<Record<string, Rascunho>>({});
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  const valorResposta = (resposta: VagaRespostaBanco) => rascunhos[resposta.id] ?? resposta.resposta;
+  const mostrarToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 3000);
+  };
 
-  const salvarResposta = async (resposta: VagaRespostaBanco) => {
-    const novoValor = valorResposta(resposta);
-    if (novoValor === resposta.resposta) return;
+  const rascunhoDe = (resposta: VagaRespostaBanco): Rascunho => rascunhos[resposta.id] ?? rascunhoInicial(resposta);
+
+  const atualizarRascunho = (resposta: VagaRespostaBanco, campos: Partial<Rascunho>) => {
+    setRascunhos(prev => ({ ...prev, [resposta.id]: { ...rascunhoDe(resposta), ...campos } }));
+  };
+
+  const houveMudanca = (resposta: VagaRespostaBanco): boolean => {
+    const rascunho = rascunhoDe(resposta);
+    return rascunho.resposta !== resposta.resposta || rascunho.sempreUsar !== resposta.sempreUsar;
+  };
+
+  const salvar = async (resposta: VagaRespostaBanco) => {
+    const rascunho = rascunhoDe(resposta);
     setSalvandoId(resposta.id);
     try {
-      await onAtualizar(resposta.id, { resposta: novoValor });
+      await onAtualizar(resposta.id, { resposta: rascunho.resposta, sempreUsar: rascunho.sempreUsar });
+      mostrarToast('Resposta salva com sucesso');
     } finally {
       setSalvandoId(null);
     }
   };
 
-  const alternarSempreUsar = async (resposta: VagaRespostaBanco) => {
-    setSalvandoId(resposta.id);
-    try {
-      await onAtualizar(resposta.id, { sempreUsar: !resposta.sempreUsar });
-    } finally {
-      setSalvandoId(null);
-    }
-  };
+  const grupos = useMemo(() => agruparPorBloco(respostas), [respostas]);
 
   if (loading) {
     return <p className="py-6 text-center text-sm text-surface-400 dark:text-surface-500">Carregando banco de respostas…</p>;
@@ -52,48 +102,55 @@ export function RespostasBancoList({ respostas, loading, onAtualizar }: Resposta
     );
   }
 
-  return (
-    <div className="space-y-3">
-      {respostas.map(resposta => (
-        <div
-          key={resposta.id}
-          className="rounded-lg border border-surface-200 bg-white/70 p-4 dark:border-primary-300/15 dark:bg-white/[0.03]"
-        >
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold leading-5 text-surface-950 dark:text-white">{resposta.pergunta}</p>
-              <p className="mt-0.5 text-xs text-surface-500 dark:text-surface-400">
-                {resposta.tipo || 'tipo desconhecido'}
-                {resposta.opcoes && ` · opções: ${resposta.opcoes}`}
-                {resposta.ultimaVaga && ` · última vaga: ${resposta.ultimaVaga}`}
-              </p>
-              {resposta.possivelDuplicataDe && (
-                <Badge variant="warning" className="mt-1.5">
-                  {`Possível duplicata de: ${resposta.possivelDuplicataDe}`}
-                </Badge>
-              )}
-            </div>
-            <Checkbox
-              id={`vagas-sempre-usar-${resposta.id}`}
-              label="Sempre usar"
-              checked={resposta.sempreUsar}
-              disabled={salvandoId === resposta.id}
-              onChange={() => void alternarSempreUsar(resposta)}
-            />
-          </div>
+  const renderCard = (resposta: VagaRespostaBanco) => {
+    const rascunho = rascunhoDe(resposta);
+    return (
+      <PerguntaPendenteCard
+        key={resposta.id}
+        resposta={resposta}
+        rascunhoResposta={rascunho.resposta}
+        rascunhoSempreUsar={rascunho.sempreUsar}
+        mudou={houveMudanca(resposta)}
+        salvando={salvandoId === resposta.id}
+        onChangeResposta={valor => atualizarRascunho(resposta, { resposta: valor })}
+        onChangeSempreUsar={valor => atualizarRascunho(resposta, { sempreUsar: valor })}
+        onSalvar={() => void salvar(resposta)}
+      />
+    );
+  };
 
-          <div className="mt-3">
-            <Textarea
-              id={`vagas-resposta-${resposta.id}`}
-              label="Resposta"
-              value={valorResposta(resposta)}
-              disabled={salvandoId === resposta.id}
-              onChange={e => setRascunhos(prev => ({ ...prev, [resposta.id]: e.target.value }))}
-              onBlur={() => void salvarResposta(resposta)}
-            />
-          </div>
+  return (
+    <div className="space-y-4">
+      {toastMsg && (
+        <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-2xl bg-surface-900 px-5 py-3 text-sm text-white shadow-xl animate-fade-in dark:bg-surface-700">
+          <CheckCircle size={14} className="flex-shrink-0 text-emerald-400" />
+          {toastMsg}
         </div>
-      ))}
+      )}
+
+      {grupos.map(grupo =>
+        grupo.titulo ? (
+          <div
+            key={grupo.chave}
+            className="rounded-xl border border-dashed border-primary-300/50 bg-primary-50/40 p-3 dark:border-primary-300/25 dark:bg-primary-500/[0.04]"
+          >
+            <div className="mb-3 px-1">
+              <div className="flex items-center gap-2">
+                <Layers size={14} className="text-primary-600 dark:text-primary-300" />
+                <p className="text-xs font-bold uppercase tracking-wide text-primary-700 dark:text-primary-300">
+                  {`Bloco: ${grupo.titulo}`}
+                </p>
+              </div>
+              <p className="mt-1 text-xs leading-5 text-primary-700/80 dark:text-primary-200/70">
+                {AJUDA_BLOCO[grupo.titulo]}
+              </p>
+            </div>
+            <div className="space-y-3">{grupo.itens.map(renderCard)}</div>
+          </div>
+        ) : (
+          renderCard(grupo.itens[0])
+        ),
+      )}
     </div>
   );
 }

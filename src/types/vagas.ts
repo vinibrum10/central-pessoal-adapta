@@ -22,7 +22,8 @@ export interface VagaRespostaBanco {
   opcoes: string;
   resposta: string;
   sempreUsar: boolean;
-  ultimaVaga: string;
+  vagaOrigem: string;
+  empresaOrigem: string;
   possivelDuplicataDe: string;
   createdAt: string;
   updatedAt: string;

@@ -8,7 +8,8 @@ interface RespostaRow {
   opcoes: string;
   resposta: string;
   sempre_usar: boolean;
-  ultima_vaga: string;
+  vaga_origem: string;
+  empresa_origem: string;
   possivel_duplicata_de: string;
   created_at: string;
   updated_at: string;
@@ -27,7 +28,8 @@ function rowToResposta(row: RespostaRow): VagaRespostaBanco {
     opcoes: row.opcoes,
     resposta: row.resposta,
     sempreUsar: row.sempre_usar,
-    ultimaVaga: row.ultima_vaga,
+    vagaOrigem: row.vaga_origem,
+    empresaOrigem: row.empresa_origem,
     possivelDuplicataDe: row.possivel_duplicata_de,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
