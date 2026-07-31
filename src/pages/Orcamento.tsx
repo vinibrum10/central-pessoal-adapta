@@ -586,7 +586,7 @@ export function OrcamentoPage() {
     const isParcelado = isCartao && formDespesaExtra.tipoCobrancaCartao === 'parcelado' && !editandoId;
 
     if (isParcelado) {
-      const qtd = formDespesaExtra.quantidadeParcelas;
+      const qtd = Math.max(2, Math.min(72, formDespesaExtra.quantidadeParcelas || 2));
       const valorParcela = formDespesaComValor.valor / qtd;
       const grupoId = crypto.randomUUID();
       // Usar o mês de referência escolhido como início das parcelas
@@ -1986,7 +1986,8 @@ export function OrcamentoPage() {
                       min="2"
                       max="72"
                       value={formDespesaExtra.quantidadeParcelas}
-                      onChange={e => setFormDespesaExtra(f => ({ ...f, quantidadeParcelas: Math.max(2, Math.min(72, Number(e.target.value))) }))}
+                      onChange={e => setFormDespesaExtra(f => ({ ...f, quantidadeParcelas: Number(e.target.value) }))}
+                      onBlur={e => setFormDespesaExtra(f => ({ ...f, quantidadeParcelas: Math.max(2, Math.min(72, Number(e.target.value) || 2)) }))}
                     />
                     <div>
                       <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Mês de início</label>
