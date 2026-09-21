@@ -12,6 +12,8 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "test": "vitest run",
+    "agent": "tsx agent/src/index.ts",
+    "agent:check": "tsc -p agent/tsconfig.json --noEmit",
     "seed:english-interview": "node scripts/seed-english-interview-mode.mjs",
     "seed:english-employability": "node scripts/seed-english-employability-phase3.mjs"
   },
@@ -31,15 +33,22 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@ai-sdk/google": "^4.0.0",
+    "@clack/prompts": "^1.0.0",
+    "@types/node": "^22.0.0",
     "@types/react": "^18.2.55",
     "@types/react-dom": "^18.2.19",
     "@vitejs/plugin-react": "^4.2.1",
+    "ai": "^7.0.0",
     "autoprefixer": "^10.4.17",
     "jsdom": "^29.1.1",
+    "ollama-ai-provider-v2": "^4.0.0",
     "postcss": "^8.4.35",
     "tailwindcss": "^3.4.1",
+    "tsx": "^4.0.0",
     "typescript": "^5.2.2",
     "vite": "^5.1.0",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.9",
+    "zod": "^4.0.0"
   }
 }
