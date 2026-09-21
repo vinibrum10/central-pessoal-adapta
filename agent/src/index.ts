@@ -10,6 +10,11 @@
 
 import * as p from '@clack/prompts';
 import { execFileSync } from 'node:child_process';
+import { loadDotEnv } from './env.js';
+
+// Carrega .env / .env.local ANTES de ler qualquer configuração.
+loadDotEnv(process.cwd());
+
 import { loadConfig, type AgentConfig, type Engine } from './config.js';
 import { getModel, isOllamaReachable, listOllamaModels } from './llm.js';
 import { gatherRepoContext } from './repoContext.js';
