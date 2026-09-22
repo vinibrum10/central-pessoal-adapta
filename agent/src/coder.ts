@@ -25,15 +25,18 @@ export async function runCoder(opts: {
   plan: string;
   changes: ChangeSet;
   maxSteps: number;
+  maxRetries: number;
   log: (msg: string) => void;
 }): Promise<void> {
-  const { model, ctx, task, plan, changes, maxSteps, log } = opts;
+  const { model, ctx, task, plan, changes, maxSteps, maxRetries, log } = opts;
   const tools = createTools(ctx.root, changes, log);
 
   await generateText({
     model,
     system: coderSystemPrompt(ctx),
     tools,
+    // Espera e repete em caso de erro transitório (ex.: 429 de cota por minuto).
+    maxRetries,
     // Para quando: chamar finish OU estourar o teto de passos (rede de segurança).
     stopWhen: [hasToolCall('finish'), stepCountIs(maxSteps)],
     temperature: 0.1,

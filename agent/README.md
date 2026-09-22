@@ -111,7 +111,9 @@ para o relatório também medir o tamanho do bundle.
 | Variável | Padrão | O que faz |
 |----------|--------|-----------|
 | `GEMINI_API_KEY` | — | Chave do Gemini (free tier). Sem ela, tudo vai pro Ollama. |
-| `GEMINI_MODEL` | `gemini-2.5-flash` | Modelo Gemini. |
+| `AGENT_GEMINI_MODEL` | `gemini-2.5-flash-lite` | Modelo Gemini do agente. O `flash-lite` tem cota gratuita bem maior que o `2.5-flash`. |
+| `AGENT_MIN_INTERVAL_MS` | `4500` | Intervalo mínimo entre chamadas ao Gemini (respeita o RPM do free tier). |
+| `AGENT_MAX_RETRIES` | `6` | Tentativas (com espera) ao bater no limite de cota (erro 429). |
 | `OLLAMA_BASE_URL` | `http://localhost:11434/api` | Endereço do Ollama local. |
 | `AGENT_OLLAMA_MODEL` | `qwen2.5-coder:7b` | Modelo local a usar. |
 | `AGENT_CODER` | auto (`gemini` se houver chave) | Motor para **escrever código**: `gemini` ou `ollama`. |

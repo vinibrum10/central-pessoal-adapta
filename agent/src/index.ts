@@ -149,14 +149,14 @@ async function main(): Promise<void> {
 
   // 3) Entrevista → tarefa.
   const plannerModel = getModel(config, config.planner);
-  const task = await runInterview(plannerModel, ctx, request);
+  const task = await runInterview(plannerModel, ctx, request, config.maxRetries);
   p.note(task, '📋 Tarefa entendida');
   await confirmOrExit('Esse é o objetivo correto?', config.autopilot);
 
   // 4) Plano.
   const planSpin = p.spinner();
   planSpin.start('Montando o plano de implementação…');
-  const plan = await makePlan(plannerModel, ctx, task);
+  const plan = await makePlan(plannerModel, ctx, task, config.maxRetries);
   planSpin.stop('Plano pronto.');
   p.note(plan, '🗺️  Plano');
   await confirmOrExit('Posso implementar seguindo esse plano?', config.autopilot);
@@ -176,6 +176,7 @@ async function main(): Promise<void> {
     plan,
     changes,
     maxSteps: config.maxSteps,
+    maxRetries: config.maxRetries,
     log: (m) => p.log.message(m),
   });
 

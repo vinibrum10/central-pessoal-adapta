@@ -9,7 +9,12 @@ import type { LanguageModel } from 'ai';
 import { plannerSystemPrompt } from './prompts.js';
 import type { RepoContext } from './repoContext.js';
 
-export async function makePlan(model: LanguageModel, ctx: RepoContext, task: string): Promise<string> {
+export async function makePlan(
+  model: LanguageModel,
+  ctx: RepoContext,
+  task: string,
+  maxRetries = 6,
+): Promise<string> {
   const { text } = await generateText({
     model,
     system: plannerSystemPrompt(ctx),
@@ -17,6 +22,7 @@ export async function makePlan(model: LanguageModel, ctx: RepoContext, task: str
       `Tarefa a planejar:\n${task}\n\n` +
       'Produza um plano curto com estas seções: **Arquivos**, **Passos**, **Riscos**.',
     temperature: 0.3,
+    maxRetries,
   });
   return text.trim();
 }

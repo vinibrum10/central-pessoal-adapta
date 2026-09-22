@@ -20,6 +20,7 @@ export async function runInterview(
   model: LanguageModel,
   ctx: RepoContext,
   initialRequest: string,
+  maxRetries = 6,
 ): Promise<string> {
   const messages: ModelMessage[] = [
     {
@@ -39,6 +40,7 @@ export async function runInterview(
       system: interviewSystemPrompt(ctx),
       messages,
       temperature: 0.4,
+      maxRetries,
     });
     spin.stop('');
 

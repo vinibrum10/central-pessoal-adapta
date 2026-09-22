@@ -16,6 +16,31 @@ import { createOllama } from 'ollama-ai-provider-v2';
 import type { LanguageModel } from 'ai';
 import type { AgentConfig, Engine } from './config.js';
 
+/**
+ * Cria um `fetch` que serializa e ESPAÇA as chamadas em pelo menos
+ * `minIntervalMs`. Serve para respeitar PROATIVAMENTE o limite de requisições
+ * por minuto do free tier do Gemini (em vez de só reagir ao erro 429).
+ */
+function createThrottledFetch(minIntervalMs: number): typeof fetch {
+  let last = 0;
+  let chain: Promise<unknown> = Promise.resolve();
+  const throttled = (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+    const run = async () => {
+      const wait = Math.max(0, last + minIntervalMs - Date.now());
+      if (wait) await new Promise((r) => setTimeout(r, wait));
+      last = Date.now();
+      return fetch(input, init);
+    };
+    const result = chain.then(run, run);
+    chain = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  };
+  return throttled as typeof fetch;
+}
+
 export function getModel(config: AgentConfig, engine: Engine): LanguageModel {
   if (engine === 'gemini') {
     if (!config.gemini.apiKey) {
@@ -24,7 +49,10 @@ export function getModel(config: AgentConfig, engine: Engine): LanguageModel {
           'Defina AGENT_CODER=ollama para rodar 100% local, ou configure a chave.',
       );
     }
-    const google = createGoogleGenerativeAI({ apiKey: config.gemini.apiKey });
+    const google = createGoogleGenerativeAI({
+      apiKey: config.gemini.apiKey,
+      fetch: createThrottledFetch(config.gemini.minIntervalMs),
+    });
     return google(config.gemini.model);
   }
 

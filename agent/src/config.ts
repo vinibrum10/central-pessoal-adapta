@@ -29,6 +29,8 @@ export interface AgentConfig {
   gemini: {
     apiKey: string | undefined;
     model: string;
+    /** Intervalo mínimo entre chamadas ao Gemini (ms), para respeitar o RPM do free tier. */
+    minIntervalMs: number;
   };
   ollama: {
     baseURL: string;
@@ -39,6 +41,8 @@ export interface AgentConfig {
     token: string | undefined;
   };
 
+  /** Quantas vezes repetir uma chamada que falhou (ex.: 429 de cota) antes de desistir. */
+  maxRetries: number;
   /** Se true, não pede confirmação humana antes de commit/push/PR. */
   autopilot: boolean;
   /** Máximo de passos (chamadas de ferramenta) que o coder pode dar por tarefa. */
@@ -78,7 +82,12 @@ export function loadConfig(cliFlags: { autopilot?: boolean; dryRun?: boolean } =
     planner: pickEngine(process.env.AGENT_PLANNER, /* preferForCode */ false, hasGemini),
     gemini: {
       apiKey: geminiKey,
-      model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+      // Padrão: flash-lite tem cota gratuita MUITO maior (mais req/min e req/dia)
+      // que o 2.5-flash — essencial para o loop do agente não estourar o free tier.
+      // Variável própria do agente (AGENT_GEMINI_MODEL) para não afetar o
+      // GEMINI_MODEL que o app usa no servidor (api/english/*).
+      model: process.env.AGENT_GEMINI_MODEL || 'gemini-2.5-flash-lite',
+      minIntervalMs: envInt('AGENT_MIN_INTERVAL_MS', 4500),
     },
     ollama: {
       baseURL: process.env.OLLAMA_BASE_URL || 'http://localhost:11434/api',
@@ -87,6 +96,7 @@ export function loadConfig(cliFlags: { autopilot?: boolean; dryRun?: boolean } =
     github: {
       token: process.env.GITHUB_TOKEN || process.env.GH_TOKEN,
     },
+    maxRetries: envInt('AGENT_MAX_RETRIES', 6),
     autopilot: cliFlags.autopilot ?? envBool('AGENT_AUTOPILOT', false),
     maxSteps: envInt('AGENT_MAX_STEPS', 40),
     dryRun: cliFlags.dryRun ?? envBool('AGENT_DRY_RUN', false),
