@@ -13,12 +13,13 @@ const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
 describe('App — roteamento do Inglês', () => {
   it('registra a rota /estudo/ingles-diario para InglesDiarioPage', () => {
     expect(appSource).toMatch(/<Route\s+path="\/estudo\/ingles-diario"\s+element=\{<InglesDiarioPage \/>\}\s*\/>/);
-    expect(appSource).toMatch(/import \{ InglesDiarioPage \} from '\.\/pages\/InglesDiario';/);
+    // Página carregada sob demanda (React.lazy) a partir do módulo correto.
+    expect(appSource).toMatch(/const InglesDiarioPage = lazy\(\(\) => import\('\.\/pages\/InglesDiario'\)/);
   });
 
   it('preserva a rota /estudo/ingles para InglesPage (Modo Entrevista), sem substituição/redirecionamento', () => {
     expect(appSource).toMatch(/<Route\s+path="\/estudo\/ingles"\s+element=\{<InglesPage \/>\}\s*\/>/);
-    expect(appSource).toMatch(/import \{ InglesPage \} from '\.\/pages\/Ingles';/);
+    expect(appSource).toMatch(/const InglesPage = lazy\(\(\) => import\('\.\/pages\/Ingles'\)/);
     expect(appSource).not.toMatch(/estudo\/ingles.*Navigate/);
   });
 
