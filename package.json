@@ -13,6 +13,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "agent": "tsx agent/src/index.ts",
+    "agent:audit": "tsx agent/src/audit.ts",
     "agent:check": "tsc -p agent/tsconfig.json --noEmit",
     "seed:english-interview": "node scripts/seed-english-interview-mode.mjs",
     "seed:english-employability": "node scripts/seed-english-employability-phase3.mjs"

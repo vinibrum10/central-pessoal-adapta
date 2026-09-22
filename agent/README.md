@@ -81,6 +81,17 @@ npm run agent -- --yes "otimizar o carregamento da página de vagas"
 npm run agent -- --dry-run
 ```
 
+### Modo Auditoria (só relatório, sem IA, sem cota, sem risco)
+
+Para **analisar** o projeto sem editar nada — ideal para "o que dá pra melhorar e por quê":
+```bash
+npm run agent:audit
+```
+Gera `docs/AUDITORIA.md` com análise determinística (dependências não usadas, falta de
+code-splitting, libs pesadas em uso estático, arquivos gigantes, tamanho do bundle). Não usa
+Gemini nem Ollama — logo, **não gasta cota e nunca quebra o build**. Rode `npm run build` antes
+para o relatório também medir o tamanho do bundle.
+
 ### O fluxo, passo a passo
 1. **Entrevista** — o agente faz perguntas curtas até entender exatamente o que
    você quer (usa o Ollama local).

@@ -16,6 +16,7 @@ echo.
 echo   [1] Testar sem alterar nada (dry-run)
 echo   [2] Rodar de verdade (commit + push + PR)
 echo   [3] 100%% local - Ollama faz tudo (dry-run)
+echo   [4] Auditoria - so gera relatorio, NAO altera nada (sem IA/sem cota)
 echo   [0] Sair
 echo.
 set "opt="
@@ -24,6 +25,7 @@ set /p opt="Escolha uma opcao e tecle Enter: "
 if "%opt%"=="1" ( call npm run agent -- --dry-run & goto fim )
 if "%opt%"=="2" ( call npm run agent & goto fim )
 if "%opt%"=="3" ( set "AGENT_CODER=ollama" & call npm run agent -- --dry-run & goto fim )
+if "%opt%"=="4" ( call npm run agent:audit & goto fim )
 if "%opt%"=="0" ( exit /b )
 
 echo.

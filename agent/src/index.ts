@@ -283,7 +283,40 @@ function buildPrBody(agentBody: string | null, task: string, plan: string, touch
   ].join('\n');
 }
 
+/** Traduz erros técnicos comuns em orientações claras (sem despejar stack trace). */
+function friendlyError(err: unknown): string {
+  const msg = String((err as Error)?.message ?? err);
+
+  if (/quota|rate.?limit|RESOURCE_EXHAUSTED|free_tier/i.test(msg)) {
+    return [
+      '🚦 Cota do Gemini (plano gratuito) atingida.',
+      '',
+      'O free tier permite poucas chamadas por minuto/dia, e a fase de escrever código',
+      'faz muitas chamadas seguidas. O que fazer:',
+      '  • Aguarde alguns minutos e tente de novo; OU',
+      '  • Peça uma tarefa MENOR (menos arquivos = menos chamadas); OU',
+      '  • Rode 100% local: defina AGENT_CODER=ollama (sem cota, mas o código sai mais fraco); OU',
+      '  • Para só analisar (sem gastar cota): use o Modo Auditoria → npm run agent:audit',
+    ].join('\n');
+  }
+  if (/API key|API_KEY|invalid.*key|unauthenticated|permission denied|401|403/i.test(msg)) {
+    return [
+      '🔑 Problema com a chave do Gemini.',
+      'Verifique GEMINI_API_KEY no .env.local. Gere uma API key em https://aistudio.google.com/apikey',
+      '(o formato correto começa com "AIza...").',
+    ].join('\n');
+  }
+  if (/ECONNREFUSED|fetch failed|Not Found.*ollama|11434/i.test(msg)) {
+    return [
+      '🔌 Não consegui falar com o Ollama.',
+      'Confirme que ele está rodando (ollama serve / serviço do Windows) e que o modelo existe',
+      '(ollama pull qwen2.5-coder:7b). Ou use o Gemini definindo AGENT_CODER=gemini.',
+    ].join('\n');
+  }
+  return msg;
+}
+
 main().catch((err) => {
-  p.log.error(String((err as Error).stack || err));
+  p.log.error(friendlyError(err));
   process.exit(1);
 });
