@@ -28,8 +28,11 @@ export function getModel(config: AgentConfig, engine: Engine): LanguageModel {
     return google(config.gemini.model);
   }
 
-  const ollama = createOllama({ baseURL: config.ollama.baseURL });
-  return ollama(config.ollama.model);
+  // IMPORTANTE: usar .chat() → endpoint nativo /api/chat do Ollama.
+  // O callable padrão ollama(modelId) usa a API "responses", que o Ollama não
+  // expõe (resulta em 404 Not Found).
+  const ollama = createOllama({ baseURL: config.ollama.baseURL, compatibility: 'strict' });
+  return ollama.chat(config.ollama.model);
 }
 
 /**
