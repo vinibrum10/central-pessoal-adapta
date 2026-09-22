@@ -16,17 +16,20 @@ Request** no seu GitHub. Você aprova cada etapa importante (ou liga o autopilot
 
 ## Por que essa divisão de motores (e não tudo local)?
 
-Escrever React + TypeScript correto num projeto grande como o SGP exige um
-modelo de raciocínio forte. Modelos locais pequenos (7–8B) erram muito e
-**quebram o build**. Por isso, por padrão:
+O free tier do Gemini é baixo (poucas chamadas por minuto/dia) e trava o loop
+do agente. Por isso o **padrão é 100% Ollama** — local, ilimitado, grátis e
+offline:
 
-| Etapa | Motor padrão | Por quê |
-|-------|--------------|---------|
-| Entrevista + Plano | **Ollama (local)** | É leve, e mantém seu pedido/dados na sua máquina. |
-| Escrever/editar código | **Gemini** | Precisa de raciocínio forte para não quebrar o build. |
+| Etapa | Motor padrão | Alternativa (opt-in) |
+|-------|--------------|----------------------|
+| Entrevista + Plano | **Ollama (local)** | `AGENT_PLANNER=gemini` |
+| Escrever/editar código | **Ollama (local)** | `AGENT_CODER=gemini` |
 
-Você pode forçar qualquer combinação com variáveis de ambiente (abaixo). Se o
-Ollama estiver desligado, o agente cai automaticamente para o Gemini.
+**Sobre qualidade:** modelos locais pequenos (7–8B) são ótimos para tarefas
+**pequenas e específicas**, mas erram mais em mudanças grandes/complexas. Nesses
+casos, use o Gemini (`AGENT_CODER=gemini`) — melhor raciocínio, porém sujeito à
+cota do free tier. Se o Ollama estiver desligado e houver `GEMINI_API_KEY`, o
+agente cai automaticamente para o Gemini.
 
 ---
 
@@ -116,8 +119,8 @@ para o relatório também medir o tamanho do bundle.
 | `AGENT_MAX_RETRIES` | `6` | Tentativas (com espera) ao bater no limite de cota (erro 429). |
 | `OLLAMA_BASE_URL` | `http://localhost:11434/api` | Endereço do Ollama local. |
 | `AGENT_OLLAMA_MODEL` | `qwen2.5-coder:7b` | Modelo local a usar. |
-| `AGENT_CODER` | auto (`gemini` se houver chave) | Motor para **escrever código**: `gemini` ou `ollama`. |
-| `AGENT_PLANNER` | auto (`ollama` se houver chave Gemini) | Motor para **entrevista/plano**. |
+| `AGENT_CODER` | `ollama` | Motor para **escrever código**. `gemini` para usar o Gemini (opt-in). |
+| `AGENT_PLANNER` | `ollama` | Motor para **entrevista/plano**. `gemini` para usar o Gemini (opt-in). |
 | `GITHUB_TOKEN` | — | Token para abrir o PR. |
 | `AGENT_AUTOPILOT` | `false` | `true` = sem confirmações. |
 | `AGENT_DRY_RUN` | `false` | `true` = não commita/push/PR. |

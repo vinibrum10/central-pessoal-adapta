@@ -64,29 +64,28 @@ function envInt(name: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
-function pickEngine(explicit: string | undefined, preferForCode: boolean, hasGemini: boolean): Engine {
-  // 1) Se o usuário forçou explicitamente, respeitamos.
-  if (explicit === 'ollama' || explicit === 'gemini') return explicit;
-  // 2) Sem chave Gemini → só resta Ollama.
-  if (!hasGemini) return 'ollama';
-  // 3) Escrita de código prefere Gemini; etapas leves preferem Ollama (privado + grátis).
-  return preferForCode ? 'gemini' : 'ollama';
+function pickEngine(explicit: string | undefined): Engine {
+  // Padrão: SEMPRE Ollama (local, ilimitado, grátis, offline). O Gemini tem
+  // free tier baixo e trava no loop do agente, então é opt-in: só entra quando
+  // o usuário define explicitamente AGENT_CODER=gemini / AGENT_PLANNER=gemini.
+  if (explicit === 'gemini') return 'gemini';
+  return 'ollama';
 }
 
 export function loadConfig(cliFlags: { autopilot?: boolean; dryRun?: boolean } = {}): AgentConfig {
   const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-  const hasGemini = Boolean(geminiKey && geminiKey.trim() && geminiKey !== 'your_gemini_api_key_here');
 
   return {
-    coder: pickEngine(process.env.AGENT_CODER, /* preferForCode */ true, hasGemini),
-    planner: pickEngine(process.env.AGENT_PLANNER, /* preferForCode */ false, hasGemini),
+    // Ambos default = Ollama (free/ilimitado). Gemini só via AGENT_CODER/PLANNER=gemini.
+    coder: pickEngine(process.env.AGENT_CODER),
+    planner: pickEngine(process.env.AGENT_PLANNER),
     gemini: {
       apiKey: geminiKey,
       // Padrão: flash-lite tem cota gratuita MUITO maior (mais req/min e req/dia)
       // que o 2.5-flash — essencial para o loop do agente não estourar o free tier.
       // Variável própria do agente (AGENT_GEMINI_MODEL) para não afetar o
       // GEMINI_MODEL que o app usa no servidor (api/english/*).
-      model: process.env.AGENT_GEMINI_MODEL || 'gemini-2.5-flash-lite',
+      model: process.env.AGENT_GEMINI_MODEL || 'gemini-3.5-flash-lite',
       minIntervalMs: envInt('AGENT_MIN_INTERVAL_MS', 4500),
     },
     ollama: {
